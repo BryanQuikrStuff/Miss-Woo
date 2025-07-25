@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WooCommerce Orders - Missive Integration</title>
+    
+    <!-- Missive CSS and JS -->
+    <link rel="stylesheet" href="https://integrations.missiveapp.com/missive.css">
+    <script src="https://integrations.missiveapp.com/missive.js"></script>
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Loading state -->
+        <div id="loading" class="loading-container" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading orders...</p>
+        </div>
+
+        <!-- Error state -->
+        <div id="error" class="error-container" style="display: none;">
+            <div class="error-message">
+                <h3>Error</h3>
+                <p id="error-text"></p>
+                <button onclick="retryLoadOrders()" class="retry-btn">Retry</button>
+            </div>
+        </div>
+
+        <!-- Multiple conversations selected -->
+        <div id="multiple-conversations" class="info-container" style="display: none;">
+            <div class="info-message">
+                <h3>Multiple Conversations Selected</h3>
+                <p>Please select a single conversation to view order details.</p>
+            </div>
+        </div>
+
+        <!-- No orders found -->
+        <div id="no-orders" class="info-container" style="display: none;">
+            <div class="info-message">
+                <h3>No Orders Found</h3>
+                <p>No orders found for this email address.</p>
+            </div>
+        </div>
+
+        <!-- Main content -->
+        <div id="main-content" class="main-container" style="display: none;">
+            <!-- Customer info header -->
+            <div id="customer-header" class="customer-header">
+                <h2 id="customer-email"></h2>
+                <p id="customer-info"></p>
+            </div>
+
+            <div class="content-wrapper">
+                <!-- Orders list (left panel) -->
+                <div id="orders-panel" class="orders-panel">
+                    <h3>Orders</h3>
+                    <div id="orders-list" class="orders-list">
+                        <!-- Orders will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Order details (right panel) -->
+                <div id="details-panel" class="details-panel">
+                    <div id="order-details" class="order-details">
+                        <div class="placeholder">
+                            <p>Select an order to view details</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load main application script -->
+    <script src="app.js"></script>
+</body>
+</html>
