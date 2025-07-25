@@ -1,0 +1,534 @@
+/**
+ * WooCommerce Orders Integration for Missive - Custom Styles
+ * Builds upon Missive base styles for a cohesive look
+ */
+
+/* Reset and base styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+#app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Loading state */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background-color: #fafafa;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e0e0e0;
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-container p {
+    color: #666;
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Error state */
+.error-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 20px;
+    background-color: #fafafa;
+}
+
+.error-message {
+    text-align: center;
+    max-width: 400px;
+    padding: 24px;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.error-message h3 {
+    color: #dc3545;
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.error-message p {
+    color: #666;
+    margin: 0 0 20px 0;
+    line-height: 1.5;
+}
+
+.retry-btn {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.retry-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Info containers (multiple conversations, no orders) */
+.info-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 20px;
+    background-color: #fafafa;
+}
+
+.info-message {
+    text-align: center;
+    max-width: 400px;
+    padding: 24px;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.info-message h3 {
+    color: #333;
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.info-message p {
+    color: #666;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Main content layout */
+.main-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.customer-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: #fafafa;
+}
+
+.customer-header h2 {
+    margin: 0 0 4px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.customer-header p {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.content-wrapper {
+    display: flex;
+    flex: 1;
+    min-height: 0; /* Important for flex children to be scrollable */
+}
+
+/* Orders panel (left side) */
+.orders-panel {
+    width: 320px;
+    border-right: 1px solid #e0e0e0;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: column;
+}
+
+.orders-panel h3 {
+    margin: 0;
+    padding: 16px 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: #fafafa;
+}
+
+.orders-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+/* Order items */
+.order-item {
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.order-item:hover {
+    background-color: #f8f9fa;
+}
+
+.order-item.selected {
+    background-color: #e3f2fd;
+    border-left: 3px solid #007bff;
+}
+
+.order-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.order-id {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.order-status {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.order-status.status-completed {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.order-status.status-processing {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.order-status.status-pending {
+    background-color: #ffeaa7;
+    color: #6c757d;
+}
+
+.order-status.status-cancelled {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.order-status.status-refunded {
+    background-color: #e2e3e5;
+    color: #383d41;
+}
+
+.order-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.order-date {
+    font-size: 13px;
+    color: #666;
+}
+
+.order-total {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* Details panel (right side) */
+.details-panel {
+    flex: 1;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: column;
+}
+
+.order-details {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    font-style: italic;
+}
+
+.loading-details {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+}
+
+.loading-details .spinner {
+    width: 24px;
+    height: 24px;
+    border-width: 2px;
+    margin-bottom: 12px;
+}
+
+.loading-details p {
+    color: #666;
+    font-size: 14px;
+    margin: 0;
+}
+
+.error-details {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 16px;
+    border-radius: 4px;
+    border: 1px solid #f5c6cb;
+    margin: 20px 0;
+}
+
+/* Order details content */
+.order-header-details {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.order-header-details h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+}
+
+.order-meta-details {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.order-meta-details .order-date {
+    color: #666;
+    font-size: 14px;
+}
+
+.order-section {
+    margin-bottom: 24px;
+}
+
+.order-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* Line items */
+.line-items {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.line-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    background-color: #fafafa;
+}
+
+.line-item:last-child {
+    border-bottom: none;
+}
+
+.item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.item-name {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 2px;
+}
+
+.item-sku {
+    font-size: 12px;
+    color: #666;
+}
+
+.item-quantity {
+    margin: 0 16px;
+    font-size: 14px;
+    color: #666;
+    min-width: 60px;
+}
+
+.item-total {
+    font-weight: 600;
+    color: #333;
+    min-width: 80px;
+    text-align: right;
+}
+
+.order-total-section {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    text-align: right;
+    font-size: 16px;
+}
+
+/* Shipping address */
+.shipping-address .address {
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Tracking information */
+.tracking-info .tracking-details {
+    background-color: #e8f4fd;
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid #bee5eb;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .content-wrapper {
+        flex-direction: column;
+    }
+    
+    .orders-panel {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        max-height: 40vh;
+    }
+    
+    .customer-header {
+        padding: 12px 16px;
+    }
+    
+    .order-details {
+        padding: 16px;
+    }
+    
+    .order-item {
+        padding: 12px 16px;
+    }
+    
+    .orders-panel h3 {
+        padding: 12px 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .order-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .order-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    
+    .order-meta-details {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .line-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .item-quantity,
+    .item-total {
+        margin: 0;
+        min-width: auto;
+        text-align: left;
+    }
+}
+
+/* Scrollbar styling for webkit browsers */
+.orders-list::-webkit-scrollbar,
+.order-details::-webkit-scrollbar {
+    width: 6px;
+}
+
+.orders-list::-webkit-scrollbar-track,
+.order-details::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.orders-list::-webkit-scrollbar-thumb,
+.order-details::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.orders-list::-webkit-scrollbar-thumb:hover,
+.order-details::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
