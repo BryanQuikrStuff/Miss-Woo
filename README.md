@@ -1,197 +1,181 @@
-# WooCommerce Orders Integration for Missive
+# WooCommerce Orders - Missive Integration
 
-A powerful iframe integration that displays WooCommerce order data directly within Missive conversations. When you select a conversation, the integration automatically fetches and displays all orders associated with the sender's email address.
+A lightweight iframe integration that displays WooCommerce customer orders directly within Missive conversations. When you select a conversation, the plugin automatically detects the customer's email and displays their order history with detailed information.
 
 ## Features
 
-- **Automatic Order Lookup**: Extracts email addresses from conversation senders and fetches corresponding WooCommerce orders
-- **Comprehensive Order Display**: Shows order ID, date, total, status, and detailed breakdowns
-- **Detailed Order View**: Click any order to see line items, shipping address, and tracking information
-- **Smart Caching**: Uses Missive's storage API to cache order data and reduce API calls
-- **Multiple UI States**: Handles loading, errors, multiple conversations, and no orders scenarios
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Real-time Updates**: Automatically refreshes when conversation selection changes
+- 🔄 **Automatic Email Detection**: Extracts customer email from conversation participants
+- 📋 **Order List View**: Shows order ID, date, status, and total amount
+- 🔍 **Detailed Order View**: Click any order to see full details including items, shipping, and totals
+- 🎨 **Clean UI**: Modern, responsive design that fits seamlessly in Missive
+- ⚡ **Real-time Updates**: Watches for conversation changes and updates automatically
+- 🛡️ **Error Handling**: Graceful error states with retry functionality
+- 📱 **Mobile Responsive**: Works well on all screen sizes
+
+## Setup Instructions
+
+### 1. WooCommerce API Configuration
+
+First, you need to create API credentials in your WooCommerce store:
+
+1. Go to your WordPress admin → **WooCommerce** → **Settings** → **Advanced** → **REST API**
+2. Click **Add Key**
+3. Set the following:
+   - **Description**: `Missive Integration`
+   - **User**: Select an administrator user
+   - **Permissions**: `Read`
+4. Click **Generate API Key**
+5. Copy the **Consumer Key** and **Consumer Secret** (you'll need these for configuration)
+
+### 2. Plugin Configuration
+
+The plugin supports multiple configuration methods:
+
+#### Method 1: Environment Variables (Recommended for hosting)
+Set these environment variables in your hosting environment:
+```bash
+WOOCOMMERCE_URL=https://your-store.com
+WOOCOMMERCE_KEY=ck_your_consumer_key_here
+WOOCOMMERCE_SECRET=cs_your_consumer_secret_here
+```
+
+#### Method 2: Local Storage (For development/testing)
+The plugin will check browser localStorage for:
+- `woo_base_url`
+- `woo_consumer_key`
+- `woo_consumer_secret`
+
+You can set these manually in browser console:
+```javascript
+localStorage.setItem('woo_base_url', 'https://your-store.com');
+localStorage.setItem('woo_consumer_key', 'ck_your_consumer_key_here');
+localStorage.setItem('woo_consumer_secret', 'cs_your_consumer_secret_here');
+```
+
+#### Method 3: PostMessage Configuration
+Send configuration via postMessage (useful for parent iframe management):
+```javascript
+window.postMessage({
+    type: 'woocommerce-config',
+    baseUrl: 'https://your-store.com',
+    consumerKey: 'ck_your_consumer_key_here',
+    consumerSecret: 'cs_your_consumer_secret_here'
+}, '*');
+```
+
+### 3. Hosting the Plugin
+
+#### Option A: Static HTTPS Host
+1. Upload all files (`index.html`, `app.js`, `styles.css`) to your HTTPS web server
+2. Ensure CORS is configured to allow requests from Missive domains
+3. Configure your WooCommerce credentials using one of the methods above
+
+#### Option B: GitHub Pages (Free hosting)
+1. Create a new GitHub repository
+2. Upload the plugin files to the repository
+3. Enable GitHub Pages in repository settings
+4. Use the provided HTTPS URL for the Missive integration
+
+### 4. Adding to Missive
+
+1. Open Missive and go to **Settings** → **Integrations**
+2. Click **Add Integration** → **Custom iframe**
+3. Set the **URL** to your hosted plugin location
+4. Configure the integration name and icon as desired
+5. Save the integration
+
+## Usage
+
+1. **Select a Conversation**: Choose any conversation in Missive
+2. **Automatic Detection**: The plugin will automatically detect the customer's email
+3. **View Orders**: Browse the customer's order history in a clean list view
+4. **Order Details**: Click any order to see full details including:
+   - Order items with quantities and prices
+   - Shipping address
+   - Payment method
+   - Order totals and taxes
 
 ## File Structure
 
 ```
-├── index.html          # Main iframe page with Missive API integration
-├── app.js             # Core JavaScript logic for Missive events and WooCommerce API
-├── styles.css         # Custom styling that builds upon Missive base styles
-└── README.md          # Setup and usage documentation
+├── index.html          # Main HTML structure with Missive resources
+├── app.js             # JavaScript application with API integration
+├── styles.css         # Modern, responsive CSS styling
+└── README.md          # This file
 ```
 
-## Setup Instructions
+## Browser Support
 
-### 1. WooCommerce Configuration
+- Chrome 80+
+- Firefox 75+
+- Safari 13+
+- Edge 80+
 
-First, you need to generate API credentials in your WooCommerce store:
+## Security Notes
 
-1. Go to **WooCommerce → Settings → Advanced → REST API**
-2. Click **Add Key**
-3. Set these options:
-   - **Description**: "Missive Integration"
-   - **User**: Select an administrator user
-   - **Permissions**: "Read"
-4. Click **Generate API Key**
-5. Copy the **Consumer Key** and **Consumer Secret**
-
-### 2. Integration Configuration
-
-Edit the `app.js` file and update the `WOOCOMMERCE_CONFIG` object:
-
-```javascript
-const WOOCOMMERCE_CONFIG = {
-    baseUrl: 'https://your-store.com',           // Your WooCommerce store URL
-    consumerKey: 'ck_your_consumer_key',         // Your Consumer Key
-    consumerSecret: 'cs_your_consumer_secret',   // Your Consumer Secret
-    apiVersion: 'v3'                             // WooCommerce API version
-};
-```
-
-### 3. Host the Files
-
-Upload all files to a web server that supports HTTPS. The integration must be served over HTTPS to work within Missive.
-
-### 4. Add to Missive
-
-1. In Missive, go to **Settings → Integrations**
-2. Click **Add Integration**
-3. Choose **iframe**
-4. Set the URL to your hosted `index.html` file
-5. Configure the iframe size (recommended: 800px wide, 600px height)
-
-## Key Functions
-
-### Core Integration Functions
-
-- **`initMissive()`**: Initializes the Missive API connection and event listeners
-- **`handleConversationChange()`**: Responds to conversation selection changes
-- **`extractEmailFromConversation()`**: Extracts sender email from conversation data
-
-### WooCommerce API Functions
-
-- **`fetchOrdersByEmail(email)`**: Queries WooCommerce REST API for orders by email
-- **`fetchOrderDetails(orderId)`**: Retrieves detailed information for a specific order
-- **`extractTrackingInfo(order)`**: Extracts tracking data from order metadata
-
-### UI Management Functions
-
-- **`renderOrdersList(orders)`**: Displays the orders list in the left panel
-- **`renderOrderDetails(order)`**: Shows detailed order information in the right panel
-- **`handleOrderClick(orderId)`**: Handles order selection and detail loading
-
-### Caching Functions
-
-- **`cacheOrders(email, orders)`**: Stores order data using Missive's storage API
-- **`getCachedOrders(email)`**: Retrieves cached order data if available and fresh
-
-## User Interface
-
-### Left Panel - Orders List
-- Displays all orders for the selected email
-- Shows Order ID, date, total amount, and status
-- Color-coded status badges for quick identification
-- Click any order to view details
-
-### Right Panel - Order Details
-- Comprehensive order information
-- Line items with names, SKUs, quantities, and totals
-- Customer shipping address
-- Tracking information (if available)
-- Order totals and status
-
-### State Management
-- **Loading State**: Shows spinner while fetching data
-- **Error State**: Displays error messages with retry option
-- **Multiple Conversations**: Prompts user to select single conversation
-- **No Orders**: Informs when no orders are found for an email
-
-## Customization
-
-### Tracking Information
-
-The `extractTrackingInfo()` function can be customized based on how your WooCommerce store handles tracking data:
-
-```javascript
-function extractTrackingInfo(order) {
-    // Check for tracking in order meta_data
-    if (order.meta_data && order.meta_data.length > 0) {
-        const trackingMeta = order.meta_data.find(meta => 
-            meta.key === '_tracking_number' || // Adjust key name
-            meta.key === '_shipment_tracking'
-        );
-        
-        if (trackingMeta) {
-            return {
-                number: trackingMeta.value,
-                carrier: 'Your Carrier Name',
-                status: order.status
-            };
-        }
-    }
-    
-    return null;
-}
-```
-
-### Cache Duration
-
-Modify the cache duration in `app.js`:
-
-```javascript
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (adjust as needed)
-```
-
-### Styling
-
-The integration uses a responsive design that adapts to different screen sizes. You can customize colors, fonts, and layout by modifying `styles.css`.
-
-## API Rate Limiting
-
-The integration includes smart caching to minimize API calls:
-
-- Order data is cached for 5 minutes per email address
-- Only fresh API calls are made when cache expires
-- Error handling includes retry mechanisms
+- ✅ Uses HTTPS for all API communications
+- ✅ Implements proper CORS handling
+- ✅ Uses basic authentication for WooCommerce API
+- ✅ No sensitive data stored in browser (except localStorage for dev)
+- ⚠️ Store API credentials securely - never commit them to public repositories
 
 ## Troubleshooting
 
-### Common Issues
+### "WooCommerce configuration required"
+- Verify your API credentials are set correctly
+- Check that your WooCommerce store URL is accessible
+- Ensure API credentials have at least "Read" permissions
 
-1. **CORS Errors**: Ensure your WooCommerce store allows cross-origin requests from your integration domain
-2. **Authentication Failures**: Verify your Consumer Key and Consumer Secret are correct
-3. **No Orders Displayed**: Check that the email extraction is working and orders exist for that email
-4. **Missive API Errors**: Ensure the integration is loaded within a Missive iframe context
+### "WooCommerce authentication failed"
+- Double-check your Consumer Key and Consumer Secret
+- Verify the API key is active in WooCommerce settings
+- Ensure your WooCommerce store has REST API enabled
 
-### Debug Mode
+### "No customer email found"
+- Verify the conversation has messages with valid email addresses
+- Check that conversation participants include customer emails
+- Try selecting a different conversation
 
-Enable console logging by opening browser developer tools. The integration logs all major actions and API calls.
+### Orders not loading
+- Check browser console for error messages
+- Verify CORS is properly configured on your WooCommerce store
+- Ensure the customer email exists in your WooCommerce customer database
 
-### Error Messages
+## Development
 
-The integration provides user-friendly error messages and includes a retry mechanism for failed API calls.
+To modify or extend the plugin:
 
-## Security Considerations
+1. **Clone/download** the files
+2. **Edit** `app.js` for functionality changes
+3. **Modify** `styles.css` for styling updates
+4. **Test** in a development environment first
+5. **Deploy** to your production hosting
 
-- Use HTTPS for hosting the integration
-- Store API credentials securely (consider environment variables for production)
-- WooCommerce API keys should have minimal required permissions (Read-only)
-- The integration only accesses order data, not sensitive customer information
+### Key Classes and Methods
 
-## Browser Compatibility
+- `WooCommerceOrdersApp`: Main application class
+- `handleConversationChange()`: Processes Missive conversation updates
+- `fetchWooCommerceOrders()`: Retrieves orders from WooCommerce API
+- `renderOrderDetails()`: Displays detailed order information
 
-- Modern browsers supporting ES6+ features
-- Tested on Chrome, Firefox, Safari, and Edge
-- Mobile-responsive design for tablet and phone access
+## API Integration
 
-## Support
+### Missive API Usage
+- `Missive.on('change:conversations')`: Listens for conversation changes
+- `Missive.fetch('conversations')`: Gets current conversation data
 
-For issues related to:
-- **WooCommerce API**: Check WooCommerce REST API documentation
-- **Missive Integration**: Refer to Missive's iframe integration docs
-- **This Integration**: Review console logs and error messages for debugging information
+### WooCommerce REST API Endpoints
+- `GET /wp-json/wc/v3/orders`: Retrieves orders by customer email
+- `GET /wp-json/wc/v3/orders/{id}`: Gets detailed order information
 
 ## License
 
-This integration is provided as-is for educational and commercial use. Modify as needed for your specific requirements.
+This project is open source and available under the MIT License.
+
+## Support
+
+For issues or questions:
+1. Check the troubleshooting section above
+2. Review browser console for error messages
+3. Verify your WooCommerce API configuration
+4. Test with a simple REST API client to isolate issues

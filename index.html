@@ -4,77 +4,61 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WooCommerce Orders - Missive Integration</title>
-    
-    <!-- Missive CSS and JS -->
     <link rel="stylesheet" href="https://integrations.missiveapp.com/missive.css">
-    <script src="https://integrations.missiveapp.com/missive.js"></script>
-    
-    <!-- Custom styles -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app">
-        <!-- Loading state -->
-        <div id="loading" class="loading-container" style="display: none;">
-            <div class="spinner"></div>
-            <p>Loading orders...</p>
+        <!-- Loading State -->
+        <div id="loading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading customer orders...</p>
         </div>
 
-        <!-- Error state -->
+        <!-- Error State -->
         <div id="error" class="error-container" style="display: none;">
-            <div class="error-message">
-                <h3>Error</h3>
-                <p id="error-text"></p>
-                <button onclick="retryLoadOrders()" class="retry-btn">Retry</button>
-            </div>
+            <div class="error-icon">⚠️</div>
+            <p id="error-message">Unable to load customer orders</p>
+            <button id="retry-btn" class="retry-button">Retry</button>
         </div>
 
-        <!-- Multiple conversations selected -->
-        <div id="multiple-conversations" class="info-container" style="display: none;">
-            <div class="info-message">
-                <h3>Multiple Conversations Selected</h3>
-                <p>Please select a single conversation to view order details.</p>
-            </div>
+        <!-- No Email State -->
+        <div id="no-email" class="info-container" style="display: none;">
+            <div class="info-icon">📧</div>
+            <p>No customer email found in this conversation</p>
         </div>
 
-        <!-- No orders found -->
-        <div id="no-orders" class="info-container" style="display: none;">
-            <div class="info-message">
-                <h3>No Orders Found</h3>
-                <p>No orders found for this email address.</p>
-            </div>
+        <!-- Configuration Required State -->
+        <div id="config-required" class="info-container" style="display: none;">
+            <div class="info-icon">⚙️</div>
+            <p>WooCommerce configuration required</p>
+            <small>Please configure your WooCommerce API settings</small>
         </div>
 
-        <!-- Main content -->
-        <div id="main-content" class="main-container" style="display: none;">
-            <!-- Customer info header -->
-            <div id="customer-header" class="customer-header">
-                <h2 id="customer-email"></h2>
-                <p id="customer-info"></p>
+        <!-- Orders List -->
+        <div id="orders-container" style="display: none;">
+            <div class="header">
+                <h3 id="customer-info">Customer Orders</h3>
+                <div id="order-count" class="order-count"></div>
             </div>
+            <div id="orders-list" class="orders-list"></div>
+        </div>
 
-            <div class="content-wrapper">
-                <!-- Orders list (left panel) -->
-                <div id="orders-panel" class="orders-panel">
-                    <h3>Orders</h3>
-                    <div id="orders-list" class="orders-list">
-                        <!-- Orders will be populated here -->
-                    </div>
+        <!-- Order Details Modal -->
+        <div id="order-details" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="order-details-title">Order Details</h4>
+                    <button id="close-details" class="close-button">&times;</button>
                 </div>
-
-                <!-- Order details (right panel) -->
-                <div id="details-panel" class="details-panel">
-                    <div id="order-details" class="order-details">
-                        <div class="placeholder">
-                            <p>Select an order to view details</p>
-                        </div>
-                    </div>
+                <div id="order-details-content" class="modal-body">
+                    <!-- Order details will be populated here -->
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Load main application script -->
+    <script src="https://integrations.missiveapp.com/missive.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
