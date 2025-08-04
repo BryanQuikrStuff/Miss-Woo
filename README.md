@@ -36,7 +36,7 @@ Set these environment variables in your hosting environment:
 ```bash
 WOOCOMMERCE_URL=https://quikrstuff.com
 WOOCOMMERCE_KEY=ck_285852a66ac9cf16db7723e1d6deda54937a8a03
-WOOCOMMERCE_SECRET=cs_your_consumer_secret_here
+WOOCOMMERCE_SECRET=cs_3211f905108b717426e6b6a63613147b66993333
 ```
 
 #### Method 2: Local Storage (For development/testing)
@@ -49,7 +49,7 @@ You can set these manually in browser console:
 ```javascript
 localStorage.setItem('woo_base_url', 'https://quikrstuff.com');
 localStorage.setItem('woo_consumer_key', 'ck_285852a66ac9cf16db7723e1d6deda54937a8a03');
-localStorage.setItem('woo_consumer_secret', 'cs_your_consumer_secret_here');
+localStorage.setItem('woo_consumer_secret', 'cs_3211f905108b717426e6b6a63613147b66993333');
 ```
 
 #### Method 3: PostMessage Configuration
@@ -59,7 +59,7 @@ window.postMessage({
     type: 'woocommerce-config',
     baseUrl: 'https://quikrstuff.com',
     consumerKey: 'ck_285852a66ac9cf16db7723e1d6deda54937a8a03',
-    consumerSecret: 'cs_your_consumer_secret_here'
+    consumerSecret: 'cs_3211f905108b717426e6b6a63613147b66993333'
 }, '*');
 ```
 
