@@ -1,197 +1,241 @@
-# WooCommerce Orders Integration for Missive
+# WooCommerce Orders - Missive Integration
 
-A powerful iframe integration that displays WooCommerce order data directly within Missive conversations. When you select a conversation, the integration automatically fetches and displays all orders associated with the sender's email address.
+A powerful iframe integration that displays QuikrStuff.com WooCommerce customer orders directly within Missive conversations. When you select a conversation, the plugin automatically detects the customer's email and displays their complete order history with detailed information.
 
-## Features
+## 🚀 Features
 
-- **Automatic Order Lookup**: Extracts email addresses from conversation senders and fetches corresponding WooCommerce orders
-- **Comprehensive Order Display**: Shows order ID, date, total, status, and detailed breakdowns
-- **Detailed Order View**: Click any order to see line items, shipping address, and tracking information
-- **Smart Caching**: Uses Missive's storage API to cache order data and reduce API calls
-- **Multiple UI States**: Handles loading, errors, multiple conversations, and no orders scenarios
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Real-time Updates**: Automatically refreshes when conversation selection changes
+- 🔄 **Automatic Email Detection**: Extracts customer email from conversation participants
+- 📋 **Order List View**: Shows order ID, date, status, and total amount with beautiful status badges
+- 🔍 **Detailed Order View**: Click any order to see full details including items, quantities, shipping, and totals
+- 🎨 **Clean UI**: Modern, responsive design that fits seamlessly in Missive's interface
+- ⚡ **Real-time Updates**: Watches for conversation changes and updates automatically
+- 🛡️ **Error Handling**: Graceful error states with retry functionality
+- 📱 **Mobile Responsive**: Works perfectly on all screen sizes
+- 🔒 **Secure**: Uses HTTPS and proper WooCommerce REST API authentication
+- ⚙️ **Pre-configured**: Ready to use with QuikrStuff.com store out-of-the-box
+
+## 📋 Setup Instructions
+
+### 🎯 Quick Start (Pre-configured for QuikrStuff.com)
+
+This plugin comes pre-configured with QuikrStuff.com store credentials and will work immediately after deployment. Simply:
+
+1. **Deploy the files** to any HTTPS hosting service
+2. **Add to Missive** using the hosted URL
+3. **Start using** - select conversations to see customer orders!
+
+### 🔧 Custom Configuration (Optional)
+
+If you need to use a different WooCommerce store, you can override the default configuration:
+
+#### WooCommerce API Setup
+1. Go to your WordPress admin → **WooCommerce** → **Settings** → **Advanced** → **REST API**
+2. Click **Add Key**
+3. Set the following:
+   - **Description**: `Missive Integration`
+   - **User**: Select an administrator user
+   - **Permissions**: `Read`
+4. Click **Generate API Key**
+5. Copy the **Consumer Key** and **Consumer Secret**
+
+#### Configuration Methods
+
+The plugin supports multiple configuration methods (only needed for custom stores):
+
+**Method 1: Environment Variables** (Recommended for hosting)
+```bash
+WOOCOMMERCE_URL=https://your-store.com
+WOOCOMMERCE_KEY=your_consumer_key
+WOOCOMMERCE_SECRET=your_consumer_secret
+```
+
+**Method 2: Local Storage** (For development/testing)
+```javascript
+localStorage.setItem('woo_base_url', 'https://your-store.com');
+localStorage.setItem('woo_consumer_key', 'your_consumer_key');
+localStorage.setItem('woo_consumer_secret', 'your_consumer_secret');
+```
+
+**Method 3: PostMessage** (For dynamic configuration)
+```javascript
+window.postMessage({
+    type: 'woocommerce-config',
+    baseUrl: 'https://your-store.com',
+    consumerKey: 'your_consumer_key',
+    consumerSecret: 'your_consumer_secret'
+}, '*');
+```
+
+### 🏠 Current QuikrStuff.com Configuration
+
+The plugin is pre-configured with these QuikrStuff.com credentials:
+```bash
+Store URL: https://quikrstuff.com
+Consumer Key: ck_285852a66ac9cf16db7723e1d6deda54937a8a03
+Consumer Secret: cs_3211f905108b717426e6b6a63613147b66993333
+```
+
+### 🚀 Deployment
+
+#### Option A: GitHub Pages (Recommended - Free)
+1. **Fork or create** a new GitHub repository
+2. **Upload** all plugin files (`index.html`, `app.js`, `styles.css`, `README.md`)
+3. **Enable GitHub Pages** in repository settings → Pages → Source: Deploy from branch → main
+4. **Copy the HTTPS URL** provided by GitHub Pages
+5. **Ready to use!** The plugin will work immediately with QuikrStuff.com
+
+#### Option B: Static HTTPS Host
+1. **Upload** all files to your HTTPS web server
+2. **Ensure CORS** is configured (if needed)
+3. **Test access** to the index.html file
+4. **Use the HTTPS URL** for Missive integration
+
+#### Option C: Netlify/Vercel (Free alternatives)
+1. **Connect** your repository to Netlify or Vercel
+2. **Deploy** with default settings
+3. **Use the provided** HTTPS URL
+
+### 🎯 Adding to Missive
+
+1. Open Missive → **Settings** → **Integrations**
+2. Click **Add Integration** → **Custom iframe**
+3. **Set URL** to your hosted plugin location (e.g., `https://yourusername.github.io/woocommerce-missive/`)
+4. **Configure** integration name: "QuikrStuff Orders"
+5. **Set dimensions**: Width: 400px, Height: 600px (recommended)
+6. **Save** the integration
+
+## 💻 Usage
+
+1. **Select a Conversation**: Choose any conversation in Missive
+2. **Automatic Detection**: The plugin automatically detects the customer's email from conversation participants
+3. **Browse Orders**: View the customer's complete order history in a beautiful, organized list
+4. **Order Details**: Click any order card to open a detailed modal showing:
+   - 📦 **Order items** with quantities and individual prices
+   - 🏠 **Shipping address** and delivery information
+   - 💳 **Payment method** and transaction details
+   - 💰 **Order totals** including subtotal, shipping, taxes, and final total
+   - 📊 **Order status** with color-coded badges
+
+### 🎨 What You'll See
+
+- **Order List**: Clean cards showing order number, date, status, and total
+- **Status Badges**: Color-coded status indicators (pending, processing, completed, etc.)
+- **Responsive Design**: Perfect layout on desktop, tablet, and mobile
+- **Real-time Updates**: Automatic refresh when switching between conversations
+- **Error Handling**: Helpful messages for connection issues or missing data
 
 ## File Structure
 
 ```
-├── index.html          # Main iframe page with Missive API integration
-├── app.js             # Core JavaScript logic for Missive events and WooCommerce API
-├── styles.css         # Custom styling that builds upon Missive base styles
-└── README.md          # Setup and usage documentation
+├── index.html          # Main HTML structure with Missive resources
+├── app.js             # JavaScript application with API integration
+├── styles.css         # Modern, responsive CSS styling
+└── README.md          # This file
 ```
 
-## Setup Instructions
+## Browser Support
 
-### 1. WooCommerce Configuration
+- Chrome 80+
+- Firefox 75+
+- Safari 13+
+- Edge 80+
 
-First, you need to generate API credentials in your WooCommerce store:
+## Security Notes
 
-1. Go to **WooCommerce → Settings → Advanced → REST API**
-2. Click **Add Key**
-3. Set these options:
-   - **Description**: "Missive Integration"
-   - **User**: Select an administrator user
-   - **Permissions**: "Read"
-4. Click **Generate API Key**
-5. Copy the **Consumer Key** and **Consumer Secret**
+- ✅ Uses HTTPS for all API communications
+- ✅ Implements proper CORS handling
+- ✅ Uses basic authentication for WooCommerce API
+- ✅ No sensitive data stored in browser (except localStorage for dev)
+- ⚠️ Store API credentials securely - never commit them to public repositories
 
-### 2. Integration Configuration
+## 🔧 Troubleshooting
 
-Edit the `app.js` file and update the `WOOCOMMERCE_CONFIG` object:
+### ⚙️ "WooCommerce configuration required"
+- ✅ Plugin should work immediately with QuikrStuff.com - try refreshing
+- ❌ If using custom store: verify your API credentials are set correctly
+- 🔍 Check that your WooCommerce store URL is accessible
+- 🔑 Ensure API credentials have at least "Read" permissions
 
-```javascript
-const WOOCOMMERCE_CONFIG = {
-    baseUrl: 'https://your-store.com',           // Your WooCommerce store URL
-    consumerKey: 'ck_your_consumer_key',         // Your Consumer Key
-    consumerSecret: 'cs_your_consumer_secret',   // Your Consumer Secret
-    apiVersion: 'v3'                             // WooCommerce API version
-};
-```
+### 🔐 "WooCommerce authentication failed"
+- 🔄 Try refreshing the page (credentials may need to reload)
+- ✅ For QuikrStuff.com: Contact support if issue persists
+- ❌ For custom stores: Double-check your Consumer Key and Consumer Secret
+- 🔧 Verify the API key is active in WooCommerce settings
+- 📡 Ensure your WooCommerce store has REST API enabled
 
-### 3. Host the Files
+### 📧 "No customer email found"
+- 👤 Verify the conversation has messages with valid email addresses
+- 💬 Check that conversation participants include customer emails
+- 🔄 Try selecting a different conversation with clear sender information
+- 📝 Ensure the conversation has actual message content (not just notifications)
 
-Upload all files to a web server that supports HTTPS. The integration must be served over HTTPS to work within Missive.
+### 📦 Orders not loading
+- 🕵️ Check browser console (F12) for detailed error messages
+- 🌐 For custom stores: Verify CORS is properly configured
+- 👥 Ensure the customer email exists in your WooCommerce customer database
+- 🔄 Try the retry button or refresh the integration
+- 📞 For QuikrStuff.com issues: Contact store support
 
-### 4. Add to Missive
+### 🚀 Integration not appearing in Missive
+- 🔗 Verify the hosted URL is accessible via HTTPS
+- 📱 Check that all files (index.html, app.js, styles.css) are uploaded
+- 🔧 Ensure Missive iframe integration is configured correctly
+- 📐 Try adjusting iframe dimensions in Missive settings
 
-1. In Missive, go to **Settings → Integrations**
-2. Click **Add Integration**
-3. Choose **iframe**
-4. Set the URL to your hosted `index.html` file
-5. Configure the iframe size (recommended: 800px wide, 600px height)
+## Development
 
-## Key Functions
+To modify or extend the plugin:
 
-### Core Integration Functions
+1. **Clone/download** the files
+2. **Edit** `app.js` for functionality changes
+3. **Modify** `styles.css` for styling updates
+4. **Test** in a development environment first
+5. **Deploy** to your production hosting
 
-- **`initMissive()`**: Initializes the Missive API connection and event listeners
-- **`handleConversationChange()`**: Responds to conversation selection changes
-- **`extractEmailFromConversation()`**: Extracts sender email from conversation data
+### Key Classes and Methods
 
-### WooCommerce API Functions
+- `WooCommerceOrdersApp`: Main application class
+- `handleConversationChange()`: Processes Missive conversation updates
+- `fetchWooCommerceOrders()`: Retrieves orders from WooCommerce API
+- `renderOrderDetails()`: Displays detailed order information
 
-- **`fetchOrdersByEmail(email)`**: Queries WooCommerce REST API for orders by email
-- **`fetchOrderDetails(orderId)`**: Retrieves detailed information for a specific order
-- **`extractTrackingInfo(order)`**: Extracts tracking data from order metadata
+## API Integration
 
-### UI Management Functions
+### Missive API Usage
+- `Missive.on('change:conversations')`: Listens for conversation changes
+- `Missive.fetch('conversations')`: Gets current conversation data
 
-- **`renderOrdersList(orders)`**: Displays the orders list in the left panel
-- **`renderOrderDetails(order)`**: Shows detailed order information in the right panel
-- **`handleOrderClick(orderId)`**: Handles order selection and detail loading
-
-### Caching Functions
-
-- **`cacheOrders(email, orders)`**: Stores order data using Missive's storage API
-- **`getCachedOrders(email)`**: Retrieves cached order data if available and fresh
-
-## User Interface
-
-### Left Panel - Orders List
-- Displays all orders for the selected email
-- Shows Order ID, date, total amount, and status
-- Color-coded status badges for quick identification
-- Click any order to view details
-
-### Right Panel - Order Details
-- Comprehensive order information
-- Line items with names, SKUs, quantities, and totals
-- Customer shipping address
-- Tracking information (if available)
-- Order totals and status
-
-### State Management
-- **Loading State**: Shows spinner while fetching data
-- **Error State**: Displays error messages with retry option
-- **Multiple Conversations**: Prompts user to select single conversation
-- **No Orders**: Informs when no orders are found for an email
-
-## Customization
-
-### Tracking Information
-
-The `extractTrackingInfo()` function can be customized based on how your WooCommerce store handles tracking data:
-
-```javascript
-function extractTrackingInfo(order) {
-    // Check for tracking in order meta_data
-    if (order.meta_data && order.meta_data.length > 0) {
-        const trackingMeta = order.meta_data.find(meta => 
-            meta.key === '_tracking_number' || // Adjust key name
-            meta.key === '_shipment_tracking'
-        );
-        
-        if (trackingMeta) {
-            return {
-                number: trackingMeta.value,
-                carrier: 'Your Carrier Name',
-                status: order.status
-            };
-        }
-    }
-    
-    return null;
-}
-```
-
-### Cache Duration
-
-Modify the cache duration in `app.js`:
-
-```javascript
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (adjust as needed)
-```
-
-### Styling
-
-The integration uses a responsive design that adapts to different screen sizes. You can customize colors, fonts, and layout by modifying `styles.css`.
-
-## API Rate Limiting
-
-The integration includes smart caching to minimize API calls:
-
-- Order data is cached for 5 minutes per email address
-- Only fresh API calls are made when cache expires
-- Error handling includes retry mechanisms
-
-## Troubleshooting
-
-### Common Issues
-
-1. **CORS Errors**: Ensure your WooCommerce store allows cross-origin requests from your integration domain
-2. **Authentication Failures**: Verify your Consumer Key and Consumer Secret are correct
-3. **No Orders Displayed**: Check that the email extraction is working and orders exist for that email
-4. **Missive API Errors**: Ensure the integration is loaded within a Missive iframe context
-
-### Debug Mode
-
-Enable console logging by opening browser developer tools. The integration logs all major actions and API calls.
-
-### Error Messages
-
-The integration provides user-friendly error messages and includes a retry mechanism for failed API calls.
-
-## Security Considerations
-
-- Use HTTPS for hosting the integration
-- Store API credentials securely (consider environment variables for production)
-- WooCommerce API keys should have minimal required permissions (Read-only)
-- The integration only accesses order data, not sensitive customer information
-
-## Browser Compatibility
-
-- Modern browsers supporting ES6+ features
-- Tested on Chrome, Firefox, Safari, and Edge
-- Mobile-responsive design for tablet and phone access
-
-## Support
-
-For issues related to:
-- **WooCommerce API**: Check WooCommerce REST API documentation
-- **Missive Integration**: Refer to Missive's iframe integration docs
-- **This Integration**: Review console logs and error messages for debugging information
+### WooCommerce REST API Endpoints
+- `GET /wp-json/wc/v3/orders`: Retrieves orders by customer email
+- `GET /wp-json/wc/v3/orders/{id}`: Gets detailed order information
 
 ## License
 
-This integration is provided as-is for educational and commercial use. Modify as needed for your specific requirements.
+This project is open source and available under the MIT License.
+
+## 📞 Support & Resources
+
+### 🆘 Getting Help
+1. **First**: Check the troubleshooting section above
+2. **Debug**: Review browser console (F12) for error messages  
+3. **Test**: Verify the integration works with test conversations
+4. **Contact**: Reach out for QuikrStuff.com specific issues
+
+### 📚 Useful Resources
+- [Missive iframe Integration Docs](https://learn.missiveapp.com/api-documentation/iframe-integrations)
+- [WooCommerce REST API Documentation](https://woocommerce.github.io/woocommerce-rest-api-docs/)
+- [GitHub Pages Hosting Guide](https://pages.github.com/)
+
+### 🔧 Development Resources
+- **Missive JS API**: `https://integrations.missiveapp.com/missive.js`
+- **Missive CSS**: `https://integrations.missiveapp.com/missive.css`
+- **Test WooCommerce API**: Use tools like Postman or curl to test API endpoints
+
+## 🏆 Why This Integration?
+
+- **✅ Pre-configured**: Works immediately with QuikrStuff.com
+- **🎨 Beautiful UI**: Modern design that fits Missive perfectly
+- **⚡ Fast**: Optimized performance with efficient API calls
+- **📱 Responsive**: Works on all devices and screen sizes
+- **🔒 Secure**: Uses proper authentication and HTTPS
+- **🛠️ Maintainable**: Clean, well-documented code structure

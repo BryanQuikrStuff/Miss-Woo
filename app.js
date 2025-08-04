@@ -1,491 +1,446 @@
-/**
- * WooCommerce Orders Integration for Missive
- * 
- * This integration fetches and displays WooCommerce order data for email senders
- * in Missive conversations. It uses the Missive JavaScript API and WooCommerce REST API.
- */
+// WooCommerce Integration for Missive
+class WooCommerceOrdersApp {
+    constructor() {
+        this.currentEmail = null;
+        this.orders = [];
+        this.selectedOrderId = null;
+        
+        // WooCommerce configuration (these should be set via environment or config)
+        this.wooConfig = {
+            baseUrl: process.env.WOOCOMMERCE_URL || localStorage.getItem('woo_base_url') || 'https://quikrstuff.com',
+            consumerKey: process.env.WOOCOMMERCE_KEY || localStorage.getItem('woo_consumer_key') || 'ck_285852a66ac9cf16db7723e1d6deda54937a8a03',
+            consumerSecret: process.env.WOOCOMMERCE_SECRET || localStorage.getItem('woo_consumer_secret') || 'cs_3211f905108b717426e6b6a63613147b66993333'
+        };
 
-// Configuration - Update these with your WooCommerce store details
-const WOOCOMMERCE_CONFIG = {
-    baseUrl: 'https://your-store.com', // Replace with your WooCommerce store URL
-    consumerKey: 'ck_your_consumer_key', // Replace with your consumer key
-    consumerSecret: 'cs_your_consumer_secret', // Replace with your consumer secret
-    apiVersion: 'v3'
-};
+        this.init();
+    }
 
-// Cache configuration
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
-const CACHE_PREFIX = 'wc_orders_';
+    init() {
+        this.bindEvents();
+        this.initializeMissive();
+    }
 
-// Global state
-let currentEmail = null;
-let currentOrders = [];
-let selectedOrderId = null;
+    bindEvents() {
+        // Retry button
+        document.getElementById('retry-btn').addEventListener('click', () => {
+            this.loadCustomerOrders();
+        });
 
-/**
- * Initialize the Missive integration
- */
-function initMissive() {
-    console.log('Initializing Missive WooCommerce integration...');
-    
-    // Register for conversation changes
-    Missive.on('change:conversations', handleConversationChange);
-    
-    // Initial load - get current conversations
-    handleConversationChange();
-}
+        // Close modal
+        document.getElementById('close-details').addEventListener('click', () => {
+            this.closeOrderDetails();
+        });
 
-/**
- * Handle conversation changes in Missive
- */
-async function handleConversationChange() {
-    try {
-        const conversations = Missive.getConversations();
+        // Close modal on backdrop click
+        document.getElementById('order-details').addEventListener('click', (e) => {
+            if (e.target.id === 'order-details') {
+                this.closeOrderDetails();
+            }
+        });
+    }
+
+    initializeMissive() {
+        if (typeof Missive === 'undefined') {
+            this.showError('Missive API not available');
+            return;
+        }
+
+        try {
+            // Initialize Missive integration
+            Missive.on('change:conversations', (conversations) => {
+                this.handleConversationChange(conversations);
+            });
+
+            // Get initial conversations
+            Missive.fetch('conversations', (conversations) => {
+                this.handleConversationChange(conversations);
+            });
+
+        } catch (error) {
+            console.error('Missive initialization error:', error);
+            this.showError('Failed to initialize Missive integration');
+        }
+    }
+
+    handleConversationChange(conversations) {
         console.log('Conversations changed:', conversations);
         
-        // Reset state
-        clearContent();
-        currentEmail = null;
-        currentOrders = [];
-        selectedOrderId = null;
-        
+        // Check if we have exactly one conversation selected
         if (!conversations || conversations.length === 0) {
-            showInfo('No conversation selected', 'Please select a conversation to view order details.');
+            this.showNoEmail();
             return;
         }
-        
-        if (conversations.length > 1) {
-            showMultipleConversations();
-            return;
-        }
-        
-        // Fetch detailed conversation data
-        const conversationIds = conversations.map(c => c.id);
-        const detailedConversations = await Missive.fetchConversations(conversationIds);
-        
-        if (detailedConversations && detailedConversations.length > 0) {
-            const conversation = detailedConversations[0];
-            const email = extractEmailFromConversation(conversation);
-            
-            if (email) {
-                currentEmail = email;
-                await loadOrdersForEmail(email);
-            } else {
-                showError('Unable to extract email from conversation');
-            }
-        }
-    } catch (error) {
-        console.error('Error handling conversation change:', error);
-        showError('Failed to load conversation data: ' + error.message);
-    }
-}
 
-/**
- * Extract email address from conversation
- */
-function extractEmailFromConversation(conversation) {
-    try {
-        if (conversation.latest_message && 
-            conversation.latest_message.from_field && 
-            conversation.latest_message.from_field.address) {
-            return conversation.latest_message.from_field.address;
+        if (conversations.length > 1) {
+            this.showInfo('Please select a single conversation');
+            return;
         }
-        
-        // Fallback: try to extract from participants
-        if (conversation.contacts && conversation.contacts.length > 0) {
-            for (const contact of conversation.contacts) {
-                if (contact.emails && contact.emails.length > 0) {
-                    return contact.emails[0];
+
+        const conversation = conversations[0];
+        this.extractEmailFromConversation(conversation);
+    }
+
+    extractEmailFromConversation(conversation) {
+        let email = null;
+
+        try {
+            // Try to get email from conversation participants
+            if (conversation.users && conversation.users.length > 0) {
+                // Find non-team member (customer email)
+                const customer = conversation.users.find(user => !user.is_team_member);
+                if (customer && customer.email) {
+                    email = customer.email;
                 }
             }
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Error extracting email:', error);
-        return null;
-    }
-}
 
-/**
- * Load orders for a specific email
- */
-async function loadOrdersForEmail(email) {
-    try {
-        showLoading();
-        
-        // Check cache first
-        const cachedOrders = await getCachedOrders(email);
-        if (cachedOrders) {
-            console.log('Using cached orders for:', email);
-            currentOrders = cachedOrders;
-            renderOrdersList(cachedOrders);
-            showMainContent(email);
+            // Fallback: try to get from latest message
+            if (!email && conversation.latest_message) {
+                const message = conversation.latest_message;
+                if (message.from_field && message.from_field.address) {
+                    email = message.from_field.address;
+                }
+            }
+
+            // Fallback: extract from subject or body
+            if (!email && conversation.subject) {
+                const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
+                const match = conversation.subject.match(emailRegex);
+                if (match) {
+                    email = match[1];
+                }
+            }
+
+        } catch (error) {
+            console.error('Error extracting email:', error);
+        }
+
+        if (email) {
+            this.currentEmail = email;
+            this.loadCustomerOrders();
+        } else {
+            this.showNoEmail();
+        }
+    }
+
+    async loadCustomerOrders() {
+        if (!this.currentEmail) {
+            this.showNoEmail();
             return;
         }
-        
-        // Fetch from WooCommerce API
-        console.log('Fetching orders for email:', email);
-        const orders = await fetchOrdersByEmail(email);
-        
-        if (orders && orders.length > 0) {
-            currentOrders = orders;
-            await cacheOrders(email, orders);
-            renderOrdersList(orders);
-            showMainContent(email);
-        } else {
-            showNoOrders();
-        }
-    } catch (error) {
-        console.error('Error loading orders:', error);
-        showError('Failed to load orders: ' + error.message);
-    }
-}
 
-/**
- * Fetch orders from WooCommerce API by email
- */
-async function fetchOrdersByEmail(email) {
-    const url = `${WOOCOMMERCE_CONFIG.baseUrl}/wp-json/wc/${WOOCOMMERCE_CONFIG.apiVersion}/orders`;
-    const params = new URLSearchParams({
-        email: email,
-        per_page: 100, // Adjust as needed
-        orderby: 'date',
-        order: 'desc'
-    });
-    
-    const credentials = btoa(`${WOOCOMMERCE_CONFIG.consumerKey}:${WOOCOMMERCE_CONFIG.consumerSecret}`);
-    
-    const response = await fetch(`${url}?${params}`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Basic ${credentials}`,
-            'Content-Type': 'application/json'
+        if (!this.isConfigured()) {
+            this.showConfigRequired();
+            return;
         }
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    return await response.json();
-}
 
-/**
- * Fetch detailed order information
- */
-async function fetchOrderDetails(orderId) {
-    const url = `${WOOCOMMERCE_CONFIG.baseUrl}/wp-json/wc/${WOOCOMMERCE_CONFIG.apiVersion}/orders/${orderId}`;
-    const credentials = btoa(`${WOOCOMMERCE_CONFIG.consumerKey}:${WOOCOMMERCE_CONFIG.consumerSecret}`);
-    
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Basic ${credentials}`,
-            'Content-Type': 'application/json'
+        this.showLoading();
+
+        try {
+            const orders = await this.fetchWooCommerceOrders(this.currentEmail);
+            this.orders = orders;
+            this.displayOrders();
+        } catch (error) {
+            console.error('Error loading orders:', error);
+            this.showError(error.message || 'Failed to load customer orders');
         }
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
-    return await response.json();
-}
 
-/**
- * Render the orders list
- */
-function renderOrdersList(orders) {
-    const ordersList = document.getElementById('orders-list');
-    ordersList.innerHTML = '';
-    
-    orders.forEach(order => {
-        const orderItem = document.createElement('div');
-        orderItem.className = 'order-item';
-        orderItem.onclick = () => handleOrderClick(order.id);
+    async fetchWooCommerceOrders(email) {
+        const { baseUrl, consumerKey, consumerSecret } = this.wooConfig;
         
-        const date = new Date(order.date_created).toLocaleDateString();
-        const total = order.total;
-        const currency = order.currency;
-        const status = order.status;
+        if (!baseUrl || !consumerKey || !consumerSecret) {
+            throw new Error('WooCommerce configuration incomplete');
+        }
+
+        // Create basic auth header
+        const auth = btoa(`${consumerKey}:${consumerSecret}`);
         
-        orderItem.innerHTML = `
+        const url = `${baseUrl}/wp-json/wc/v3/orders?customer=${encodeURIComponent(email)}&per_page=50&orderby=date&order=desc`;
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error('WooCommerce authentication failed');
+            } else if (response.status === 404) {
+                throw new Error('WooCommerce API endpoint not found');
+            } else {
+                throw new Error(`WooCommerce API error: ${response.status}`);
+            }
+        }
+
+        const orders = await response.json();
+        return Array.isArray(orders) ? orders : [];
+    }
+
+    async fetchOrderDetails(orderId) {
+        const { baseUrl, consumerKey, consumerSecret } = this.wooConfig;
+        const auth = btoa(`${consumerKey}:${consumerSecret}`);
+        
+        const url = `${baseUrl}/wp-json/wc/v3/orders/${orderId}`;
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch order details: ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    displayOrders() {
+        const container = document.getElementById('orders-container');
+        const customerInfo = document.getElementById('customer-info');
+        const orderCount = document.getElementById('order-count');
+        const ordersList = document.getElementById('orders-list');
+
+        if (this.orders.length === 0) {
+            this.showInfo('No orders found for this customer');
+            return;
+        }
+
+        // Update customer info
+        customerInfo.textContent = `Orders for ${this.currentEmail}`;
+        orderCount.textContent = `${this.orders.length} order${this.orders.length !== 1 ? 's' : ''}`;
+
+        // Clear previous orders
+        ordersList.innerHTML = '';
+
+        // Render orders
+        this.orders.forEach(order => {
+            const orderElement = this.createOrderElement(order);
+            ordersList.appendChild(orderElement);
+        });
+
+        this.hideAllStates();
+        container.style.display = 'block';
+    }
+
+    createOrderElement(order) {
+        const orderDiv = document.createElement('div');
+        orderDiv.className = 'order-item';
+        orderDiv.dataset.orderId = order.id;
+        
+        const statusClass = this.getStatusClass(order.status);
+        const formattedDate = new Date(order.date_created).toLocaleDateString();
+        const total = parseFloat(order.total).toFixed(2);
+
+        orderDiv.innerHTML = `
             <div class="order-header">
-                <span class="order-id">#${order.id}</span>
-                <span class="order-status status-${status}">${status.toUpperCase()}</span>
+                <div class="order-id">#${order.number}</div>
+                <div class="order-status ${statusClass}">${order.status}</div>
             </div>
-            <div class="order-meta">
-                <span class="order-date">${date}</span>
-                <span class="order-total">${currency} ${total}</span>
+            <div class="order-details">
+                <div class="order-date">${formattedDate}</div>
+                <div class="order-total">$${total}</div>
+            </div>
+            <div class="order-items-preview">
+                ${order.line_items.slice(0, 2).map(item => `
+                    <span class="item-name">${item.name}</span>
+                `).join(', ')}
+                ${order.line_items.length > 2 ? `<span class="more-items">+${order.line_items.length - 2} more</span>` : ''}
             </div>
         `;
-        
-        ordersList.appendChild(orderItem);
-    });
-}
 
-/**
- * Handle order item click
- */
-async function handleOrderClick(orderId) {
-    try {
-        // Update UI to show selection
-        document.querySelectorAll('.order-item').forEach(item => {
-            item.classList.remove('selected');
+        orderDiv.addEventListener('click', () => {
+            this.showOrderDetails(order.id);
         });
-        event.currentTarget.classList.add('selected');
-        
-        selectedOrderId = orderId;
-        
-        // Show loading in details panel
-        const detailsPanel = document.getElementById('order-details');
-        detailsPanel.innerHTML = '<div class="loading-details"><div class="spinner"></div><p>Loading order details...</p></div>';
-        
-        // Fetch and render order details
-        const orderDetails = await fetchOrderDetails(orderId);
-        renderOrderDetails(orderDetails);
-    } catch (error) {
-        console.error('Error loading order details:', error);
-        const detailsPanel = document.getElementById('order-details');
-        detailsPanel.innerHTML = `<div class="error-details">Error loading order details: ${error.message}</div>`;
+
+        return orderDiv;
     }
-}
 
-/**
- * Render detailed order information
- */
-function renderOrderDetails(order) {
-    const detailsPanel = document.getElementById('order-details');
-    
-    const date = new Date(order.date_created).toLocaleDateString();
-    const shippingAddress = order.shipping || {};
-    
-    // Generate line items HTML
-    const lineItemsHtml = order.line_items.map(item => `
-        <div class="line-item">
-            <div class="item-info">
-                <span class="item-name">${item.name}</span>
-                <span class="item-sku">${item.sku || 'N/A'}</span>
-            </div>
-            <div class="item-quantity">Qty: ${item.quantity}</div>
-            <div class="item-total">${order.currency} ${item.total}</div>
-        </div>
-    `).join('');
-    
-    // Generate shipping address HTML
-    const shippingHtml = `
-        <div class="shipping-address">
-            <h4>Shipping Address</h4>
-            <div class="address">
-                ${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}<br>
-                ${shippingAddress.address_1 || ''}<br>
-                ${shippingAddress.address_2 ? shippingAddress.address_2 + '<br>' : ''}
-                ${shippingAddress.city || ''}, ${shippingAddress.state || ''} ${shippingAddress.postcode || ''}<br>
-                ${shippingAddress.country || ''}
-            </div>
-        </div>
-    `;
-    
-    // Extract tracking information (adjust based on your tracking setup)
-    const trackingInfo = extractTrackingInfo(order);
-    const trackingHtml = trackingInfo ? `
-        <div class="tracking-info">
-            <h4>Tracking Information</h4>
-            <div class="tracking-details">
-                <strong>Tracking Number:</strong> ${trackingInfo.number}<br>
-                <strong>Carrier:</strong> ${trackingInfo.carrier || 'N/A'}<br>
-                <strong>Status:</strong> ${trackingInfo.status || order.status}
-            </div>
-        </div>
-    ` : '';
-    
-    detailsPanel.innerHTML = `
-        <div class="order-header-details">
-            <h3>Order #${order.id}</h3>
-            <div class="order-meta-details">
-                <span class="order-date">${date}</span>
-                <span class="order-status status-${order.status}">${order.status.toUpperCase()}</span>
-            </div>
-        </div>
-        
-        <div class="order-section">
-            <h4>Items (${order.line_items.length})</h4>
-            <div class="line-items">
-                ${lineItemsHtml}
-            </div>
-            <div class="order-total-section">
-                <strong>Total: ${order.currency} ${order.total}</strong>
-            </div>
-        </div>
-        
-        <div class="order-section">
-            ${shippingHtml}
-        </div>
-        
-        ${trackingHtml ? `<div class="order-section">${trackingHtml}</div>` : ''}
-    `;
-}
-
-/**
- * Extract tracking information from order
- * Adjust this function based on how tracking is stored in your WooCommerce setup
- */
-function extractTrackingInfo(order) {
-    // Example: Check meta_data for tracking information
-    if (order.meta_data && order.meta_data.length > 0) {
-        const trackingMeta = order.meta_data.find(meta => 
-            meta.key.includes('tracking') || meta.key.includes('shipment')
-        );
-        
-        if (trackingMeta) {
-            return {
-                number: trackingMeta.value,
-                carrier: 'Unknown',
-                status: order.status
-            };
+    async showOrderDetails(orderId) {
+        try {
+            this.selectedOrderId = orderId;
+            const order = await this.fetchOrderDetails(orderId);
+            this.renderOrderDetails(order);
+        } catch (error) {
+            console.error('Error loading order details:', error);
+            this.showError('Failed to load order details');
         }
     }
-    
-    // Check shipping lines for tracking info
-    if (order.shipping_lines && order.shipping_lines.length > 0) {
-        const shippingLine = order.shipping_lines[0];
-        if (shippingLine.meta_data) {
-            const trackingMeta = shippingLine.meta_data.find(meta => 
-                meta.key.includes('tracking')
-            );
-            
-            if (trackingMeta) {
-                return {
-                    number: trackingMeta.value,
-                    carrier: shippingLine.method_title,
-                    status: order.status
-                };
-            }
-        }
-    }
-    
-    return null;
-}
 
-/**
- * Cache management functions
- */
-async function cacheOrders(email, orders) {
-    try {
-        const cacheKey = CACHE_PREFIX + email;
-        const cacheData = {
-            orders: orders,
-            timestamp: Date.now()
+    renderOrderDetails(order) {
+        const modal = document.getElementById('order-details');
+        const title = document.getElementById('order-details-title');
+        const content = document.getElementById('order-details-content');
+
+        title.textContent = `Order #${order.number}`;
+
+        const formattedDate = new Date(order.date_created).toLocaleDateString();
+        const statusClass = this.getStatusClass(order.status);
+
+        content.innerHTML = `
+            <div class="order-summary">
+                <div class="summary-row">
+                    <span class="label">Status:</span>
+                    <span class="order-status ${statusClass}">${order.status}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Date:</span>
+                    <span>${formattedDate}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Total:</span>
+                    <span class="total">$${parseFloat(order.total).toFixed(2)}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Payment Method:</span>
+                    <span>${order.payment_method_title || 'N/A'}</span>
+                </div>
+            </div>
+
+            <div class="order-items">
+                <h5>Items</h5>
+                <div class="items-list">
+                    ${order.line_items.map(item => `
+                        <div class="item">
+                            <div class="item-info">
+                                <div class="item-name">${item.name}</div>
+                                <div class="item-meta">
+                                    Qty: ${item.quantity} × $${parseFloat(item.price).toFixed(2)}
+                                </div>
+                            </div>
+                            <div class="item-total">$${parseFloat(item.total).toFixed(2)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            ${order.shipping ? `
+                <div class="shipping-info">
+                    <h5>Shipping</h5>
+                    <div class="address">
+                        ${order.shipping.first_name} ${order.shipping.last_name}<br>
+                        ${order.shipping.address_1}<br>
+                        ${order.shipping.address_2 ? order.shipping.address_2 + '<br>' : ''}
+                        ${order.shipping.city}, ${order.shipping.state} ${order.shipping.postcode}<br>
+                        ${order.shipping.country}
+                    </div>
+                    <div class="shipping-cost">
+                        Shipping: $${parseFloat(order.shipping_total).toFixed(2)}
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="order-totals">
+                <div class="total-row">
+                    <span>Subtotal:</span>
+                    <span>$${parseFloat(order.total - order.total_tax - order.shipping_total).toFixed(2)}</span>
+                </div>
+                ${order.shipping_total > 0 ? `
+                    <div class="total-row">
+                        <span>Shipping:</span>
+                        <span>$${parseFloat(order.shipping_total).toFixed(2)}</span>
+                    </div>
+                ` : ''}
+                ${order.total_tax > 0 ? `
+                    <div class="total-row">
+                        <span>Tax:</span>
+                        <span>$${parseFloat(order.total_tax).toFixed(2)}</span>
+                    </div>
+                ` : ''}
+                <div class="total-row total">
+                    <span>Total:</span>
+                    <span>$${parseFloat(order.total).toFixed(2)}</span>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'block';
+    }
+
+    closeOrderDetails() {
+        document.getElementById('order-details').style.display = 'none';
+        this.selectedOrderId = null;
+    }
+
+    getStatusClass(status) {
+        const statusMap = {
+            'pending': 'status-pending',
+            'processing': 'status-processing',
+            'on-hold': 'status-on-hold',
+            'completed': 'status-completed',
+            'cancelled': 'status-cancelled',
+            'refunded': 'status-refunded',
+            'failed': 'status-failed'
         };
-        await Missive.storeSet(cacheKey, JSON.stringify(cacheData));
-    } catch (error) {
-        console.error('Error caching orders:', error);
+        return statusMap[status] || 'status-default';
+    }
+
+    isConfigured() {
+        const { baseUrl, consumerKey, consumerSecret } = this.wooConfig;
+        return !!(baseUrl && consumerKey && consumerSecret);
+    }
+
+    // UI State Management
+    hideAllStates() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('no-email').style.display = 'none';
+        document.getElementById('config-required').style.display = 'none';
+        document.getElementById('orders-container').style.display = 'none';
+    }
+
+    showLoading() {
+        this.hideAllStates();
+        document.getElementById('loading').style.display = 'block';
+    }
+
+    showError(message) {
+        this.hideAllStates();
+        document.getElementById('error-message').textContent = message;
+        document.getElementById('error').style.display = 'block';
+    }
+
+    showNoEmail() {
+        this.hideAllStates();
+        document.getElementById('no-email').style.display = 'block';
+    }
+
+    showConfigRequired() {
+        this.hideAllStates();
+        document.getElementById('config-required').style.display = 'block';
+    }
+
+    showInfo(message) {
+        this.hideAllStates();
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'info-container';
+        infoDiv.innerHTML = `
+            <div class="info-icon">ℹ️</div>
+            <p>${message}</p>
+        `;
+        document.getElementById('app').appendChild(infoDiv);
     }
 }
 
-async function getCachedOrders(email) {
-    try {
-        const cacheKey = CACHE_PREFIX + email;
-        const cachedData = await Missive.storeGet(cacheKey);
-        
-        if (cachedData) {
-            const parsed = JSON.parse(cachedData);
-            const age = Date.now() - parsed.timestamp;
-            
-            if (age < CACHE_DURATION) {
-                return parsed.orders;
-            }
-        }
-    } catch (error) {
-        console.error('Error getting cached orders:', error);
-    }
-    
-    return null;
-}
-
-/**
- * UI State Management Functions
- */
-function showLoading() {
-    hideAllContainers();
-    document.getElementById('loading').style.display = 'block';
-}
-
-function showError(message) {
-    hideAllContainers();
-    document.getElementById('error-text').textContent = message;
-    document.getElementById('error').style.display = 'block';
-}
-
-function showMultipleConversations() {
-    hideAllContainers();
-    document.getElementById('multiple-conversations').style.display = 'block';
-}
-
-function showNoOrders() {
-    hideAllContainers();
-    document.getElementById('no-orders').style.display = 'block';
-}
-
-function showMainContent(email) {
-    hideAllContainers();
-    document.getElementById('customer-email').textContent = email;
-    document.getElementById('customer-info').textContent = `${currentOrders.length} order(s) found`;
-    document.getElementById('main-content').style.display = 'block';
-}
-
-function showInfo(title, message) {
-    hideAllContainers();
-    const container = document.getElementById('no-orders');
-    container.querySelector('h3').textContent = title;
-    container.querySelector('p').textContent = message;
-    container.style.display = 'block';
-}
-
-function hideAllContainers() {
-    ['loading', 'error', 'multiple-conversations', 'no-orders', 'main-content'].forEach(id => {
-        document.getElementById(id).style.display = 'none';
-    });
-}
-
-function clearContent() {
-    hideAllContainers();
-    const ordersList = document.getElementById('orders-list');
-    const orderDetails = document.getElementById('order-details');
-    
-    if (ordersList) ordersList.innerHTML = '';
-    if (orderDetails) {
-        orderDetails.innerHTML = '<div class="placeholder"><p>Select an order to view details</p></div>';
-    }
-}
-
-/**
- * Retry function for error state
- */
-function retryLoadOrders() {
-    if (currentEmail) {
-        loadOrdersForEmail(currentEmail);
-    } else {
-        handleConversationChange();
-    }
-}
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Wait for Missive to be ready
-    if (typeof Missive !== 'undefined') {
-        initMissive();
-    } else {
-        // Fallback: wait for Missive to load
-        const checkMissive = setInterval(() => {
-            if (typeof Missive !== 'undefined') {
-                clearInterval(checkMissive);
-                initMissive();
-            }
-        }, 100);
-    }
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    new WooCommerceOrdersApp();
 });
 
-// Export functions for global access (for onclick handlers)
-window.retryLoadOrders = retryLoadOrders;
+// Handle configuration via postMessage (for external configuration)
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'woocommerce-config') {
+        const { baseUrl, consumerKey, consumerSecret } = event.data;
+        localStorage.setItem('woo_base_url', baseUrl);
+        localStorage.setItem('woo_consumer_key', consumerKey);
+        localStorage.setItem('woo_consumer_secret', consumerSecret);
+        
+        // Reload the app with new configuration
+        location.reload();
+    }
+});
