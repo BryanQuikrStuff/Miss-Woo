@@ -34,7 +34,7 @@ The plugin supports multiple configuration methods:
 #### Method 1: Environment Variables (Recommended for hosting)
 Set these environment variables in your hosting environment:
 ```bash
-WOOCOMMERCE_URL=https://your-store.com
+WOOCOMMERCE_URL=https://quikrstuff.com
 WOOCOMMERCE_KEY=ck_your_consumer_key_here
 WOOCOMMERCE_SECRET=cs_your_consumer_secret_here
 ```
@@ -47,7 +47,7 @@ The plugin will check browser localStorage for:
 
 You can set these manually in browser console:
 ```javascript
-localStorage.setItem('woo_base_url', 'https://your-store.com');
+localStorage.setItem('woo_base_url', 'https://quikrstuff.com');
 localStorage.setItem('woo_consumer_key', 'ck_your_consumer_key_here');
 localStorage.setItem('woo_consumer_secret', 'cs_your_consumer_secret_here');
 ```
@@ -57,7 +57,7 @@ Send configuration via postMessage (useful for parent iframe management):
 ```javascript
 window.postMessage({
     type: 'woocommerce-config',
-    baseUrl: 'https://your-store.com',
+    baseUrl: 'https://quikrstuff.com',
     consumerKey: 'ck_your_consumer_key_here',
     consumerSecret: 'cs_your_consumer_secret_here'
 }, '*');
