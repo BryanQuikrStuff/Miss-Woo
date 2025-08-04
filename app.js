@@ -7,9 +7,9 @@ class WooCommerceOrdersApp {
         
         // WooCommerce configuration (these should be set via environment or config)
         this.wooConfig = {
-            baseUrl: process.env.WOOCOMMERCE_URL || localStorage.getItem('woo_base_url') || '',
-            consumerKey: process.env.WOOCOMMERCE_KEY || localStorage.getItem('woo_consumer_key') || '',
-            consumerSecret: process.env.WOOCOMMERCE_SECRET || localStorage.getItem('woo_consumer_secret') || ''
+            baseUrl: process.env.WOOCOMMERCE_URL || localStorage.getItem('woo_base_url') || 'https://quikrstuff.com',
+            consumerKey: process.env.WOOCOMMERCE_KEY || localStorage.getItem('woo_consumer_key') || 'ck_285852a66ac9cf16db7723e1d6deda54937a8a03',
+            consumerSecret: process.env.WOOCOMMERCE_SECRET || localStorage.getItem('woo_consumer_secret') || 'cs_3211f905108b717426e6b6a63613147b66993333'
         };
 
         this.init();
