@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Miss-Woo - WooCommerce Integration</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://missive.com/iframe.js"></script>
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <h1>Miss-Woo</h1>
+            <p class="subtitle">WooCommerce Integration</p>
+        </header>
+        
+        <main class="app-content">
+            <div class="search-section">
+                <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input">
+                <button id="searchBtn" class="search-btn">Search</button>
+            </div>
+            
+            <div class="results-section">
+                <div id="loading" class="loading hidden">Loading...</div>
+                <div id="error" class="error hidden"></div>
+                <div id="results" class="results-container"></div>
+            </div>
+            
+            <div class="quick-actions">
+                <button id="recentOrders" class="action-btn">Recent Orders</button>
+                <button id="trackingOrders" class="action-btn">Orders with Tracking</button>
+                <button id="testConnection" class="action-btn">Test Connection</button>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html> 
