@@ -2,10 +2,10 @@
   "name": "miss-woo",
   "version": "1.0.0",
   "description": "WooCommerce integration project for managing e-commerce operations",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "test": "jest"
   },
   "keywords": [
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.0"
   }
-} 
+}
