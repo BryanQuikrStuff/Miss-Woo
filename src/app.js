@@ -12,11 +12,11 @@ class MissWooApp {
     this.currentPage = 1;
     this.ordersPerPage = 5;
     
-    // Initialize
-    this.init();
+    // Initialize after constructor
+    this.initialize();
   }
 
-  async init() {
+  async initialize() {
     console.log("Initializing application...");
     try {
       await this.bindEvents();
@@ -44,13 +44,6 @@ class MissWooApp {
         if (e.key === "Enter") this.handleSearch();
       });
 
-      // Load more functionality
-      document.addEventListener('click', (e) => {
-        if (e.target.id === 'loadMoreBtn') {
-          this.loadMoreOrders();
-        }
-      });
-
       console.log("Events bound successfully");
     } catch (error) {
       console.error("Error binding events:", error);
@@ -63,7 +56,7 @@ class MissWooApp {
     const searchTerm = searchInput?.value.trim();
 
     if (!searchTerm) {
-      this.showError("Please enter an order ID or customer email");
+      this.showError("Please enter a customer email or order ID");
       return;
     }
 
@@ -79,12 +72,35 @@ class MissWooApp {
       if (/^\d+$/.test(searchTerm)) {
         await this.getOrderById(searchTerm);
       } else {
-        // Assume it's an email, search orders
         await this.searchOrdersByEmail(searchTerm);
       }
     } catch (error) {
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
+    }
+  }
+
+  async getOrderById(orderId) {
+    console.log("Fetching order by ID:", orderId);
+    try {
+      const url = this.getAuthenticatedUrl(`/orders/${orderId}`);
+      const order = await this.makeRequest(url);
+      
+      if (!order || !order.id) {
+        this.showError(`Order ${orderId} not found`);
+        return;
+      }
+
+      // Get order notes
+      const notesUrl = this.getAuthenticatedUrl(`/orders/${orderId}/notes`);
+      const notes = await this.makeRequest(notesUrl);
+      order.notes = notes;
+
+      this.allOrders = [order];
+      await this.displayOrdersList();
+    } catch (error) {
+      console.error("Get order error:", error);
+      this.showError(`Failed to fetch order ${orderId}: ${error.message}`);
     }
   }
 
@@ -130,19 +146,26 @@ class MissWooApp {
           console.log(`Checking order ${order.id}: ${orderEmail} against ${searchEmail}: ${matches}`);
           return matches;
         })
-        .sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+        .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
+        .slice(0, 5); // Only keep the latest 5 orders
 
-      console.log("Total matching orders:", this.allOrders.length);
-      this.displayOrdersList();
+      // Get notes for each order
+      for (const order of this.allOrders) {
+        try {
+          const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
+          const notes = await this.makeRequest(notesUrl);
+          order.notes = notes;
+        } catch (error) {
+          console.error(`Failed to fetch notes for order ${order.id}:`, error);
+        }
+      }
+
+      console.log("Total matching orders (latest 5):", this.allOrders.length);
+      await this.displayOrdersList();
     } catch (error) {
       console.error("Search by email error:", error);
       this.showError(`Failed to search orders for ${email}: ${error.message}`);
     }
-  }
-
-  loadMoreOrders() {
-    this.currentPage++;
-    this.displayOrdersList();
   }
 
   // Helper method to create authenticated request URL
@@ -179,17 +202,12 @@ class MissWooApp {
         mode: "cors",
       });
 
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
-
       if (!response.ok) {
-        throw new Error(
-          `HTTP error! status: ${response.status}, response: ${responseText}`
-        );
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = JSON.parse(responseText);
-      console.log("Parsed API Response:", data);
+      const data = await response.json();
+      console.log("API Response:", data);
       return data;
     } catch (error) {
       console.error("API Request failed:", error);
@@ -197,157 +215,242 @@ class MissWooApp {
     }
   }
 
-  async getOrderById(orderId) {
-    console.log("Fetching order:", orderId);
-    try {
-      const url = this.getAuthenticatedUrl(`/orders/${orderId}`);
-      console.log("Request URL:", url);
-
-      const order = await this.makeRequest(url);
-      console.log("Found order:", order);
-
-      this.allOrders = [order];
-      this.displayOrdersList();
-    } catch (error) {
-      console.error("Get order error:", error);
-      this.showError(`Failed to fetch order ${orderId}: ${error.message}`);
+  async displayOrdersList() {
+    const resultsDiv = document.getElementById("results");
+    if (!resultsDiv) {
+      console.error("Results container not found");
+      return;
     }
-  }
-
-  async testConnection() {
-    this.showLoading();
-    console.log("Testing API connection...");
-    try {
-      const url = this.getAuthenticatedUrl("/products", { per_page: 1 });
-      const response = await this.makeRequest(url);
-      console.log("Connection test successful:", response);
-      this.showSuccess("✅ WooCommerce API connection successful!");
-      return true;
-    } catch (error) {
-      console.error("Connection test failed:", error);
-      this.showError(`❌ API connection failed: ${error.message}`);
-      return false;
-    }
-  }
-
-  displayOrdersList() {
-    const resultsContainer = document.getElementById("results");
 
     if (!this.allOrders || this.allOrders.length === 0) {
-      resultsContainer.innerHTML = '<div class="no-results">No orders found</div>';
+      resultsDiv.innerHTML = '<div class="no-results">No orders found</div>';
       this.hideLoading();
       return;
     }
 
-    // Calculate slice for current page
-    const startIndex = 0;
-    const endIndex = this.currentPage * this.ordersPerPage;
-    const ordersToShow = this.allOrders.slice(startIndex, endIndex);
-    const hasMoreOrders = this.allOrders.length > endIndex;
-
-    const ordersHtml = ordersToShow
-      .map((order) => {
-        const date = new Date(order.date_created).toLocaleDateString();
-        const name =
-          `${order.billing?.first_name || ""} ${
-            order.billing?.last_name || ""
-          }`.trim() || "No name";
-        const orderUrl = `${this.siteUrl}/wp-admin/post.php?post=${order.id}&action=edit`;
-
-        return `
-          <div class="order-item">
-            <a href="${orderUrl}" target="_blank" class="order-summary">
-              <span class="order-date">${date}</span>
-              <span class="order-id">#${order.id}</span>
-              <span class="customer-name">${name}</span>
-            </a>
-          </div>
-        `;
-      })
-      .join("");
-
-    resultsContainer.innerHTML = `
-      <style>
-        .orders-list {
-          padding: 10px;
-        }
-        .order-item {
-          padding: 8px;
-          margin: 5px 0;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          transition: background-color 0.2s;
-        }
-        .order-item:hover {
-          background-color: #f5f5f5;
-        }
-        .order-summary {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          text-decoration: none;
-          color: inherit;
-        }
-        .order-date {
-          color: #666;
-          font-size: 0.9em;
-          min-width: 80px;
-        }
-        .order-id {
-          font-weight: bold;
-          color: #333;
-        }
-        .customer-name {
-          flex-grow: 1;
-          text-align: right;
-        }
-        .list-header {
-          display: flex;
-          justify-content: space-between;
-          padding: 10px;
-          border-bottom: 2px solid #eee;
-          margin-bottom: 10px;
-          font-weight: bold;
-          gap: 10px;
-        }
-        .total-count {
-          text-align: center;
-          padding: 10px;
-          font-weight: bold;
-          color: #666;
-          border-bottom: 1px solid #eee;
-          margin-bottom: 10px;
-        }
-        .load-more {
-          display: block;
-          width: 100%;
-          padding: 10px;
-          margin-top: 10px;
-          background-color: #f0f0f0;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          cursor: pointer;
-          text-align: center;
-          color: #333;
-        }
-        .load-more:hover {
-          background-color: #e0e0e0;
-        }
-      </style>
-      <div class="orders-list">
-        <div class="total-count">Found ${this.allOrders.length} orders</div>
-        <div class="list-header">
-          <span>Date</span>
-          <span>Order #</span>
-          <span>Customer</span>
-        </div>
-        ${ordersHtml}
-        ${hasMoreOrders ? '<button id="loadMoreBtn" class="load-more">Load More Orders</button>' : ''}
-      </div>
+    const table = document.createElement('table');
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Order #</th>
+          <th>Name</th>
+          <th>Tracking</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     `;
 
+    const tbody = table.querySelector('tbody');
+
+    for (const order of this.allOrders) {
+      const tracking = this.getTrackingInfo(order);
+      const row = document.createElement('tr');
+      const date = new Date(order.date_created).toLocaleDateString();
+      const orderLink = `${this.siteUrl}/wp-admin/post.php?post=${order.id}&action=edit`;
+      
+      row.innerHTML = `
+        <td>${date}</td>
+        <td><a href="${orderLink}" target="_blank">#${order.number}</a></td>
+        <td>${order.billing?.first_name || ''} ${order.billing?.last_name || ''}</td>
+        <td>${tracking ? `<a href="${tracking.url}" target="_blank">${tracking.number}</a>` : 'No tracking'}</td>
+      `;
+      
+      tbody.appendChild(row);
+    }
+
+    resultsDiv.innerHTML = '';
+    resultsDiv.appendChild(table);
     this.hideLoading();
+  }
+
+  getTrackingInfo(order) {
+    // First check order notes for tracking info
+    if (order.notes) {
+      for (const note of order.notes) {
+        if (!note.note) continue;
+        
+        const noteText = note.note;
+        console.log('Checking note:', noteText);
+
+        // Look for tracking number patterns
+        const patterns = [
+          // Look for tracking numbers with explicit labels
+          /tracking number[:\s]+(\d+)/i,
+          /tracking[:\s]+(\d+)/i,
+          /shipped .* tracking[:\s]+(\d+)/i,
+          /tracking id[:\s]+(\d+)/i,
+          /tracking #[:\s]*(\d+)/i,
+          /tracking code[:\s]*(\d+)/i,
+          /tracking info[:\s]*(\d+)/i,
+          
+          // Look for carrier-specific patterns
+          /fedex[:\s]*#?\s*(\d+)/i,
+          /ups[:\s]*#?\s*(\d+)/i,
+          /usps[:\s]*#?\s*(\d+)/i,
+          /dhl[:\s]*#?\s*(\d+)/i,
+          
+          // Look for numbers that match carrier formats
+          /\b(1Z[A-Z0-9]{16})\b/i,  // UPS
+          /\b(\d{12,14})\b/,        // FedEx
+          /\b(94\d{20})\b/,         // USPS
+          /\b(82\d{8})\b/,          // USPS
+          /\b(\d{30})\b/,           // USPS
+          /\b(\d{10})\b/,           // DHL
+          
+          // General patterns for finding tracking numbers
+          /(\d{9,})/,               // Any number 9+ digits
+          /[^a-zA-Z0-9](\d{9,})[^a-zA-Z0-9]/,  // 9+ digits surrounded by non-alphanumeric
+          /(\d{12,})(?:\s|$)/,      // 12+ digits at end of line
+          /[^a-zA-Z0-9](\d{12,})[^a-zA-Z0-9]/  // 12+ digits surrounded by non-alphanumeric
+        ];
+
+        for (const pattern of patterns) {
+          const match = noteText.match(pattern);
+          if (match) {
+            const trackingNumber = match[1];
+            console.log('Found tracking number:', trackingNumber);
+            
+            // Determine carrier from note text and tracking number format
+            const lowerNote = noteText.toLowerCase();
+            let carrier = '';
+            
+            // Try to determine carrier from note text first
+            if (lowerNote.includes('fedex')) carrier = 'fedex';
+            else if (lowerNote.includes('ups')) carrier = 'ups';
+            else if (lowerNote.includes('usps')) carrier = 'usps';
+            else if (lowerNote.includes('dhl')) carrier = 'dhl';
+            
+            // If carrier not found in note, try to determine from tracking number format
+            if (!carrier) {
+              if (/^1Z/.test(trackingNumber)) carrier = 'ups';
+              else if (/^(94|92|93|95|82)/.test(trackingNumber)) carrier = 'usps';
+              else if (/^\d{12}$/.test(trackingNumber) || /^39\d{10}$/.test(trackingNumber)) carrier = 'fedex';
+              else if (/^\d{10}$/.test(trackingNumber)) carrier = 'dhl';
+            }
+            
+            return {
+              number: trackingNumber,
+              url: this.getCarrierTrackingUrl(trackingNumber, carrier),
+              provider: carrier || 'unknown'
+            };
+          }
+        }
+
+        // Special case: Look for URLs that might contain tracking numbers
+        const urlMatch = noteText.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+          const url = urlMatch[0];
+          console.log('Found URL:', url);
+          
+          // Extract tracking number from URL if possible
+          const urlTrackingMatch = url.match(/[?&](?:tracking|tracknr|tracknum|tLabels)=([^&]+)/i);
+          if (urlTrackingMatch) {
+            const trackingNumber = urlTrackingMatch[1];
+            console.log('Found tracking number in URL:', trackingNumber);
+            
+            // Try to determine carrier from URL
+            let carrier = '';
+            if (url.includes('fedex.com')) carrier = 'fedex';
+            else if (url.includes('ups.com')) carrier = 'ups';
+            else if (url.includes('usps.com')) carrier = 'usps';
+            else if (url.includes('dhl.com')) carrier = 'dhl';
+            
+            return {
+              number: trackingNumber,
+              url: url,
+              provider: carrier || 'unknown'
+            };
+          }
+        }
+      }
+    }
+
+    // Fallback to meta_data check
+    const trackingMeta = order.meta_data?.find(meta => 
+      meta.key === '_wc_shipment_tracking_items' || 
+      meta.key === '_aftership_tracking_number' ||
+      meta.key === 'tracking_number' ||
+      meta.key === '_tracking_number' ||
+      meta.key === '_tracking_provider' ||
+      meta.key === '_tracking_link'
+    );
+
+    if (trackingMeta) {
+      try {
+        let trackingNumber = '';
+        let trackingUrl = '';
+        let provider = '';
+
+        if (trackingMeta.key === '_wc_shipment_tracking_items') {
+          const trackingItems = typeof trackingMeta.value === 'string' 
+            ? JSON.parse(trackingMeta.value) 
+            : trackingMeta.value;
+
+          if (Array.isArray(trackingItems) && trackingItems.length > 0) {
+            trackingNumber = trackingItems[0].tracking_number;
+            provider = trackingItems[0].tracking_provider;
+            trackingUrl = trackingItems[0].tracking_url || this.getCarrierTrackingUrl(trackingNumber, provider);
+          }
+        } else {
+          trackingNumber = trackingMeta.value;
+          trackingUrl = this.getCarrierTrackingUrl(trackingNumber);
+        }
+
+        return trackingNumber ? { number: trackingNumber, url: trackingUrl, provider: provider || 'unknown' } : null;
+      } catch (error) {
+        console.error('Error parsing tracking info:', error);
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  getCarrierTrackingUrl(trackingNumber, provider = '') {
+    provider = provider.toLowerCase();
+    
+    // Common carriers tracking URLs
+    const carriers = {
+      'usps': `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`,
+      'ups': `https://www.ups.com/track?tracknum=${trackingNumber}`,
+      'fedex': `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`,
+      'dhl': `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`,
+    };
+
+    // Try to guess carrier from tracking number format if not provided
+    if (!provider || provider === 'unknown') {
+      if (/^(94|92|93|95|82)/.test(trackingNumber)) {
+        return carriers.usps;
+      } else if (/^1Z/.test(trackingNumber)) {
+        return carriers.ups;
+      } else if (/^\d{12}$/.test(trackingNumber) || /^39\d{10}$/.test(trackingNumber)) {
+        return carriers.fedex;
+      } else if (/^\d{10}$/.test(trackingNumber)) {
+        return carriers.dhl;
+      }
+    }
+
+    // If we have a known provider, use its URL
+    if (carriers[provider]) {
+      return carriers[provider];
+    }
+
+    // Default to Google search if we can't determine the carrier
+    return `https://www.google.com/search?q=${trackingNumber}+tracking`;
+  }
+
+  async testConnection() {
+    console.log("Testing API connection...");
+    try {
+      const url = this.getAuthenticatedUrl("/products", { per_page: 1 });
+      await this.makeRequest(url);
+      console.log("Connection test successful");
+      return true;
+    } catch (error) {
+      console.error("Connection test failed:", error);
+      throw error;
+    }
   }
 
   showLoading() {
@@ -367,14 +470,6 @@ class MissWooApp {
     if (errorElement) {
       errorElement.textContent = message;
       errorElement.classList.remove("hidden");
-    }
-    this.hideLoading();
-  }
-
-  showSuccess(message) {
-    const resultsContainer = document.getElementById("results");
-    if (resultsContainer) {
-      resultsContainer.innerHTML = `<div class="success-message">${message}</div>`;
     }
     this.hideLoading();
   }

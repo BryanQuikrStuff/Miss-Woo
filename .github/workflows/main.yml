@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI Pipeline
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
         WOOCOMMERCE_SITE_URL: ${{ secrets.WOOCOMMERCE_SITE_URL }}
         WOOCOMMERCE_API_VERSION: 'wc/v3'
 
-  deploy:
+  build:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
@@ -47,14 +47,21 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Deploy to Netlify
-      uses: nwtgck/actions-netlify@v2.0
+    - name: Create production build
+      run: |
+        # Create dist directory
+        mkdir -p dist
+        
+        # Copy static files
+        cp index.html dist/
+        cp -r src dist/
+        
+        # Create version file
+        echo "{\"version\": \"$(date +%Y%m%d.%H%M%S)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
       with:
-        publish-dir: '.'
-        production-branch: main
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        deploy-message: "Deploy from GitHub Actions"
-      env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-      timeout-minutes: 10
+        name: static-site
+        path: dist/
+        retention-days: 7
