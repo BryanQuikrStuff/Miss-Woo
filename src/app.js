@@ -459,18 +459,21 @@ class MissWooApp {
       // Log the complete order structure to understand the data
       console.log(`Full Katana order structure for debugging:`, JSON.stringify(katanaOrder, null, 2));
       
-      // Check if the order has line items with serial numbers
-      if (katanaOrder.line_items && Array.isArray(katanaOrder.line_items)) {
-        console.log(`Found line_items array with ${katanaOrder.line_items.length} items`);
-        for (const lineItem of katanaOrder.line_items) {
-          console.log(`Examining line item:`, lineItem);
-          if (lineItem.serial_numbers && Array.isArray(lineItem.serial_numbers) && lineItem.serial_numbers.length > 0) {
-            console.log(`Found serial numbers in line item:`, lineItem.serial_numbers);
-            return lineItem.serial_numbers[0]; // Return first serial number
+      // Check if the order has sales_order_rows with serial numbers
+      if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
+        console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
+        for (const row of katanaOrder.sales_order_rows) {
+          console.log(`Examining sales order row:`, row);
+          if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
+            console.log(`✅ Found serial numbers in sales order row:`, row.serial_numbers);
+            const numericSerial = row.serial_numbers[0];
+            const formattedSerial = this.convertSerialNumber(numericSerial);
+            console.log(`Converted serial number ${numericSerial} to ${formattedSerial}`);
+            return formattedSerial;
           }
         }
       } else {
-        console.log(`No line_items found in order`);
+        console.log(`No sales_order_rows found in order`);
       }
       
       // Check if the order has a serial_numbers field directly
@@ -503,6 +506,13 @@ class MissWooApp {
       console.error('Error extracting serial number from order:', error);
       return null;
     }
+  }
+
+  convertSerialNumber(numericSerial) {
+    // For now, return the numeric serial as-is since we don't know the conversion formula
+    // You may need to provide the conversion logic from numeric to formatted serial
+    console.log(`Converting numeric serial ${numericSerial} to formatted serial`);
+    return numericSerial.toString();
   }
 
   async getSerialNumbersFromLineItems(katanaOrderId) {
