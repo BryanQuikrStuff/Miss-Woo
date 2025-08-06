@@ -24,7 +24,7 @@ class MissWooApp {
 
   async initialize() {
     console.log("Initializing application...");
-    console.log("🚀 VERSION 5.0 - ENHANCED SERIAL NUMBER SEARCH 🚀");
+    console.log("🚀 VERSION 6.0 - FULL SERIAL NUMBER DISPLAY 🚀");
     try {
       await this.bindEvents();
       await this.initializeMissive();
@@ -352,7 +352,7 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
-      console.log(`🚀 VERSION 5.0 - ENHANCED SERIAL NUMBER SEARCH 🚀`);
+      console.log(`🚀 VERSION 6.0 - FULL SERIAL NUMBER DISPLAY 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
       // Get the Katana sales order that matches this WooCommerce order
@@ -364,16 +364,26 @@ class MissWooApp {
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
-      // Try to get serial numbers from the sales order details itself
-      const serialNumber = await this.getSerialNumberFromOrder(katanaOrder);
-      if (serialNumber) {
-        console.log(`✅ Found serial number in order details for #${order.number}: ${serialNumber}`);
-        return serialNumber;
-      }
+      // Get the numeric serial number from the order details
+      const numericSerialNumber = await this.getSerialNumberFromOrder(katanaOrder);
+      
+      if (numericSerialNumber) {
+        console.log(`✅ Found numeric serial number in order details for #${order.number}: ${numericSerialNumber}`);
+        
+        // Fetch the formatted serial number using the numeric ID
+        const formattedSerialNumber = await this.getFormattedSerialNumber(numericSerialNumber);
 
-      // If not found in order details, return "N/A" instead of using the problematic serial numbers endpoint
-      console.log(`❌ No serial number found for order #${order.number}, returning "N/A"`);
-      return "N/A";
+        if (formattedSerialNumber) {
+          console.log(`✅ Found formatted serial: ${formattedSerialNumber}`);
+          return formattedSerialNumber; // Return the full formatted serial number
+        } else {
+          console.log(`❌ No formatted serial found for numeric ID: ${numericSerialNumber}`);
+          return "N/A";
+        }
+      } else {
+        console.log(`❌ No serial number found for order #${order.number}, returning "N/A"`);
+        return "N/A";
+      }
     } catch (error) {
       console.error('Error getting serial number:', error);
       return "N/A";
