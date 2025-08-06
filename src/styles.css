@@ -83,6 +83,26 @@ body {
     background: #5a6fd8;
 }
 
+/* Customer Info Section */
+.customer-info {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #e1e5e9;
+    font-size: 0.9rem;
+}
+
+.customer-field {
+    color: #333;
+    font-weight: 500;
+}
+
+.customer-field.mismatch {
+    color: #dc3545;
+    font-weight: 600;
+}
+
 /* Results Table - Optimized for Missive */
 table {
     width: 100%;
@@ -109,11 +129,10 @@ td {
 }
 
 /* Column Widths - Optimized for Missive */
-th:nth-child(1), td:nth-child(1) { width: 12%; } /* Date - Compact */
-th:nth-child(2), td:nth-child(2) { width: 12%; } /* Order # - Compact */
-th:nth-child(3), td:nth-child(3) { width: 26%; } /* Name - More space */
-th:nth-child(4), td:nth-child(4) { width: 25%; } /* Serial # */
-th:nth-child(5), td:nth-child(5) { width: 25%; } /* Tracking */
+th:nth-child(1), td:nth-child(1) { width: 20%; } /* Date */
+th:nth-child(2), td:nth-child(2) { width: 20%; } /* Order # */
+th:nth-child(3), td:nth-child(3) { width: 30%; } /* Serial # */
+th:nth-child(4), td:nth-child(4) { width: 30%; } /* Tracking */
 
 /* Table Row Interactions */
 tr:hover {
@@ -186,8 +205,7 @@ td a:hover {
     th:nth-child(1), td:nth-child(1),
     th:nth-child(2), td:nth-child(2),
     th:nth-child(3), td:nth-child(3),
-    th:nth-child(4), td:nth-child(4),
-    th:nth-child(5), td:nth-child(5) {
+    th:nth-child(4), td:nth-child(4) {
         width: auto;
         min-width: 100px; /* Ensure minimum width for readability */
     }

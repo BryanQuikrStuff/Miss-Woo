@@ -238,13 +238,16 @@ class MissWooApp {
       return;
     }
 
+    // Create customer info section
+    const customerInfo = this.createCustomerInfoSection();
+    
+    // Create table without Name column
     const table = document.createElement('table');
     table.innerHTML = `
       <thead>
         <tr>
           <th>Date</th>
           <th>Order #</th>
-          <th>Name</th>
           <th>Serial #</th>
           <th>Tracking</th>
         </tr>
@@ -264,7 +267,6 @@ class MissWooApp {
       row.innerHTML = `
         <td>${date}</td>
         <td><a href="${orderLink}" target="_blank">#${order.number}</a></td>
-        <td>${order.billing?.first_name || ''} ${order.billing?.last_name || ''}</td>
         <td class="serial-number-cell">Loading...</td>
         <td>${tracking ? `<a href="${tracking.url}" target="_blank">${tracking.number}</a>` : 'No tracking'}</td>
       `;
@@ -282,8 +284,69 @@ class MissWooApp {
     }
 
     resultsDiv.innerHTML = '';
+    resultsDiv.appendChild(customerInfo);
     resultsDiv.appendChild(table);
     this.hideLoading();
+  }
+
+  createCustomerInfoSection() {
+    if (this.allOrders.length === 0) return document.createElement('div');
+    
+    const customerInfoDiv = document.createElement('div');
+    customerInfoDiv.className = 'customer-info';
+    
+    // Get the first order as reference
+    const firstOrder = this.allOrders[0];
+    const referenceName = `${firstOrder.billing?.first_name || ''} ${firstOrder.billing?.last_name || ''}`.trim();
+    const referenceAddress = this.formatAddress(firstOrder.billing);
+    const referencePhone = firstOrder.billing?.phone || '';
+    
+    // Check if all orders have matching customer info
+    const allMatch = this.allOrders.every(order => {
+      const orderName = `${order.billing?.first_name || ''} ${order.billing?.last_name || ''}`.trim();
+      const orderAddress = this.formatAddress(order.billing);
+      const orderPhone = order.billing?.phone || '';
+      
+      return orderName === referenceName && 
+             orderAddress === referenceAddress && 
+             orderPhone === referencePhone;
+    });
+    
+    // Create customer info display
+    const nameSpan = document.createElement('span');
+    nameSpan.className = allMatch ? 'customer-field' : 'customer-field mismatch';
+    nameSpan.textContent = `Name: ${referenceName}`;
+    
+    const addressSpan = document.createElement('span');
+    addressSpan.className = allMatch ? 'customer-field' : 'customer-field mismatch';
+    addressSpan.textContent = `Address: ${referenceAddress}`;
+    
+    const phoneSpan = document.createElement('span');
+    phoneSpan.className = allMatch ? 'customer-field' : 'customer-field mismatch';
+    phoneSpan.textContent = `Phone: ${referencePhone}`;
+    
+    customerInfoDiv.appendChild(nameSpan);
+    customerInfoDiv.appendChild(document.createElement('br'));
+    customerInfoDiv.appendChild(addressSpan);
+    customerInfoDiv.appendChild(document.createElement('br'));
+    customerInfoDiv.appendChild(phoneSpan);
+    
+    return customerInfoDiv;
+  }
+
+  formatAddress(billing) {
+    if (!billing) return '';
+    
+    const parts = [
+      billing.address_1,
+      billing.address_2,
+      billing.city,
+      billing.state,
+      billing.postcode,
+      billing.country
+    ].filter(part => part && part.trim());
+    
+    return parts.join(', ');
   }
 
   async getSerialNumber(order) {
