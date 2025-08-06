@@ -576,7 +576,25 @@ class MissWooApp {
   extractTrackingFromText(text) {
     if (!text) return null;
 
-    // Common tracking number patterns
+    // First, look for carrier names and extract tracking numbers that follow
+    const carrierPatterns = [
+      { name: 'USPS', regex: /USPS[^0-9]*(\d{10,22})/i },
+      { name: 'FedEx', regex: /FedEx[^0-9]*(\d{10,15})/i },
+      { name: 'UPS', regex: /UPS[^0-9]*(\d{10,18})/i },
+      { name: 'DHL', regex: /DHL[^0-9]*(\d{10,12})/i }
+    ];
+
+    for (const pattern of carrierPatterns) {
+      const match = text.match(pattern.regex);
+      if (match) {
+        const trackingNumber = match[1];
+        console.log(`Found ${pattern.name} tracking number: ${trackingNumber}`);
+        const url = this.getCarrierTrackingUrl(trackingNumber, pattern.name);
+        return { number: trackingNumber, url, provider: pattern.name };
+      }
+    }
+
+    // Fallback: Common tracking number patterns (if no carrier name found)
     const patterns = [
       // USPS - more flexible pattern to catch all USPS tracking numbers
       { regex: /\b9[234]\d{16,22}\b/, provider: 'USPS' },
