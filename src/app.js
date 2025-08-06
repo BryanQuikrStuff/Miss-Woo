@@ -7,6 +7,10 @@ class MissWooApp {
     this.consumerSecret = "cs_3211f905108b717426e6b6a63613147b66993333";
     this.siteUrl = "https://quikrstuff.com";
     
+    // Katana MRP API endpoint
+    this.katanaApiBaseUrl = "https://api.katanamrp.com/v1";
+    this.katanaApiKey = "8292a174-0f66-4ac1-a0e9-cb3c9db7ecc4";
+    
     // Store all matched orders
     this.allOrders = [];
     this.currentPage = 1;
@@ -235,6 +239,7 @@ class MissWooApp {
           <th>Date</th>
           <th>Order #</th>
           <th>Name</th>
+          <th>Serial #</th>
           <th>Tracking</th>
         </tr>
       </thead>
@@ -249,12 +254,23 @@ class MissWooApp {
       const date = new Date(order.date_created).toLocaleDateString();
       const orderLink = `${this.siteUrl}/wp-admin/post.php?post=${order.id}&action=edit`;
       
+      // Create a cell for the serial number that we'll update asynchronously
       row.innerHTML = `
         <td>${date}</td>
         <td><a href="${orderLink}" target="_blank">#${order.number}</a></td>
         <td>${order.billing?.first_name || ''} ${order.billing?.last_name || ''}</td>
+        <td class="serial-number-cell">Loading...</td>
         <td>${tracking ? `<a href="${tracking.url}" target="_blank">${tracking.number}</a>` : 'No tracking'}</td>
       `;
+      
+      // Update the serial number asynchronously
+      const serialNumberCell = row.querySelector('.serial-number-cell');
+      this.getSerialNumber(order).then(serialNumber => {
+        serialNumberCell.textContent = serialNumber || 'No serial #';
+      }).catch(error => {
+        console.error('Error fetching serial number:', error);
+        serialNumberCell.textContent = 'Error';
+      });
       
       tbody.appendChild(row);
     }
@@ -262,6 +278,77 @@ class MissWooApp {
     resultsDiv.innerHTML = '';
     resultsDiv.appendChild(table);
     this.hideLoading();
+  }
+
+  async getSerialNumber(order) {
+    try {
+      // Get the Katana sales order that matches this WooCommerce order
+      const katanaOrder = await this.getKatanaOrder(order.number);
+      if (!katanaOrder) {
+        console.log(`No Katana order found for WooCommerce order #${order.number}`);
+        return null;
+      }
+
+      // Get serial numbers assigned to this order
+      const serialNumbers = await this.getKatanaSerialNumbers(katanaOrder.id);
+      if (!serialNumbers || serialNumbers.length === 0) {
+        console.log(`No serial numbers found for Katana order #${katanaOrder.id}`);
+        return null;
+      }
+
+      // Return the first serial number (or we could return all of them if needed)
+      return serialNumbers[0];
+    } catch (error) {
+      console.error('Error getting serial number:', error);
+      return null;
+    }
+  }
+
+  async getKatanaOrder(wooOrderNumber) {
+    try {
+      const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
+      console.log('Fetching Katana order:', url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+      console.log('Katana API response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`Katana API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Katana order data:', data);
+      return data.data?.[0] || null;
+    } catch (error) {
+      console.error('Error fetching Katana order:', error);
+      return null;
+    }
+  }
+
+  async getKatanaSerialNumbers(katanaOrderId) {
+    try {
+      const url = `${this.katanaApiBaseUrl}/serial_numbers?sales_order_id=${katanaOrderId}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Katana API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.data?.map(item => item.serial_number) || [];
+    } catch (error) {
+      console.error('Error fetching Katana serial numbers:', error);
+      return [];
+    }
   }
 
   getTrackingInfo(order) {
