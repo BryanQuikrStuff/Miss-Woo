@@ -74,6 +74,11 @@ class MissWooApp {
       // Clear loading state even on error
       this.hideLoading();
     }
+    
+    // Fallback: Ensure loading is cleared after a timeout
+    setTimeout(() => {
+      this.hideLoading();
+    }, 3000);
   }
 
   async bindEvents() {
@@ -708,6 +713,9 @@ class MissWooApp {
       this.recheckMissiveEnvironment();
     } else {
       console.log("Missive not detected, running in standalone mode");
+      // Clear loading state immediately for standalone mode
+      this.hideLoading();
+      
       // Try to detect Missive after a delay in case it loads later
       setTimeout(() => {
         if (window.Missive && !this.isMissiveEnvironment) {
@@ -732,6 +740,9 @@ class MissWooApp {
         this.autoSearchEnabled = this.isMissiveEnvironment;
         this.updateUIForEnvironment();
       }
+      
+      // Always clear loading state after re-check
+      this.hideLoading();
     }, 1000);
   }
 
