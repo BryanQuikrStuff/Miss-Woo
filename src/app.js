@@ -352,12 +352,16 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
+      console.log(`Getting serial number for WooCommerce order #${order.number}`);
+      
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
         return null;
       }
+
+      console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
       // Get serial numbers assigned to this order
       const serialNumbers = await this.getKatanaSerialNumbers(katanaOrder.id);
@@ -366,8 +370,12 @@ class MissWooApp {
         return null;
       }
 
+      console.log(`Found ${serialNumbers.length} serial numbers for order #${order.number}:`, serialNumbers);
+      
       // Return the first serial number (or we could return all of them if needed)
-      return serialNumbers[0];
+      const serialNumber = serialNumbers[0];
+      console.log(`Selected serial number for order #${order.number}: ${serialNumber}`);
+      return serialNumber;
     } catch (error) {
       console.error('Error getting serial number:', error);
       return null;
@@ -377,24 +385,32 @@ class MissWooApp {
   async getKatanaOrder(wooOrderNumber) {
     try {
       const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
-      console.log('Fetching Katana order:', url);
+      console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${this.katanaApiKey}`,
           'Accept': 'application/json'
         }
       });
-      console.log('Katana API response status:', response.status);
+      console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
 
       if (!response.ok) {
         throw new Error(`Katana API error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Katana order data:', data);
-      return data.data?.[0] || null;
+      console.log(`Katana order data for order #${wooOrderNumber}:`, data);
+      
+      const katanaOrder = data.data?.[0] || null;
+      if (katanaOrder) {
+        console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
+      } else {
+        console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
+      }
+      
+      return katanaOrder;
     } catch (error) {
-      console.error('Error fetching Katana order:', error);
+      console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
       return null;
     }
   }
@@ -402,6 +418,8 @@ class MissWooApp {
   async getKatanaSerialNumbers(katanaOrderId) {
     try {
       const url = `${this.katanaApiBaseUrl}/serial_numbers?sales_order_id=${katanaOrderId}`;
+      console.log(`Fetching serial numbers for Katana order ID ${katanaOrderId}:`, url);
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${this.katanaApiKey}`,
@@ -409,14 +427,21 @@ class MissWooApp {
         }
       });
 
+      console.log(`Serial numbers API response status for Katana order ${katanaOrderId}:`, response.status);
+
       if (!response.ok) {
         throw new Error(`Katana API error: ${response.status}`);
       }
 
       const data = await response.json();
-      return data.data?.map(item => item.serial_number) || [];
+      console.log(`Serial numbers data for Katana order ${katanaOrderId}:`, data);
+      
+      const serialNumbers = data.data?.map(item => item.serial_number) || [];
+      console.log(`Extracted ${serialNumbers.length} serial numbers for Katana order ${katanaOrderId}:`, serialNumbers);
+      
+      return serialNumbers;
     } catch (error) {
-      console.error('Error fetching Katana serial numbers:', error);
+      console.error(`Error fetching Katana serial numbers for order ${katanaOrderId}:`, error);
       return [];
     }
   }
