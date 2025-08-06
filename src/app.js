@@ -364,29 +364,76 @@ class MissWooApp {
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
-      // Get the numeric serial number from the order details
-      const numericSerialNumber = await this.getSerialNumberFromOrder(katanaOrder);
+      // Get all serial numbers from the order details
+      const serialNumbers = await this.getAllSerialNumbersFromOrder(katanaOrder);
       
-      if (numericSerialNumber) {
-        console.log(`✅ Found numeric serial number in order details for #${order.number}: ${numericSerialNumber}`);
+      if (serialNumbers && serialNumbers.length > 0) {
+        console.log(`✅ Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
         
-        // Fetch the formatted serial number using the numeric ID
-        const formattedSerialNumber = await this.getFormattedSerialNumber(numericSerialNumber);
-
-        if (formattedSerialNumber) {
-          console.log(`✅ Found formatted serial: ${formattedSerialNumber}`);
-          return formattedSerialNumber; // Return the full formatted serial number
-        } else {
-          console.log(`❌ No formatted serial found for numeric ID: ${numericSerialNumber}`);
-          return "N/A";
-        }
+        // For now, return the first serial number (we'll handle multiple later)
+        const firstSerial = serialNumbers[0];
+        console.log(`Using first serial number: ${firstSerial}`);
+        return firstSerial;
       } else {
-        console.log(`❌ No serial number found for order #${order.number}, returning "N/A"`);
+        console.log(`❌ No serial numbers found for order #${order.number}, returning "N/A"`);
         return "N/A";
       }
     } catch (error) {
       console.error('Error getting serial number:', error);
       return "N/A";
+    }
+  }
+
+  async getAllSerialNumbersFromOrder(katanaOrder) {
+    try {
+      console.log(`Looking for serial numbers in Katana order details:`, katanaOrder);
+      console.log(`Full Katana order structure for debugging: ${JSON.stringify(katanaOrder, null, 2)}`);
+      
+      const allSerialNumbers = [];
+      
+      // Check if the order has sales_order_rows with serial numbers
+      if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
+        console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
+        
+        for (const [index, row] of katanaOrder.sales_order_rows.entries()) {
+          console.log(`Examining sales order row ${index + 1}:`, row);
+          
+          if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
+            console.log(`✅ Found serial numbers in sales order row ${index + 1}:`, row.serial_numbers);
+            
+            // Get formatted serial numbers for each numeric serial
+            for (const numericSerial of row.serial_numbers) {
+              console.log(`🔍 Processing numeric serial: ${numericSerial}`);
+              const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+              if (formattedSerial) {
+                allSerialNumbers.push(formattedSerial);
+                console.log(`✅ Added formatted serial: ${formattedSerial}`);
+              }
+            }
+          } else {
+            console.log(`No serial numbers in row ${index + 1}`);
+          }
+        }
+      } else {
+        console.log(`No sales_order_rows found in order`);
+      }
+      
+      // Fallback: Check if the order has a serial_numbers field directly
+      if (katanaOrder.serial_numbers && Array.isArray(katanaOrder.serial_numbers) && katanaOrder.serial_numbers.length > 0) {
+        console.log(`Found serial numbers in order (direct field):`, katanaOrder.serial_numbers);
+        for (const numericSerial of katanaOrder.serial_numbers) {
+          const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+          if (formattedSerial) {
+            allSerialNumbers.push(formattedSerial);
+          }
+        }
+      }
+      
+      console.log(`Total serial numbers found: ${allSerialNumbers.length}`);
+      return allSerialNumbers;
+    } catch (error) {
+      console.error('Error extracting serial numbers from order:', error);
+      return [];
     }
   }
 
