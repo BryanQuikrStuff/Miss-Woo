@@ -1,8 +1,10 @@
 // Miss-Woo Frontend Application
+// VERSION 999 - FORCE CACHE REFRESH
 import config from './config.js';
 
 class MissWooApp {
   constructor() {
+    console.log("🚀 VERSION 999 - FORCE CACHE REFRESH 🚀");
     // WooCommerce REST API v3 endpoint
     this.apiBaseUrl = config.woocommerce.apiBaseUrl;
     this.consumerKey = config.woocommerce.consumerKey;
