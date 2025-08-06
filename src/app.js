@@ -398,6 +398,9 @@ class MissWooApp {
 
   async getKatanaOrder(wooOrderNumber) {
     try {
+      console.log(`=== VERSION 3.0 - Enhanced Serial Number Lookup ===`);
+      console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
+      
       const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
       console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
       const response = await fetch(url, {
@@ -420,10 +423,13 @@ class MissWooApp {
         console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
         
         // Try to get the full sales order with line items
+        console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
         const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
         if (fullOrder) {
           console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
           return fullOrder;
+        } else {
+          console.log(`Could not get full order details, returning basic order`);
         }
       } else {
         console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
