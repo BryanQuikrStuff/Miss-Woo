@@ -27,7 +27,11 @@ class MissWooApp {
     try {
       await this.bindEvents();
       await this.initializeMissive();
-      await this.testConnection();
+      // Only test connection if not in Missive environment
+      if (!window.Missive) {
+        await this.testConnection();
+      }
+      console.log("Application initialized successfully");
     } catch (error) {
       console.error("Initialization failed:", error);
       this.showError("Failed to initialize application: " + error.message);
@@ -565,10 +569,25 @@ class MissWooApp {
 
   initializeMissive() {
     // Initialize Missive iframe integration
+    console.log("Initializing Missive integration...");
+    
     if (window.Missive) {
+      console.log("Missive API detected");
       window.Missive.on("ready", () => {
         console.log("Missive iframe ready");
+        // Hide any loading states when Missive is ready
+        this.hideLoading();
       });
+      
+      window.Missive.on("error", (error) => {
+        console.error("Missive error:", error);
+      });
+    } else {
+      console.log("Missive API not detected - running in standalone mode");
+      // If not in Missive, hide loading after a short delay
+      setTimeout(() => {
+        this.hideLoading();
+      }, 1000);
     }
   }
 }
@@ -577,6 +596,15 @@ class MissWooApp {
 try {
   console.log("Starting application...");
   window.app = new MissWooApp();
+  
+  // Ensure loading state is cleared after initialization
+  setTimeout(() => {
+    const loading = document.getElementById("loading");
+    if (loading && !loading.classList.contains("hidden")) {
+      console.log("Clearing loading state after timeout");
+      loading.classList.add("hidden");
+    }
+  }, 2000);
 } catch (error) {
   console.error("Failed to start application:", error);
   const errorDiv = document.getElementById("error");
