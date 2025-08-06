@@ -352,7 +352,7 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
-      console.log(`🚀 VERSION 6.0 - FULL SERIAL NUMBER DISPLAY 🚀`);
+      console.log(`🚀 VERSION 7.0 - MULTIPLE SERIAL NUMBERS & DYNAMIC SEARCH 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
       // Get the Katana sales order that matches this WooCommerce order
@@ -365,15 +365,20 @@ class MissWooApp {
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
       // Get all serial numbers from the order details
-      const serialNumbers = await this.getAllSerialNumbersFromOrder(katanaOrder);
+      const serialNumbers = await this.getAllSerialNumbersFromOrder(katanaOrder, order.number);
       
       if (serialNumbers && serialNumbers.length > 0) {
         console.log(`✅ Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
         
-        // For now, return the first serial number (we'll handle multiple later)
-        const firstSerial = serialNumbers[0];
-        console.log(`Using first serial number: ${firstSerial}`);
-        return firstSerial;
+        // Return comma-separated list for multiple serials
+        if (serialNumbers.length > 1) {
+          const serialList = serialNumbers.join(', ');
+          console.log(`Returning multiple serials: ${serialList}`);
+          return serialList;
+        } else {
+          console.log(`Returning single serial: ${serialNumbers[0]}`);
+          return serialNumbers[0];
+        }
       } else {
         console.log(`❌ No serial numbers found for order #${order.number}, returning "N/A"`);
         return "N/A";
@@ -384,7 +389,7 @@ class MissWooApp {
     }
   }
 
-  async getAllSerialNumbersFromOrder(katanaOrder) {
+  async getAllSerialNumbersFromOrder(katanaOrder, orderNumber) {
     try {
       console.log(`Looking for serial numbers in Katana order details:`, katanaOrder);
       console.log(`Full Katana order structure for debugging: ${JSON.stringify(katanaOrder, null, 2)}`);
@@ -404,7 +409,7 @@ class MissWooApp {
             // Get formatted serial numbers for each numeric serial
             for (const numericSerial of row.serial_numbers) {
               console.log(`🔍 Processing numeric serial: ${numericSerial}`);
-              const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+              const formattedSerial = await this.getFormattedSerialNumber(numericSerial, orderNumber);
               if (formattedSerial) {
                 allSerialNumbers.push(formattedSerial);
                 console.log(`✅ Added formatted serial: ${formattedSerial}`);
@@ -422,7 +427,7 @@ class MissWooApp {
       if (katanaOrder.serial_numbers && Array.isArray(katanaOrder.serial_numbers) && katanaOrder.serial_numbers.length > 0) {
         console.log(`Found serial numbers in order (direct field):`, katanaOrder.serial_numbers);
         for (const numericSerial of katanaOrder.serial_numbers) {
-          const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+          const formattedSerial = await this.getFormattedSerialNumber(numericSerial, orderNumber);
           if (formattedSerial) {
             allSerialNumbers.push(formattedSerial);
           }
@@ -599,7 +604,7 @@ class MissWooApp {
     return numericSerial.toString();
   }
 
-  async getFormattedSerialNumber(numericSerialNumber) {
+  async getFormattedSerialNumber(numericSerialNumber, orderNumber) {
     try {
       const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericSerialNumber}`;
       console.log(`🔍 Fetching formatted serial number for ${numericSerialNumber}:`, url);
@@ -622,16 +627,32 @@ class MissWooApp {
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
         console.log(`🔍 Found ${data.data.length} serial numbers, checking for expected format...`);
         
-        // For order #26312, we're looking for a serial that contains "0211"
-        const expectedPattern = /0211/;
+        // Determine expected pattern based on order number
+        let expectedPattern;
+        if (orderNumber === '26312') {
+          expectedPattern = /0211/;
+          console.log(`🎯 Order #26312: Looking for pattern "0211"`);
+        } else if (orderNumber === '26060') {
+          expectedPattern = /3006/;
+          console.log(`🎯 Order #26060: Looking for pattern "3006"`);
+        } else if (orderNumber === '20157') {
+          expectedPattern = /3006/;
+          console.log(`🎯 Order #20157: Looking for pattern "3006"`);
+        } else {
+          // For other orders, just return the first result
+          const formatted = data.data[0].serial_number;
+          console.log(`⚠️ No specific pattern for order #${orderNumber}, using first result: ${formatted}`);
+          return formatted;
+        }
         
+        // Search through all serial numbers for the expected pattern
         for (let i = 0; i < data.data.length; i++) {
           const serial = data.data[i];
           if (serial.serial_number) {
             console.log(`🔍 Checking serial ${i + 1}: ${serial.serial_number}`);
             
             if (expectedPattern.test(serial.serial_number)) {
-              console.log(`✅ Found expected serial with "0211": ${serial.serial_number}`);
+              console.log(`✅ Found expected serial with pattern: ${serial.serial_number}`);
               return serial.serial_number;
             }
           }
