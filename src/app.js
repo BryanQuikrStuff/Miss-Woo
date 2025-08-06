@@ -488,41 +488,60 @@ class MissWooApp {
         for (const [index, row] of katanaOrder.sales_order_rows.entries()) {
           console.log(`Examining sales order row ${index + 1}:`, row);
           
-          if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
-            console.log(`✅ Found serial numbers in sales order row ${index + 1}:`, row.serial_numbers);
-            
-            // Get formatted serial numbers for each numeric serial
-            for (const numericSerial of row.serial_numbers) {
-              console.log(`🔍 Processing numeric serial: ${numericSerial}`);
-              const formattedSerial = await this.getFormattedSerialNumber(numericSerial, orderNumber);
-              if (formattedSerial) {
-                allSerialNumbers.push(formattedSerial);
-                console.log(`✅ Added formatted serial: ${formattedSerial}`);
-              }
+          // Use the row.id to fetch serial numbers for this specific row
+          if (row.id) {
+            console.log(`🔍 Fetching serial numbers for row ID: ${row.id}`);
+            const serialNumbers = await this.getSerialNumbersForRow(row.id);
+            if (serialNumbers && serialNumbers.length > 0) {
+              console.log(`✅ Found ${serialNumbers.length} serial number(s) for row ID ${row.id}:`, serialNumbers);
+              allSerialNumbers.push(...serialNumbers);
             }
-          } else {
-            console.log(`No serial numbers in row ${index + 1}`);
           }
         }
       } else {
         console.log(`No sales_order_rows found in order`);
       }
       
-      // Fallback: Check if the order has a serial_numbers field directly
-      if (katanaOrder.serial_numbers && Array.isArray(katanaOrder.serial_numbers) && katanaOrder.serial_numbers.length > 0) {
-        console.log(`Found serial numbers in order (direct field):`, katanaOrder.serial_numbers);
-        for (const numericSerial of katanaOrder.serial_numbers) {
-          const formattedSerial = await this.getFormattedSerialNumber(numericSerial, orderNumber);
-          if (formattedSerial) {
-            allSerialNumbers.push(formattedSerial);
-          }
-        }
-      }
-      
       console.log(`Total serial numbers found: ${allSerialNumbers.length}`);
       return allSerialNumbers;
     } catch (error) {
       console.error('Error extracting serial numbers from order:', error);
+      return [];
+    }
+  }
+
+  async getSerialNumbersForRow(rowId) {
+    try {
+      console.log(`🔍 Fetching serial numbers for row ID: ${rowId}`);
+      // Use the row ID as resource_id to get serial numbers
+      const url = `${this.katanaApiBaseUrl}/serial_numbers?resource_id=${rowId}&resource_type=SalesOrderRow`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.log(`❌ No serial numbers found for row ID ${rowId}: ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      console.log(`📊 Serial numbers data for row ID ${rowId}:`, data);
+      
+      if (data.data && Array.isArray(data.data)) {
+        // Extract the actual serial_number values from each object
+        const serialNumbers = data.data
+          .map(item => item.serial_number)
+          .filter(Boolean);
+        console.log(`✅ Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
+        return serialNumbers;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error(`Error fetching serial numbers for row ID ${rowId}:`, error);
       return [];
     }
   }
