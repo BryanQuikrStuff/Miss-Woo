@@ -352,6 +352,7 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
+      console.log(`🚀 VERSION 4.0 - SERIAL NUMBER DEBUGGING 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
       // Get the Katana sales order that matches this WooCommerce order
@@ -366,12 +367,12 @@ class MissWooApp {
       // Try to get serial numbers from the sales order details itself
       const serialNumber = await this.getSerialNumberFromOrder(katanaOrder);
       if (serialNumber) {
-        console.log(`Found serial number in order details for #${order.number}: ${serialNumber}`);
+        console.log(`✅ Found serial number in order details for #${order.number}: ${serialNumber}`);
         return serialNumber;
       }
 
       // If not found in order details, return null instead of using the problematic serial numbers endpoint
-      console.log(`No serial number found for order #${order.number}, returning null`);
+      console.log(`❌ No serial number found for order #${order.number}, returning null`);
       return null;
     } catch (error) {
       console.error('Error getting serial number:', error);
