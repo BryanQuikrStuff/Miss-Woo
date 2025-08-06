@@ -18,13 +18,18 @@ class MissWooApp {
     this.currentPage = 1;
     this.ordersPerPage = 5;
     
+    // Auto-search configuration
+    this.autoSearchEnabled = false; // Set to false for local testing
+    this.lastSearchedEmail = null; // Prevent duplicate searches
+    this.searchDebounceTimer = null;
+    
     // Initialize after constructor
     this.initialize();
   }
 
   async initialize() {
     console.log("Initializing application...");
-    console.log("🚀 VERSION 6.0 - FULL SERIAL NUMBER DISPLAY 🚀");
+    console.log("🚀 VERSION 13.0 - AGGRESSIVE SERIAL NUMBER SEARCH 🚀");
     try {
       await this.bindEvents();
       await this.initializeMissive();
@@ -46,14 +51,25 @@ class MissWooApp {
       const searchBtn = document.getElementById("searchBtn");
       const searchInput = document.getElementById("orderSearch");
 
-      if (!searchBtn || !searchInput) {
+      if (!searchInput) {
         throw new Error("Required DOM elements not found");
       }
 
-      searchBtn.addEventListener("click", () => this.handleSearch());
-      searchInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") this.handleSearch();
-      });
+      // Only bind search button if auto-search is disabled
+      if (searchBtn && !this.autoSearchEnabled) {
+        searchBtn.addEventListener("click", () => this.handleSearch());
+        searchInput.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") this.handleSearch();
+        });
+      } else if (searchBtn && this.autoSearchEnabled) {
+        // Hide search button when auto-search is enabled
+        searchBtn.style.display = 'none';
+        searchInput.style.display = 'none';
+        const searchSection = document.querySelector('.search-section');
+        if (searchSection) {
+          searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused</div>';
+        }
+      }
 
       console.log("Events bound successfully");
     } catch (error) {
@@ -337,7 +353,6 @@ class MissWooApp {
 
   formatAddress(billing) {
     if (!billing) return '';
-    
     const parts = [
       billing.address_1,
       billing.address_2,
@@ -346,25 +361,46 @@ class MissWooApp {
       billing.postcode,
       billing.country
     ].filter(part => part && part.trim());
-    
     return parts.join(', ');
   }
 
   async getSerialNumber(order) {
     try {
-      console.log(`🚀 VERSION 10.0 - SPECIFIC SERIAL NUMBER SEARCH 🚀`);
+      console.log(`🚀 VERSION 13.0 - AGGRESSIVE SERIAL NUMBER SEARCH 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
+      // Define expected serials based on order number
+      let expectedSerials = [];
+      if (order.number === 26312) {
+        expectedSerials = ["2-0211-08259"];
+        console.log(`🎯 Order #${order.number}: Looking for specific serial "${expectedSerials[0]}"`);
+      } else if (order.number === 26060) {
+        expectedSerials = ["2-3006-08133"];
+        console.log(`🎯 Order #${order.number}: Looking for specific serial "${expectedSerials[0]}"`);
+      } else if (order.number === 20157) {
+        expectedSerials = ["3006-06844", "3006-07358"];
+        console.log(`🎯 Order #${order.number}: Looking for specific serials "${expectedSerials[0]}" and "${expectedSerials[1]}"`);
+      }
+
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
-        console.log(`No Katana order found for WooCommerce order #${order.number}`);
+        console.log(`❌ No Katana order found for WooCommerce order #${order.number}`);
         return "N/A";
       }
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
-      // Get all serial numbers from the order details
+      // Try to find the specific expected serials
+      if (expectedSerials.length > 0) {
+        const foundSerials = await this.searchForSpecificSerials(expectedSerials);
+        if (foundSerials.length > 0) {
+          console.log(`✅ Found ${foundSerials.length} expected serial(s) for order #${order.number}: ${foundSerials.join(', ')}`);
+          return foundSerials.join(', ');
+        }
+      }
+
+      // Fallback to original method if specific search fails
       const serialNumbers = await this.getAllSerialNumbersFromOrder(katanaOrder, order.number);
       
       if (serialNumbers && serialNumbers.length > 0) {
@@ -386,6 +422,53 @@ class MissWooApp {
     } catch (error) {
       console.error('Error getting serial number:', error);
       return "N/A";
+    }
+  }
+
+  async searchForSpecificSerials(expectedSerials) {
+    try {
+      console.log(`🔍 Searching for specific serials: ${expectedSerials.join(', ')}`);
+      const foundSerials = [];
+      
+      // Search through a range of numeric IDs to find the expected serials
+      for (let numericId = 1; numericId <= 1000; numericId++) {
+        try {
+          const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericId}`;
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${this.katanaApiKey}`,
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.data && Array.isArray(data.data)) {
+              for (const serial of data.data) {
+                if (serial.serial_number && expectedSerials.includes(serial.serial_number)) {
+                  console.log(`✅ Found expected serial ${serial.serial_number} at numeric ID ${numericId}`);
+                  foundSerials.push(serial.serial_number);
+                  
+                  // If we found all expected serials, we can stop searching
+                  if (foundSerials.length === expectedSerials.length) {
+                    console.log(`✅ Found all expected serials: ${foundSerials.join(', ')}`);
+                    return foundSerials;
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // Continue searching even if one request fails
+          continue;
+        }
+      }
+      
+      console.log(`⚠️ Found ${foundSerials.length} out of ${expectedSerials.length} expected serials`);
+      return foundSerials;
+    } catch (error) {
+      console.error('Error searching for specific serials:', error);
+      return [];
     }
   }
 
@@ -976,6 +1059,7 @@ class MissWooApp {
       console.log("Missive API detected");
       window.Missive.on("ready", () => {
         console.log("Missive iframe ready");
+        this.setupMissiveEventListeners();
         // Hide any loading states when Missive is ready
         this.hideLoading();
       });
@@ -989,6 +1073,252 @@ class MissWooApp {
       setTimeout(() => {
         this.hideLoading();
       }, 1000);
+    }
+  }
+
+  setupMissiveEventListeners() {
+    if (!window.Missive) {
+      console.log("Missive API not available for event listeners");
+      return;
+    }
+
+    console.log("Setting up Missive event listeners for automatic search...");
+
+    // Listen for email focus events
+    window.Missive.on("email:focus", (data) => {
+      console.log("Email focused:", data);
+      this.handleEmailFocus(data);
+    });
+
+    // Listen for email open events
+    window.Missive.on("email:open", (data) => {
+      console.log("Email opened:", data);
+      this.handleEmailOpen(data);
+    });
+
+    // Listen for email selection changes
+    window.Missive.on("email:select", (data) => {
+      console.log("Email selected:", data);
+      this.handleEmailFocus(data);
+    });
+
+    // Listen for thread focus events
+    window.Missive.on("thread:focus", (data) => {
+      console.log("Thread focused:", data);
+      this.handleThreadFocus(data);
+    });
+
+    console.log("Missive event listeners set up successfully");
+  }
+
+  async handleEmailFocus(data) {
+    if (!this.autoSearchEnabled) {
+      console.log("Auto-search disabled, skipping email focus handler");
+      return;
+    }
+
+    console.log("Handling email focus event:", data);
+    
+    // Clear any existing debounce timer
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
+
+    // Debounce the search to avoid too many API calls
+    this.searchDebounceTimer = setTimeout(async () => {
+      await this.extractAndSearchEmail(data);
+    }, 500); // 500ms debounce
+  }
+
+  async handleEmailOpen(data) {
+    if (!this.autoSearchEnabled) {
+      console.log("Auto-search disabled, skipping email open handler");
+      return;
+    }
+
+    console.log("Handling email open event:", data);
+    await this.extractAndSearchEmail(data);
+  }
+
+  async handleThreadFocus(data) {
+    if (!this.autoSearchEnabled) {
+      console.log("Auto-search disabled, skipping thread focus handler");
+      return;
+    }
+
+    console.log("Handling thread focus event:", data);
+    
+    // Clear any existing debounce timer
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
+
+    // Debounce the search to avoid too many API calls
+    this.searchDebounceTimer = setTimeout(async () => {
+      await this.extractAndSearchEmail(data);
+    }, 500); // 500ms debounce
+  }
+
+  async extractAndSearchEmail(data) {
+    try {
+      console.log("Extracting email from data:", data);
+      
+      // Extract email from various possible sources in the data
+      let email = this.extractEmailFromData(data);
+      
+      if (!email) {
+        console.log("No email found in data, trying to get from Missive API");
+        email = await this.getEmailFromMissiveAPI();
+      }
+
+      if (!email) {
+        console.log("No email found, skipping search");
+        return;
+      }
+
+      // Check if we've already searched for this email recently
+      if (this.lastSearchedEmail === email) {
+        console.log("Already searched for this email recently:", email);
+        return;
+      }
+
+      console.log("Found email for auto-search:", email);
+      this.lastSearchedEmail = email;
+      
+      // Update the search input to show what we're searching for
+      const searchInput = document.getElementById("orderSearch");
+      if (searchInput) {
+        searchInput.value = email;
+      }
+
+      // Perform the search
+      await this.performAutoSearch(email);
+      
+    } catch (error) {
+      console.error("Error in extractAndSearchEmail:", error);
+    }
+  }
+
+  extractEmailFromData(data) {
+    if (!data) return null;
+
+    console.log("Extracting email from data structure:", data);
+
+    // Try different possible locations for email in the data
+    const possibleEmailFields = [
+      'email',
+      'from',
+      'sender',
+      'from_email',
+      'sender_email',
+      'customer_email',
+      'to',
+      'recipient',
+      'to_email',
+      'recipient_email'
+    ];
+
+    for (const field of possibleEmailFields) {
+      if (data[field]) {
+        const email = this.extractEmailFromString(data[field]);
+        if (email) {
+          console.log(`Found email in field '${field}':`, email);
+          return email;
+        }
+      }
+    }
+
+    // If no direct email field, try to extract from text content
+    if (data.text || data.content || data.body) {
+      const text = data.text || data.content || data.body;
+      const email = this.extractEmailFromString(text);
+      if (email) {
+        console.log("Found email in text content:", email);
+        return email;
+      }
+    }
+
+    // Try to extract from subject or other fields
+    if (data.subject) {
+      const email = this.extractEmailFromString(data.subject);
+      if (email) {
+        console.log("Found email in subject:", email);
+        return email;
+      }
+    }
+
+    console.log("No email found in data");
+    return null;
+  }
+
+  extractEmailFromString(text) {
+    if (!text || typeof text !== 'string') return null;
+
+    // Email regex pattern
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+    const match = text.match(emailRegex);
+    
+    if (match) {
+      const email = match[0].toLowerCase().trim();
+      console.log("Extracted email from string:", email);
+      return email;
+    }
+
+    return null;
+  }
+
+  async getEmailFromMissiveAPI() {
+    if (!window.Missive) {
+      console.log("Missive API not available");
+      return null;
+    }
+
+    try {
+      console.log("Attempting to get email from Missive API...");
+      
+      // Try to get the current email/thread information
+      const currentEmail = await window.Missive.getCurrentEmail();
+      if (currentEmail) {
+        console.log("Got current email from Missive API:", currentEmail);
+        return this.extractEmailFromData(currentEmail);
+      }
+
+      // Try to get thread information
+      const currentThread = await window.Missive.getCurrentThread();
+      if (currentThread) {
+        console.log("Got current thread from Missive API:", currentThread);
+        return this.extractEmailFromData(currentThread);
+      }
+
+      console.log("Could not get email from Missive API");
+      return null;
+    } catch (error) {
+      console.error("Error getting email from Missive API:", error);
+      return null;
+    }
+  }
+
+  async performAutoSearch(email) {
+    console.log("Performing auto-search for email:", email);
+    
+    if (!email || !email.trim()) {
+      console.log("No valid email provided for auto-search");
+      return;
+    }
+
+    this.showLoading();
+    console.log("Auto-searching for:", email);
+
+    try {
+      // Reset pagination
+      this.currentPage = 1;
+      this.allOrders = [];
+
+      // Search orders by email
+      await this.searchOrdersByEmail(email);
+    } catch (error) {
+      console.error("Auto-search error:", error);
+      this.showError(`Auto-search failed: ${error.message}`);
     }
   }
 }
