@@ -467,9 +467,21 @@ class MissWooApp {
           if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
             console.log(`✅ Found serial numbers in sales order row:`, row.serial_numbers);
             const numericSerial = row.serial_numbers[0];
-            const formattedSerial = this.convertSerialNumber(numericSerial);
-            console.log(`Converted serial number ${numericSerial} to ${formattedSerial}`);
-            return formattedSerial;
+            
+            // Get the formatted serial number
+            const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+            if (formattedSerial) {
+              // Extract just the 4-digit combination
+              const combination = this.extractCombination(formattedSerial);
+              if (combination) {
+                console.log(`✅ Extracted combination ${combination} for order`);
+                return combination;
+              }
+            }
+            
+            // Fallback to numeric serial if formatted lookup fails
+            console.log(`Using numeric serial as fallback: ${numericSerial}`);
+            return numericSerial.toString();
           }
         }
       } else {
@@ -513,6 +525,52 @@ class MissWooApp {
     // You may need to provide the conversion logic from numeric to formatted serial
     console.log(`Converting numeric serial ${numericSerial} to formatted serial`);
     return numericSerial.toString();
+  }
+
+  async getFormattedSerialNumber(numericSerial) {
+    try {
+      // Try to get the formatted serial number from the Katana API
+      const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericSerial}`;
+      console.log(`Fetching formatted serial number for ${numericSerial}:`, url);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.log(`Could not get formatted serial for ${numericSerial}, status: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log(`Formatted serial data for ${numericSerial}:`, data);
+      
+      if (data.data && data.data.length > 0) {
+        const formattedSerial = data.data[0].serial_number;
+        console.log(`Found formatted serial: ${formattedSerial}`);
+        return formattedSerial;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error fetching formatted serial for ${numericSerial}:`, error);
+      return null;
+    }
+  }
+
+  extractCombination(formattedSerial) {
+    // Extract the 4-digit combination from formatted serial like "2-0211-08259"
+    const match = formattedSerial.match(/^\d+-(\d{4})-\d+$/);
+    if (match) {
+      const combination = match[1];
+      console.log(`Extracted combination ${combination} from serial ${formattedSerial}`);
+      return combination;
+    }
+    console.log(`Could not extract combination from serial ${formattedSerial}`);
+    return null;
   }
 
   async getSerialNumbersFromLineItems(katanaOrderId) {
