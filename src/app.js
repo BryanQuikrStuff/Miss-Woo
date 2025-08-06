@@ -66,9 +66,14 @@ class MissWooApp {
         await this.testConnection();
       }
       console.log("Application initialized successfully");
+      
+      // Always clear loading state after initialization
+      this.hideLoading();
     } catch (error) {
       console.error("Initialization failed:", error);
       this.showError("Failed to initialize application: " + error.message);
+      // Clear loading state even on error
+      this.hideLoading();
     }
   }
 
