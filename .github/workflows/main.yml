@@ -6,6 +6,18 @@ on:
   pull_request:
     branches: [ main ]
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,12 +40,16 @@ jobs:
         WOOCOMMERCE_CONSUMER_KEY: ${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}
         WOOCOMMERCE_CONSUMER_SECRET: ${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}
         WOOCOMMERCE_SITE_URL: ${{ secrets.WOOCOMMERCE_SITE_URL }}
-        WOOCOMMERCE_API_VERSION: 'wc/v3'
+        KATANA_API_KEY: ${{ secrets.KATANA_API_KEY }}
 
   build:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
     - uses: actions/checkout@v4
@@ -47,24 +63,41 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
+    - name: Create production config
+      run: |
+        cat > src/config.js << EOL
+        const config = {
+            woocommerce: {
+                apiBaseUrl: "https://quikrstuff.com/wp-json/wc/v3",
+                consumerKey: "${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}",
+                consumerSecret: "${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}",
+                siteUrl: "${{ secrets.WOOCOMMERCE_SITE_URL }}"
+            },
+            katana: {
+                apiBaseUrl: "https://api.katanamrp.com/v1",
+                apiKey: "${{ secrets.KATANA_API_KEY }}"
+            }
+        };
+        export default config;
+        EOL
+    
     - name: Create production build
       run: |
-        # Create dist directory
         mkdir -p dist
-        
-        # Copy static files
         cp index.html dist/
         cp src/app.js dist/
         cp src/styles.css dist/
-        cp src/woocommerce.js dist/
-        cp src/tracking.js dist/
-        
-        # Create version file
+        cp src/config.js dist/
         echo "{\"version\": \"$(date +%Y%m%d.%H%M%S)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
       with:
-        name: static-site
         path: dist/
-        retention-days: 7
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
