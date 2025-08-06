@@ -578,8 +578,8 @@ class MissWooApp {
 
     // Common tracking number patterns
     const patterns = [
-      // USPS
-      { regex: /\b(9400|9303|9205|9401|9303|9205|9407|9301|9202|9203|9204|9205|9206|9207|9208|9209|9210|9211|9212|9213|9214|9215|9216|9217|9218|9219|9220|9221|9222|9223|9224|9225|9226|9227|9228|9229|9230|9231|9232|9233|9234|9235|9236|9237|9238|9239|9240|9241|9242|9243|9244|9245|9246|9247|9248|9249|9250|9251|9252|9253|9254|9255|9256|9257|9258|9259|9260|9261|9262|9263|9264|9265|9266|9267|9268|9269|9270|9271|9272|9273|9274|9275|9276|9277|9278|9279|9280|9281|9282|9283|9284|9285|9286|9287|9288|9289|9290|9291|9292|9293|9294|9295|9296|9297|9298|9299)\d{16}\b/, provider: 'USPS' },
+      // USPS - more flexible pattern to catch all USPS tracking numbers
+      { regex: /\b9[234]\d{16,22}\b/, provider: 'USPS' },
       // UPS
       { regex: /\b1Z[A-Z0-9]{16}\b/, provider: 'UPS' },
       { regex: /\bT\d{10}\b/, provider: 'UPS' },
@@ -588,14 +588,15 @@ class MissWooApp {
       { regex: /\b\d{15}\b/, provider: 'FedEx' },
       // DHL
       { regex: /\b\d{10}\b/, provider: 'DHL' },
-      // Generic tracking numbers
-      { regex: /\b\d{8,20}\b/, provider: '' }
+      // Generic tracking numbers (fallback)
+      { regex: /\b\d{8,22}\b/, provider: '' }
     ];
 
     for (const pattern of patterns) {
       const match = text.match(pattern.regex);
       if (match) {
         const trackingNumber = match[0];
+        console.log(`Found tracking number: ${trackingNumber} (${pattern.provider})`);
         const url = this.getCarrierTrackingUrl(trackingNumber, pattern.provider);
         return { number: trackingNumber, url, provider: pattern.provider };
       }
@@ -607,8 +608,8 @@ class MissWooApp {
   getCarrierTrackingUrl(trackingNumber, provider = '') {
     const number = trackingNumber.trim();
     
-    // USPS
-    if (provider === 'USPS' || /^9[234]\d{16}$/.test(number)) {
+    // USPS - updated pattern to match the new regex
+    if (provider === 'USPS' || /^9[234]\d{16,22}$/.test(number)) {
       return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
     }
     
