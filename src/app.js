@@ -359,7 +359,7 @@ class MissWooApp {
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
-        return null;
+        return "N/A";
       }
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
@@ -371,12 +371,12 @@ class MissWooApp {
         return serialNumber;
       }
 
-      // If not found in order details, return null instead of using the problematic serial numbers endpoint
-      console.log(`❌ No serial number found for order #${order.number}, returning null`);
-      return null;
+      // If not found in order details, return "N/A" instead of using the problematic serial numbers endpoint
+      console.log(`❌ No serial number found for order #${order.number}, returning "N/A"`);
+      return "N/A";
     } catch (error) {
       console.error('Error getting serial number:', error);
-      return null;
+      return "N/A";
     }
   }
 
@@ -468,13 +468,21 @@ class MissWooApp {
             console.log(`✅ Found serial numbers in sales order row:`, row.serial_numbers);
             const numericSerial = row.serial_numbers[0];
             
+            // Debug: Show expected combination for order #26312
+            if (katanaOrder.order_no === '26312') {
+              console.log(`🎯 EXPECTED: Order #26312 should have combination "0211"`);
+            }
+            
             // Get the formatted serial number
             const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
             if (formattedSerial) {
               // Extract just the 4-digit combination
               const combination = this.extractCombination(formattedSerial);
               if (combination) {
-                console.log(`✅ Extracted combination ${combination} for order`);
+                console.log(`✅ Extracted combination ${combination} for order #${katanaOrder.order_no}`);
+                if (katanaOrder.order_no === '26312') {
+                  console.log(`🔍 COMPARISON: Got ${combination}, Expected 0211`);
+                }
                 return combination;
               }
             }
@@ -531,7 +539,7 @@ class MissWooApp {
     try {
       // Try to get the formatted serial number from the Katana API
       const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericSerial}`;
-      console.log(`Fetching formatted serial number for ${numericSerial}:`, url);
+      console.log(`🔍 Fetching formatted serial number for ${numericSerial}:`, url);
       
       const response = await fetch(url, {
         headers: {
@@ -540,23 +548,27 @@ class MissWooApp {
         }
       });
 
+      console.log(`📡 Response status for serial ${numericSerial}: ${response.status}`);
+
       if (!response.ok) {
-        console.log(`Could not get formatted serial for ${numericSerial}, status: ${response.status}`);
+        console.log(`❌ Could not get formatted serial for ${numericSerial}, status: ${response.status}`);
         return null;
       }
 
       const data = await response.json();
-      console.log(`Formatted serial data for ${numericSerial}:`, data);
+      console.log(`📊 Formatted serial data for ${numericSerial}:`, data);
       
       if (data.data && data.data.length > 0) {
         const formattedSerial = data.data[0].serial_number;
-        console.log(`Found formatted serial: ${formattedSerial}`);
+        console.log(`✅ Found formatted serial: ${formattedSerial}`);
         return formattedSerial;
+      } else {
+        console.log(`❌ No formatted serial found for ${numericSerial}`);
       }
       
       return null;
     } catch (error) {
-      console.error(`Error fetching formatted serial for ${numericSerial}:`, error);
+      console.error(`❌ Error fetching formatted serial for ${numericSerial}:`, error);
       return null;
     }
   }
