@@ -24,6 +24,7 @@ class MissWooApp {
 
   async initialize() {
     console.log("Initializing application...");
+    console.log("Version 2.0 - Customer Info Update loaded");
     try {
       await this.bindEvents();
       await this.initializeMissive();
@@ -658,6 +659,7 @@ class MissWooApp {
 // Initialize the app and handle any errors
 try {
   console.log("Starting application...");
+  console.log("App version: 2.0 - Customer Info Update");
   window.app = new MissWooApp();
   
   // Ensure loading state is cleared after initialization
