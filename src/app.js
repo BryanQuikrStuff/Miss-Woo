@@ -1,10 +1,11 @@
 // Miss-Woo Frontend Application
-// VERSION 999 - FORCE CACHE REFRESH
+// VERSION 2.0 - Clean and Optimized
 import config from './config.js';
 
 class MissWooApp {
   constructor() {
-    console.log("🚀 VERSION 999 - FORCE CACHE REFRESH 🚀");
+    console.log("🚀 Miss-Woo v2.0 - Clean and Optimized 🚀");
+    
     // WooCommerce REST API v3 endpoint
     this.apiBaseUrl = config.woocommerce.apiBaseUrl;
     this.consumerKey = config.woocommerce.consumerKey;
@@ -17,21 +18,17 @@ class MissWooApp {
     
     // Store all matched orders
     this.allOrders = [];
-    this.currentPage = 1;
-    this.ordersPerPage = 5;
     
     // Auto-search configuration
     this.autoSearchEnabled = false; // Set to false for local testing
     this.lastSearchedEmail = null; // Prevent duplicate searches
-    this.searchDebounceTimer = null;
     
     // Initialize after constructor
     this.initialize();
   }
 
   async initialize() {
-    console.log("Initializing application...");
-    console.log("🚀 VERSION 13.0 - AGGRESSIVE SERIAL NUMBER SEARCH 🚀");
+    console.log("Initializing Miss-Woo application...");
     try {
       await this.bindEvents();
       await this.initializeMissive();
@@ -49,7 +46,6 @@ class MissWooApp {
   async bindEvents() {
     console.log("Binding events...");
     try {
-      // Search functionality
       const searchBtn = document.getElementById("searchBtn");
       const searchInput = document.getElementById("orderSearch");
 
@@ -93,8 +89,6 @@ class MissWooApp {
     console.log("Searching for:", searchTerm);
 
     try {
-      // Reset pagination
-      this.currentPage = 1;
       this.allOrders = [];
 
       // Check if it's an order ID (numeric)
@@ -136,103 +130,87 @@ class MissWooApp {
   async searchOrdersByEmail(email) {
     console.log("Searching orders for email:", email);
     try {
-      // Get all orders across multiple pages
-      let allFetchedOrders = [];
+      let allOrders = [];
       let page = 1;
-      const perPage = 100;
-      let hasMore = true;
+      const maxPages = 5; // Search up to 5 pages to find orders
 
-      while (hasMore && page <= 5) { // Limit to 5 pages to avoid too many requests
-        const billingUrl = this.getAuthenticatedUrl("/orders", {
+      while (page <= maxPages) {
+        console.log(`Searching page ${page}...`);
+        const url = this.getAuthenticatedUrl('/orders', {
           search: email,
-          per_page: perPage,
+          per_page: 100,
           page: page
         });
-        console.log(`Searching page ${page} with URL:`, billingUrl);
         
-        const pageOrders = await this.makeRequest(billingUrl);
-        if (!pageOrders || pageOrders.length === 0) {
-          hasMore = false;
-        } else {
-          allFetchedOrders = allFetchedOrders.concat(pageOrders);
-          page++;
+        const data = await this.makeRequest(url);
+        console.log(`Found ${data.length} orders on page ${page}`);
+        
+        if (data.length === 0) {
+          break; // No more orders to fetch
         }
+        
+        allOrders = allOrders.concat(data);
+        page++;
       }
 
-      console.log('Total orders found:', allFetchedOrders.length);
-      
-      if (allFetchedOrders.length === 0) {
-        this.showError(`No orders found for email: ${email}`);
-        return;
-      }
+      console.log(`Total orders found: ${allOrders.length}`);
 
-      // Filter orders to match the email exactly and sort by date
-      this.allOrders = allFetchedOrders
+      // Filter for exact email matches and get the latest 5
+      const matchingOrders = allOrders
         .filter(order => {
-          const orderEmail = order.billing?.email?.toLowerCase();
-          const searchEmail = email.toLowerCase();
-          const matches = orderEmail === searchEmail;
-          console.log(`Checking order ${order.id}: ${orderEmail} against ${searchEmail}: ${matches}`);
+          const orderEmail = order.billing?.email || '';
+          const matches = orderEmail.toLowerCase() === email.toLowerCase();
+          console.log(`Checking order ${order.number}: ${orderEmail} against ${email}: ${matches}`);
           return matches;
         })
-        .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
-        .slice(0, 5); // Only keep the latest 5 orders
+        .slice(0, 5); // Get latest 5 orders
+
+      console.log(`Total matching orders (latest 5): ${matchingOrders.length}`);
 
       // Get notes for each order
-      for (const order of this.allOrders) {
+      for (const order of matchingOrders) {
         try {
           const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
           const notes = await this.makeRequest(notesUrl);
           order.notes = notes;
         } catch (error) {
-          console.error(`Failed to fetch notes for order ${order.id}:`, error);
+          console.error(`Failed to get notes for order ${order.id}:`, error);
+          order.notes = [];
         }
       }
 
-      console.log("Total matching orders (latest 5):", this.allOrders.length);
+      this.allOrders = matchingOrders;
       await this.displayOrdersList();
     } catch (error) {
-      console.error("Search by email error:", error);
-      this.showError(`Failed to search orders for ${email}: ${error.message}`);
+      console.error("Search orders error:", error);
+      this.showError(`Failed to search orders: ${error.message}`);
     }
   }
 
-  // Helper method to create authenticated request URL
   getAuthenticatedUrl(endpoint, params = {}) {
-    try {
-      const url = new URL(`${this.apiBaseUrl}${endpoint}`);
-      url.searchParams.append("consumer_key", this.consumerKey);
-      url.searchParams.append("consumer_secret", this.consumerSecret);
-
-      // Add any additional parameters
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
-      });
-
-      console.log("Generated URL:", url.toString());
-      return url.toString();
-    } catch (error) {
-      console.error("URL creation error:", error);
-      throw new Error("Failed to create API URL: " + error.message);
-    }
+    const url = new URL(this.apiBaseUrl + endpoint);
+    url.searchParams.set('consumer_key', this.consumerKey);
+    url.searchParams.set('consumer_secret', this.consumerSecret);
+    
+    // Add additional parameters
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+    
+    console.log("Generated URL:", url.toString());
+    return url.toString();
   }
 
-  // Helper method for making API requests
   async makeRequest(url, options = {}) {
     console.log("Making request to:", url);
     try {
       const response = await fetch(url, {
-        ...options,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...options.headers,
-        },
-        mode: "cors",
+        mode: 'cors',
+        ...options
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -245,67 +223,87 @@ class MissWooApp {
   }
 
   async displayOrdersList() {
-    const resultsDiv = document.getElementById("results");
-    if (!resultsDiv) {
-      console.error("Results container not found");
+    this.hideLoading();
+    
+    if (this.allOrders.length === 0) {
+      this.showError("No orders found");
       return;
     }
 
-    if (!this.allOrders || this.allOrders.length === 0) {
-      resultsDiv.innerHTML = '<div class="no-results">No orders found</div>';
-      this.hideLoading();
-      return;
-    }
+    const resultsContainer = document.getElementById("results");
+    if (!resultsContainer) return;
 
     // Create customer info section
-    const customerInfo = this.createCustomerInfoSection();
+    const customerInfoSection = this.createCustomerInfoSection();
     
-    // Create table without Name column
-    const table = document.createElement('table');
-    table.innerHTML = `
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Order #</th>
-          <th>Serial #</th>
-          <th>Tracking</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    `;
-
-    const tbody = table.querySelector('tbody');
-
+    // Create table
+    const table = document.createElement("table");
+    table.className = "orders-table";
+    
+    // Create header
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    const headers = ["Date", "Order #", "Serial #", "Tracking"];
+    
+    headers.forEach(headerText => {
+      const th = document.createElement("th");
+      th.textContent = headerText;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // Create body
+    const tbody = document.createElement("tbody");
+    
     for (const order of this.allOrders) {
-      const tracking = this.getTrackingInfo(order);
-      const row = document.createElement('tr');
-      const date = new Date(order.date_created).toLocaleDateString();
-      const orderLink = `${this.siteUrl}/wp-admin/post.php?post=${order.id}&action=edit`;
+      const row = document.createElement("tr");
+      row.className = "order-row";
       
-      // Create a cell for the serial number that we'll update asynchronously
-      row.innerHTML = `
-        <td>${date}</td>
-        <td><a href="${orderLink}" target="_blank">#${order.number}</a></td>
-        <td class="serial-number-cell">Loading...</td>
-        <td>${tracking ? `<a href="${tracking.url}" target="_blank">${tracking.number}</a>` : 'No tracking'}</td>
-      `;
+      // Date
+      const dateCell = document.createElement("td");
+      const orderDate = new Date(order.date_created);
+      dateCell.textContent = orderDate.toLocaleDateString();
+      row.appendChild(dateCell);
       
-      // Update the serial number asynchronously
-      const serialNumberCell = row.querySelector('.serial-number-cell');
-      this.getSerialNumber(order).then(serialNumber => {
-        serialNumberCell.textContent = serialNumber || 'No serial #';
-      }).catch(error => {
-        console.error('Error fetching serial number:', error);
-        serialNumberCell.textContent = 'Error';
-      });
+      // Order number (clickable)
+      const orderCell = document.createElement("td");
+      const orderLink = document.createElement("a");
+      orderLink.href = `${this.siteUrl}/wp-admin/post.php?post=${order.id}&action=edit`;
+      orderLink.target = "_blank";
+      orderLink.textContent = `#${order.number}`;
+      orderCell.appendChild(orderLink);
+      row.appendChild(orderCell);
+      
+      // Serial number
+      const serialCell = document.createElement("td");
+      const serialNumber = await this.getSerialNumber(order);
+      serialCell.textContent = serialNumber;
+      row.appendChild(serialCell);
+      
+      // Tracking
+      const trackingCell = document.createElement("td");
+      const trackingInfo = this.getTrackingInfo(order);
+      if (trackingInfo) {
+        const trackingLink = document.createElement("a");
+        trackingLink.href = trackingInfo.url;
+        trackingLink.target = "_blank";
+        trackingLink.textContent = trackingInfo.number;
+        trackingCell.appendChild(trackingLink);
+      } else {
+        trackingCell.textContent = "N/A";
+      }
+      row.appendChild(trackingCell);
       
       tbody.appendChild(row);
     }
-
-    resultsDiv.innerHTML = '';
-    resultsDiv.appendChild(customerInfo);
-    resultsDiv.appendChild(table);
-    this.hideLoading();
+    
+    table.appendChild(tbody);
+    
+    // Clear and populate results
+    resultsContainer.innerHTML = "";
+    resultsContainer.appendChild(customerInfoSection);
+    resultsContainer.appendChild(table);
   }
 
   createCustomerInfoSection() {
@@ -368,57 +366,25 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
-      console.log(`🚀 VERSION 13.0 - AGGRESSIVE SERIAL NUMBER SEARCH 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
-      // Define expected serials based on order number
-      let expectedSerials = [];
-      if (order.number === 26312) {
-        expectedSerials = ["2-0211-08259"];
-        console.log(`🎯 Order #${order.number}: Looking for specific serial "${expectedSerials[0]}"`);
-      } else if (order.number === 26060) {
-        expectedSerials = ["2-3006-08133"];
-        console.log(`🎯 Order #${order.number}: Looking for specific serial "${expectedSerials[0]}"`);
-      } else if (order.number === 20157) {
-        expectedSerials = ["3006-06844", "3006-07358"];
-        console.log(`🎯 Order #${order.number}: Looking for specific serials "${expectedSerials[0]}" and "${expectedSerials[1]}"`);
-      }
-
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
-        console.log(`❌ No Katana order found for WooCommerce order #${order.number}`);
+        console.log(`No Katana order found for WooCommerce order #${order.number}`);
         return "N/A";
       }
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
-      // Try to find the specific expected serials
-      if (expectedSerials.length > 0) {
-        const foundSerials = await this.searchForSpecificSerials(expectedSerials);
-        if (foundSerials.length > 0) {
-          console.log(`✅ Found ${foundSerials.length} expected serial(s) for order #${order.number}: ${foundSerials.join(', ')}`);
-          return foundSerials.join(', ');
-        }
-      }
-
-      // Fallback to original method if specific search fails
+      // Get serial numbers from all sales order rows
       const serialNumbers = await this.getAllSerialNumbersFromOrder(katanaOrder, order.number);
       
       if (serialNumbers && serialNumbers.length > 0) {
-        console.log(`✅ Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
-        
-        // Return comma-separated list for multiple serials
-        if (serialNumbers.length > 1) {
-          const serialList = serialNumbers.join(', ');
-          console.log(`Returning multiple serials: ${serialList}`);
-          return serialList;
-        } else {
-          console.log(`Returning single serial: ${serialNumbers[0]}`);
-          return serialNumbers[0];
-        }
+        console.log(`Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
+        return serialNumbers.join(', ');
       } else {
-        console.log(`❌ No serial numbers found for order #${order.number}, returning "N/A"`);
+        console.log(`No serial numbers found for order #${order.number}`);
         return "N/A";
       }
     } catch (error) {
@@ -427,61 +393,13 @@ class MissWooApp {
     }
   }
 
-  async searchForSpecificSerials(expectedSerials) {
-    try {
-      console.log(`🔍 Searching for specific serials: ${expectedSerials.join(', ')}`);
-      const foundSerials = [];
-      
-      // Search through a range of numeric IDs to find the expected serials
-      for (let numericId = 1; numericId <= 1000; numericId++) {
-        try {
-          const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericId}`;
-          const response = await fetch(url, {
-            headers: {
-              'Authorization': `Bearer ${this.katanaApiKey}`,
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.data && Array.isArray(data.data)) {
-              for (const serial of data.data) {
-                if (serial.serial_number && expectedSerials.includes(serial.serial_number)) {
-                  console.log(`✅ Found expected serial ${serial.serial_number} at numeric ID ${numericId}`);
-                  foundSerials.push(serial.serial_number);
-                  
-                  // If we found all expected serials, we can stop searching
-                  if (foundSerials.length === expectedSerials.length) {
-                    console.log(`✅ Found all expected serials: ${foundSerials.join(', ')}`);
-                    return foundSerials;
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          // Continue searching even if one request fails
-          continue;
-        }
-      }
-      
-      console.log(`⚠️ Found ${foundSerials.length} out of ${expectedSerials.length} expected serials`);
-      return foundSerials;
-    } catch (error) {
-      console.error('Error searching for specific serials:', error);
-      return [];
-    }
-  }
-
   async getAllSerialNumbersFromOrder(katanaOrder, orderNumber) {
     try {
-      console.log(`Looking for serial numbers in Katana order details:`, katanaOrder);
-      console.log(`Full Katana order structure for debugging: ${JSON.stringify(katanaOrder, null, 2)}`);
+      console.log(`Looking for serial numbers in Katana order details`);
       
       const allSerialNumbers = [];
       
-      // Check if the order has sales_order_rows with serial numbers
+      // Check if the order has sales_order_rows
       if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
         console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
         
@@ -490,10 +408,10 @@ class MissWooApp {
           
           // Use the row.id to fetch serial numbers for this specific row
           if (row.id) {
-            console.log(`🔍 Fetching serial numbers for row ID: ${row.id}`);
+            console.log(`Fetching serial numbers for row ID: ${row.id}`);
             const serialNumbers = await this.getSerialNumbersForRow(row.id);
             if (serialNumbers && serialNumbers.length > 0) {
-              console.log(`✅ Found ${serialNumbers.length} serial number(s) for row ID ${row.id}:`, serialNumbers);
+              console.log(`Found ${serialNumbers.length} serial number(s) for row ID ${row.id}:`, serialNumbers);
               allSerialNumbers.push(...serialNumbers);
             }
           }
@@ -512,7 +430,7 @@ class MissWooApp {
 
   async getSerialNumbersForRow(rowId) {
     try {
-      console.log(`🔍 Fetching serial numbers for row ID: ${rowId}`);
+      console.log(`Fetching serial numbers for row ID: ${rowId}`);
       // Use the row ID as resource_id to get serial numbers
       const url = `${this.katanaApiBaseUrl}/serial_numbers?resource_id=${rowId}&resource_type=SalesOrderRow`;
       const response = await fetch(url, {
@@ -523,19 +441,19 @@ class MissWooApp {
       });
 
       if (!response.ok) {
-        console.log(`❌ No serial numbers found for row ID ${rowId}: ${response.status}`);
+        console.log(`No serial numbers found for row ID ${rowId}: ${response.status}`);
         return [];
       }
 
       const data = await response.json();
-      console.log(`📊 Serial numbers data for row ID ${rowId}:`, data);
+      console.log(`Serial numbers data for row ID ${rowId}:`, data);
       
       if (data.data && Array.isArray(data.data)) {
         // Extract the actual serial_number values from each object
         const serialNumbers = data.data
           .map(item => item.serial_number)
           .filter(Boolean);
-        console.log(`✅ Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
+        console.log(`Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
         return serialNumbers;
       }
       
@@ -548,7 +466,6 @@ class MissWooApp {
 
   async getKatanaOrder(wooOrderNumber) {
     try {
-      console.log(`=== VERSION 3.0 - Enhanced Serial Number Lookup ===`);
       console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
       
       const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
@@ -611,394 +528,76 @@ class MissWooApp {
 
       const data = await response.json();
       console.log(`Full Katana order details for ID ${katanaOrderId}:`, data);
-      return data.data || data;
+      return data;
     } catch (error) {
       console.error(`Error fetching full Katana order details for ${katanaOrderId}:`, error);
       return null;
     }
   }
 
-  async getSerialNumberFromOrder(katanaOrder) {
-    try {
-      console.log(`Looking for serial numbers in Katana order details:`, katanaOrder);
-      
-      // Log the complete order structure to understand the data
-      console.log(`Full Katana order structure for debugging:`, JSON.stringify(katanaOrder, null, 2));
-      
-      // Check if the order has sales_order_rows with serial numbers
-      if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
-        console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
-        
-        // Check ALL sales order rows for serial numbers
-        for (let i = 0; i < katanaOrder.sales_order_rows.length; i++) {
-          const row = katanaOrder.sales_order_rows[i];
-          console.log(`Examining sales order row ${i + 1}:`, row);
-          
-          if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
-            console.log(`✅ Found serial numbers in sales order row ${i + 1}:`, row.serial_numbers);
-            
-            // Check each serial number in this row
-            for (let j = 0; j < row.serial_numbers.length; j++) {
-              const numericSerial = row.serial_numbers[j];
-              console.log(`🔍 Checking serial number ${j + 1}: ${numericSerial}`);
-              
-              // Debug: Show expected combination for order #26312
-              if (katanaOrder.order_no === '26312') {
-                console.log(`🎯 EXPECTED: Order #26312 should have combination "0211"`);
-              }
-              
-              // Get the formatted serial number
-              const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
-              if (formattedSerial) {
-                // Extract just the 4-digit combination
-                const combination = this.extractCombination(formattedSerial);
-                if (combination) {
-                  console.log(`✅ Extracted combination ${combination} for order #${katanaOrder.order_no} (row ${i + 1}, serial ${j + 1})`);
-                  if (katanaOrder.order_no === '26312') {
-                    console.log(`🔍 COMPARISON: Got ${combination}, Expected 0211`);
-                  }
-                  return combination;
-                }
-              }
-            }
-          } else {
-            console.log(`No serial numbers in row ${i + 1}`);
-          }
-        }
-      } else {
-        console.log(`No sales_order_rows found in order`);
-      }
-      
-      // Check if the order has a serial_numbers field directly
-      if (katanaOrder.serial_numbers && Array.isArray(katanaOrder.serial_numbers) && katanaOrder.serial_numbers.length > 0) {
-        console.log(`Found serial numbers in order:`, katanaOrder.serial_numbers);
-        return katanaOrder.serial_numbers[0];
-      }
-      
-      // Check if there are any serial number fields in the order
-      const serialNumberFields = ['serial_number', 'serial_numbers', 'serial', 'serial_no'];
-      for (const field of serialNumberFields) {
-        if (katanaOrder[field]) {
-          console.log(`Found serial number in field ${field}:`, katanaOrder[field]);
-          return katanaOrder[field];
-        }
-      }
-      
-      // Check all fields for any serial number patterns
-      console.log(`Checking all order fields for serial number patterns...`);
-      for (const [key, value] of Object.entries(katanaOrder)) {
-        if (typeof value === 'string' && value.match(/^\d+-\d+-\d+$/)) {
-          console.log(`Found potential serial number in field ${key}: ${value}`);
-          return value;
-        }
-      }
-      
-      console.log(`No serial numbers found in order details`);
-      return null;
-    } catch (error) {
-      console.error('Error extracting serial number from order:', error);
-      return null;
-    }
-  }
-
-  convertSerialNumber(numericSerial) {
-    // For now, return the numeric serial as-is since we don't know the conversion formula
-    // You may need to provide the conversion logic from numeric to formatted serial
-    console.log(`Converting numeric serial ${numericSerial} to formatted serial`);
-    return numericSerial.toString();
-  }
-
-  async getFormattedSerialNumber(numericSerialNumber, orderNumber) {
-    try {
-      const url = `${this.katanaApiBaseUrl}/serial_numbers?serial_number=${numericSerialNumber}`;
-      console.log(`🔍 Fetching formatted serial number for ${numericSerialNumber}:`, url);
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        }
-      });
-      console.log(`📡 Response status for serial ${numericSerialNumber}:`, response.status);
-
-      if (!response.ok) {
-        throw new Error(`Katana API error fetching formatted serial: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`📊 Formatted serial data for ${numericSerialNumber}:`, data);
-      
-      // Check if we have multiple serial numbers and look for the expected one
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        console.log(`🔍 Found ${data.data.length} serial numbers, checking for expected format...`);
-        
-        // Define specific expected serial numbers for each order
-        let expectedSerials = [];
-        if (orderNumber === '26312') {
-          expectedSerials = ['2-0211-08259'];
-          console.log(`🎯 Order #26312: Looking for specific serial "2-0211-08259"`);
-        } else if (orderNumber === '26060') {
-          expectedSerials = ['2-3006-08133'];
-          console.log(`🎯 Order #26060: Looking for specific serial "2-3006-08133"`);
-        } else if (orderNumber === '20157') {
-          expectedSerials = ['2-3006-06844', '2-3006-07358'];
-          console.log(`🎯 Order #20157: Looking for specific serials "2-3006-06844" and "2-3006-07358"`);
-        } else {
-          // For other orders, just return the first result
-          const formatted = data.data[0].serial_number;
-          console.log(`⚠️ No specific serials for order #${orderNumber}, using first result: ${formatted}`);
-          return formatted;
-        }
-        
-        // Search through all serial numbers for the expected specific serials
-        for (let i = 0; i < data.data.length; i++) {
-          const serial = data.data[i];
-          if (serial.serial_number) {
-            console.log(`🔍 Checking serial ${i + 1}: ${serial.serial_number}`);
-            
-            // Check if this serial matches any of our expected serials
-            for (const expectedSerial of expectedSerials) {
-              if (serial.serial_number === expectedSerial) {
-                console.log(`✅ Found expected serial: ${serial.serial_number}`);
-                return serial.serial_number;
-              }
-            }
-          }
-        }
-        
-        // If no expected serial found, return the first one (original behavior)
-        const formatted = data.data[0].serial_number;
-        console.log(`⚠️ No expected serial found, using first result: ${formatted}`);
-        return formatted;
-      }
-      console.log(`No formatted serial number found in API response for ${numericSerialNumber}`);
-      return null;
-    } catch (error) {
-      console.error(`Error fetching formatted serial number for ${numericSerialNumber}:`, error);
-      return null;
-    }
-  }
-
-  extractCombination(formattedSerial) {
-    // Extract the 4-digit combination from formatted serial like "2-0211-08259"
-    const match = formattedSerial.match(/^\d+-(\d{4})-\d+$/);
-    if (match) {
-      const combination = match[1];
-      console.log(`Extracted combination ${combination} from serial ${formattedSerial}`);
-      return combination;
-    }
-    console.log(`Could not extract combination from serial ${formattedSerial}`);
-    return null;
-  }
-
-  async getSerialNumbersFromLineItems(katanaOrderId) {
-    try {
-      const url = `${this.katanaApiBaseUrl}/sales_orders/${katanaOrderId}/line_items`;
-      console.log(`Fetching line items for Katana order ID ${katanaOrderId}:`, url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      console.log(`Line items API response status for Katana order ${katanaOrderId}:`, response.status);
-
-      if (!response.ok) {
-        console.log(`Could not get line items for ${katanaOrderId}, status: ${response.status}`);
-        return null;
-      }
-
-      const data = await response.json();
-      console.log(`Line items data for Katana order ${katanaOrderId}:`, data);
-      
-      // Look for serial numbers in line items
-      const lineItems = data.data || data;
-      if (Array.isArray(lineItems)) {
-        for (const lineItem of lineItems) {
-          if (lineItem.serial_numbers && Array.isArray(lineItem.serial_numbers) && lineItem.serial_numbers.length > 0) {
-            console.log(`Found serial numbers in line item:`, lineItem.serial_numbers);
-            return lineItem.serial_numbers[0];
-          }
-        }
-      }
-      
-      console.log(`No serial numbers found in line items`);
-      return null;
-    } catch (error) {
-      console.error(`Error fetching line items for order ${katanaOrderId}:`, error);
-      return null;
-    }
-  }
-
-  async getKatanaSerialNumbers(katanaOrderId) {
-    try {
-      const url = `${this.katanaApiBaseUrl}/serial_numbers?sales_order_id=${katanaOrderId}`;
-      console.log(`Fetching serial numbers for Katana order ID ${katanaOrderId}:`, url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      console.log(`Serial numbers API response status for Katana order ${katanaOrderId}:`, response.status);
-
-      if (!response.ok) {
-        throw new Error(`Katana API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`Serial numbers data for Katana order ${katanaOrderId}:`, data);
-      
-      const serialNumbers = data.data?.map(item => item.serial_number) || [];
-      console.log(`Extracted ${serialNumbers.length} serial numbers for Katana order ${katanaOrderId}:`, serialNumbers);
-      
-      return serialNumbers;
-    } catch (error) {
-      console.error(`Error fetching Katana serial numbers for order ${katanaOrderId}:`, error);
-      return [];
-    }
-  }
-
   getTrackingInfo(order) {
-    // First check order notes for tracking info
-    if (order.notes) {
-      for (const note of order.notes) {
-        if (!note.note) continue;
-        
-        const noteText = note.note;
-        console.log('Checking note:', noteText);
-
-        // Look for tracking number patterns
-        const patterns = [
-          // Look for tracking numbers with explicit labels
-          /tracking number[:\s]+(\d+)/i,
-          /tracking[:\s]+(\d+)/i,
-          /shipped .* tracking[:\s]+(\d+)/i,
-          /tracking id[:\s]+(\d+)/i,
-          /tracking #[:\s]*(\d+)/i,
-          /tracking code[:\s]*(\d+)/i,
-          /tracking info[:\s]*(\d+)/i,
+    try {
+      // Check order notes first
+      if (order.notes && Array.isArray(order.notes)) {
+        for (const note of order.notes) {
+          const noteContent = note.note || '';
+          console.log(`Checking note: ${noteContent}`);
           
-          // Look for carrier-specific patterns
-          /fedex[:\s]*#?\s*(\d+)/i,
-          /ups[:\s]*#?\s*(\d+)/i,
-          /usps[:\s]*#?\s*(\d+)/i,
-          /dhl[:\s]*#?\s*(\d+)/i,
-          
-          // Look for numbers that match carrier formats
-          /\b(1Z[A-Z0-9]{16})\b/i,  // UPS
-          /\b(\d{12,14})\b/,        // FedEx
-          /\b(94\d{20})\b/,         // USPS
-          /\b(82\d{8})\b/,          // USPS
-          /\b(\d{30})\b/,           // USPS
-          /\b(\d{10})\b/,           // DHL
-          
-          // General patterns for finding tracking numbers
-          /(\d{9,})/,               // Any number 9+ digits
-          /[^a-zA-Z0-9](\d{9,})[^a-zA-Z0-9]/,  // 9+ digits surrounded by non-alphanumeric
-          /(\d{12,})(?:\s|$)/,      // 12+ digits at end of line
-          /[^a-zA-Z0-9](\d{12,})[^a-zA-Z0-9]/  // 12+ digits surrounded by non-alphanumeric
-        ];
-
-        for (const pattern of patterns) {
-          const match = noteText.match(pattern);
-          if (match) {
-            const trackingNumber = match[1];
-            console.log('Found tracking number:', trackingNumber);
-            
-            // Determine carrier from note text and tracking number format
-            const lowerNote = noteText.toLowerCase();
-            let carrier = '';
-            
-            // Try to determine carrier from note text first
-            if (lowerNote.includes('fedex')) carrier = 'fedex';
-            else if (lowerNote.includes('ups')) carrier = 'ups';
-            else if (lowerNote.includes('usps')) carrier = 'usps';
-            else if (lowerNote.includes('dhl')) carrier = 'dhl';
-            
-            // If carrier not found in note, try to determine from tracking number format
-            if (!carrier) {
-              if (/^1Z/.test(trackingNumber)) carrier = 'ups';
-              else if (/^(94|92|93|95|82)/.test(trackingNumber)) carrier = 'usps';
-              else if (/^\d{12}$/.test(trackingNumber) || /^39\d{10}$/.test(trackingNumber)) carrier = 'fedex';
-              else if (/^\d{10}$/.test(trackingNumber)) carrier = 'dhl';
-            }
-            
-            return {
-              number: trackingNumber,
-              url: this.getCarrierTrackingUrl(trackingNumber, carrier),
-              provider: carrier || 'unknown'
-            };
-          }
-        }
-
-        // Special case: Look for URLs that might contain tracking numbers
-        const urlMatch = noteText.match(/https?:\/\/[^\s]+/);
-        if (urlMatch) {
-          const url = urlMatch[0];
-          console.log('Found URL:', url);
-          
-          // Extract tracking number from URL if possible
-          const urlTrackingMatch = url.match(/[?&](?:tracking|tracknr|tracknum|tLabels)=([^&]+)/i);
-          if (urlTrackingMatch) {
-            const trackingNumber = urlTrackingMatch[1];
-            console.log('Found tracking number in URL:', trackingNumber);
-            
-            // Try to determine carrier from URL
-            let carrier = '';
-            if (url.includes('fedex.com')) carrier = 'fedex';
-            else if (url.includes('ups.com')) carrier = 'ups';
-            else if (url.includes('usps.com')) carrier = 'usps';
-            else if (url.includes('dhl.com')) carrier = 'dhl';
-            
-            return {
-              number: trackingNumber,
-              url: url,
-              provider: carrier || 'unknown'
-            };
+          // Look for tracking patterns
+          const trackingMatch = this.extractTrackingFromText(noteContent);
+          if (trackingMatch) {
+            console.log(`Found tracking number: ${trackingMatch.number}`);
+            return trackingMatch;
           }
         }
       }
-    }
 
-    // Fallback to meta_data check
-    const trackingMeta = order.meta_data?.find(meta => 
-      meta.key === '_wc_shipment_tracking_items' || 
-      meta.key === '_aftership_tracking_number' ||
-      meta.key === 'tracking_number' ||
-      meta.key === '_tracking_number' ||
-      meta.key === '_tracking_provider' ||
-      meta.key === '_tracking_link'
-    );
-
-    if (trackingMeta) {
-      try {
-        let trackingNumber = '';
-        let trackingUrl = '';
-        let provider = '';
-
-        if (trackingMeta.key === '_wc_shipment_tracking_items') {
-          const trackingItems = typeof trackingMeta.value === 'string' 
-            ? JSON.parse(trackingMeta.value) 
-            : trackingMeta.value;
-
-          if (Array.isArray(trackingItems) && trackingItems.length > 0) {
-            trackingNumber = trackingItems[0].tracking_number;
-            provider = trackingItems[0].tracking_provider;
-            trackingUrl = trackingItems[0].tracking_url || this.getCarrierTrackingUrl(trackingNumber, provider);
+      // Check meta_data as fallback
+      if (order.meta_data && Array.isArray(order.meta_data)) {
+        for (const meta of order.meta_data) {
+          if (meta.key && meta.value) {
+            const metaValue = String(meta.value);
+            const trackingMatch = this.extractTrackingFromText(metaValue);
+            if (trackingMatch) {
+              console.log(`Found tracking number in meta: ${trackingMatch.number}`);
+              return trackingMatch;
+            }
           }
-        } else {
-          trackingNumber = trackingMeta.value;
-          trackingUrl = this.getCarrierTrackingUrl(trackingNumber);
         }
+      }
 
-        return trackingNumber ? { number: trackingNumber, url: trackingUrl, provider: provider || 'unknown' } : null;
-      } catch (error) {
-        console.error('Error parsing tracking info:', error);
-        return null;
+      return null;
+    } catch (error) {
+      console.error('Error getting tracking info:', error);
+      return null;
+    }
+  }
+
+  extractTrackingFromText(text) {
+    if (!text) return null;
+
+    // Common tracking number patterns
+    const patterns = [
+      // USPS
+      { regex: /\b(9400|9303|9205|9401|9303|9205|9407|9301|9202|9203|9204|9205|9206|9207|9208|9209|9210|9211|9212|9213|9214|9215|9216|9217|9218|9219|9220|9221|9222|9223|9224|9225|9226|9227|9228|9229|9230|9231|9232|9233|9234|9235|9236|9237|9238|9239|9240|9241|9242|9243|9244|9245|9246|9247|9248|9249|9250|9251|9252|9253|9254|9255|9256|9257|9258|9259|9260|9261|9262|9263|9264|9265|9266|9267|9268|9269|9270|9271|9272|9273|9274|9275|9276|9277|9278|9279|9280|9281|9282|9283|9284|9285|9286|9287|9288|9289|9290|9291|9292|9293|9294|9295|9296|9297|9298|9299)\d{16}\b/, provider: 'USPS' },
+      // UPS
+      { regex: /\b1Z[A-Z0-9]{16}\b/, provider: 'UPS' },
+      { regex: /\bT\d{10}\b/, provider: 'UPS' },
+      // FedEx
+      { regex: /\b\d{12}\b/, provider: 'FedEx' },
+      { regex: /\b\d{15}\b/, provider: 'FedEx' },
+      // DHL
+      { regex: /\b\d{10}\b/, provider: 'DHL' },
+      // Generic tracking numbers
+      { regex: /\b\d{8,20}\b/, provider: '' }
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern.regex);
+      if (match) {
+        const trackingNumber = match[0];
+        const url = this.getCarrierTrackingUrl(trackingNumber, pattern.provider);
+        return { number: trackingNumber, url, provider: pattern.provider };
       }
     }
 
@@ -1006,56 +605,47 @@ class MissWooApp {
   }
 
   getCarrierTrackingUrl(trackingNumber, provider = '') {
-    provider = provider.toLowerCase();
+    const number = trackingNumber.trim();
     
-    // Common carriers tracking URLs
-    const carriers = {
-      'usps': `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`,
-      'ups': `https://www.ups.com/track?tracknum=${trackingNumber}`,
-      'fedex': `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`,
-      'dhl': `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`,
-    };
-
-    // Try to guess carrier from tracking number format if not provided
-    if (!provider || provider === 'unknown') {
-      if (/^(94|92|93|95|82)/.test(trackingNumber)) {
-        return carriers.usps;
-      } else if (/^1Z/.test(trackingNumber)) {
-        return carriers.ups;
-      } else if (/^\d{12}$/.test(trackingNumber) || /^39\d{10}$/.test(trackingNumber)) {
-        return carriers.fedex;
-      } else if (/^\d{10}$/.test(trackingNumber)) {
-        return carriers.dhl;
-      }
+    // USPS
+    if (provider === 'USPS' || /^9[234]\d{16}$/.test(number)) {
+      return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
     }
-
-    // If we have a known provider, use its URL
-    if (carriers[provider]) {
-      return carriers[provider];
+    
+    // UPS
+    if (provider === 'UPS' || /^1Z[A-Z0-9]{16}$/.test(number) || /^T\d{10}$/.test(number)) {
+      return `https://www.ups.com/track?tracknum=${number}`;
     }
-
-    // Default to Google search if we can't determine the carrier
-    return `https://www.google.com/search?q=${trackingNumber}+tracking`;
+    
+    // FedEx
+    if (provider === 'FedEx' || /^\d{12}$/.test(number) || /^\d{15}$/.test(number)) {
+      return `https://www.fedex.com/fedextrack/?trknbr=${number}`;
+    }
+    
+    // DHL
+    if (provider === 'DHL' || /^\d{10}$/.test(number)) {
+      return `https://www.dhl.com/en/express/tracking.html?AWB=${number}`;
+    }
+    
+    // Generic - try USPS first
+    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
   }
 
   async testConnection() {
-    console.log("Testing API connection...");
     try {
-      const url = this.getAuthenticatedUrl("/products", { per_page: 1 });
+      console.log("Testing WooCommerce connection...");
+      const url = this.getAuthenticatedUrl('/orders', { per_page: 1 });
       await this.makeRequest(url);
-      console.log("Connection test successful");
-      return true;
+      console.log("✅ WooCommerce connection successful");
     } catch (error) {
-      console.error("Connection test failed:", error);
-      throw error;
+      console.error("❌ WooCommerce connection failed:", error);
+      this.showError("Failed to connect to WooCommerce: " + error.message);
     }
   }
 
   showLoading() {
     const loading = document.getElementById("loading");
-    const error = document.getElementById("error");
     if (loading) loading.classList.remove("hidden");
-    if (error) error.classList.add("hidden");
   }
 
   hideLoading() {
@@ -1069,287 +659,137 @@ class MissWooApp {
       errorElement.textContent = message;
       errorElement.classList.remove("hidden");
     }
-    this.hideLoading();
   }
 
   initializeMissive() {
-    // Initialize Missive iframe integration
-    console.log("Initializing Missive integration...");
-    
     if (window.Missive) {
-      console.log("Missive API detected");
-      window.Missive.on("ready", () => {
-        console.log("Missive iframe ready");
-        this.setupMissiveEventListeners();
-        // Hide any loading states when Missive is ready
-        this.hideLoading();
-      });
-      
-      window.Missive.on("error", (error) => {
-        console.error("Missive error:", error);
-      });
+      console.log("Missive detected, setting up integration...");
+      this.setupMissiveEventListeners();
     } else {
-      console.log("Missive API not detected - running in standalone mode");
-      // If not in Missive, hide loading after a short delay
-      setTimeout(() => {
-        this.hideLoading();
-      }, 1000);
+      console.log("Missive not detected, running in standalone mode");
     }
   }
 
   setupMissiveEventListeners() {
-    if (!window.Missive) {
-      console.log("Missive API not available for event listeners");
-      return;
-    }
+    if (!window.Missive) return;
 
-    console.log("Setting up Missive event listeners for automatic search...");
-
-    // Listen for email focus events
-    window.Missive.on("email:focus", (data) => {
-      console.log("Email focused:", data);
-      this.handleEmailFocus(data);
+    Missive.on("ready", () => {
+      console.log("Missive ready");
+      this.hideLoading();
     });
 
-    // Listen for email open events
-    window.Missive.on("email:open", (data) => {
-      console.log("Email opened:", data);
-      this.handleEmailOpen(data);
+    Missive.on("error", (error) => {
+      console.error("Missive error:", error);
     });
 
-    // Listen for email selection changes
-    window.Missive.on("email:select", (data) => {
-      console.log("Email selected:", data);
-      this.handleEmailFocus(data);
-    });
-
-    // Listen for thread focus events
-    window.Missive.on("thread:focus", (data) => {
-      console.log("Thread focused:", data);
-      this.handleThreadFocus(data);
-    });
-
-    console.log("Missive event listeners set up successfully");
+    // Set up auto-search for email focus
+    Missive.on("email:focus", (data) => this.handleEmailFocus(data));
+    Missive.on("email:open", (data) => this.handleEmailOpen(data));
+    Missive.on("thread:focus", (data) => this.handleThreadFocus(data));
   }
 
   async handleEmailFocus(data) {
-    if (!this.autoSearchEnabled) {
-      console.log("Auto-search disabled, skipping email focus handler");
-      return;
+    if (this.autoSearchEnabled) {
+      const email = this.extractEmailFromData(data);
+      if (email && email !== this.lastSearchedEmail) {
+        console.log("Email focused, auto-searching:", email);
+        await this.performAutoSearch(email);
+      }
     }
-
-    console.log("Handling email focus event:", data);
-    
-    // Clear any existing debounce timer
-    if (this.searchDebounceTimer) {
-      clearTimeout(this.searchDebounceTimer);
-    }
-
-    // Debounce the search to avoid too many API calls
-    this.searchDebounceTimer = setTimeout(async () => {
-      await this.extractAndSearchEmail(data);
-    }, 500); // 500ms debounce
   }
 
   async handleEmailOpen(data) {
-    if (!this.autoSearchEnabled) {
-      console.log("Auto-search disabled, skipping email open handler");
-      return;
+    if (this.autoSearchEnabled) {
+      const email = this.extractEmailFromData(data);
+      if (email && email !== this.lastSearchedEmail) {
+        console.log("Email opened, auto-searching:", email);
+        await this.performAutoSearch(email);
+      }
     }
-
-    console.log("Handling email open event:", data);
-    await this.extractAndSearchEmail(data);
   }
 
   async handleThreadFocus(data) {
-    if (!this.autoSearchEnabled) {
-      console.log("Auto-search disabled, skipping thread focus handler");
-      return;
+    if (this.autoSearchEnabled) {
+      const email = this.extractEmailFromData(data);
+      if (email && email !== this.lastSearchedEmail) {
+        console.log("Thread focused, auto-searching:", email);
+        await this.performAutoSearch(email);
+      }
     }
-
-    console.log("Handling thread focus event:", data);
-    
-    // Clear any existing debounce timer
-    if (this.searchDebounceTimer) {
-      clearTimeout(this.searchDebounceTimer);
-    }
-
-    // Debounce the search to avoid too many API calls
-    this.searchDebounceTimer = setTimeout(async () => {
-      await this.extractAndSearchEmail(data);
-    }, 500); // 500ms debounce
   }
 
   async extractAndSearchEmail(data) {
-    try {
-      console.log("Extracting email from data:", data);
-      
-      // Extract email from various possible sources in the data
-      let email = this.extractEmailFromData(data);
-      
-      if (!email) {
-        console.log("No email found in data, trying to get from Missive API");
-        email = await this.getEmailFromMissiveAPI();
-      }
-
-      if (!email) {
-        console.log("No email found, skipping search");
-        return;
-      }
-
-      // Check if we've already searched for this email recently
-      if (this.lastSearchedEmail === email) {
-        console.log("Already searched for this email recently:", email);
-        return;
-      }
-
-      console.log("Found email for auto-search:", email);
-      this.lastSearchedEmail = email;
-      
-      // Update the search input to show what we're searching for
-      const searchInput = document.getElementById("orderSearch");
-      if (searchInput) {
-        searchInput.value = email;
-      }
-
-      // Perform the search
+    const email = this.extractEmailFromData(data);
+    if (email) {
+      console.log("Extracted email:", email);
       await this.performAutoSearch(email);
-      
-    } catch (error) {
-      console.error("Error in extractAndSearchEmail:", error);
+    } else {
+      console.log("No email found in data");
     }
   }
 
   extractEmailFromData(data) {
     if (!data) return null;
 
-    console.log("Extracting email from data structure:", data);
-
-    // Try different possible locations for email in the data
-    const possibleEmailFields = [
-      'email',
-      'from',
-      'sender',
-      'from_email',
-      'sender_email',
-      'customer_email',
-      'to',
-      'recipient',
-      'to_email',
-      'recipient_email'
-    ];
-
-    for (const field of possibleEmailFields) {
-      if (data[field]) {
-        const email = this.extractEmailFromString(data[field]);
-        if (email) {
-          console.log(`Found email in field '${field}':`, email);
-          return email;
-        }
-      }
+    // Try different data structures
+    if (data.email) return data.email;
+    if (data.recipient && data.recipient.email) return data.recipient.email;
+    if (data.thread && data.thread.participants) {
+      const participant = data.thread.participants.find(p => p.role === 'to');
+      if (participant && participant.email) return participant.email;
+    }
+    if (data.participants) {
+      const participant = data.participants.find(p => p.role === 'to');
+      if (participant && participant.email) return participant.email;
     }
 
-    // If no direct email field, try to extract from text content
-    if (data.text || data.content || data.body) {
-      const text = data.text || data.content || data.body;
-      const email = this.extractEmailFromString(text);
-      if (email) {
-        console.log("Found email in text content:", email);
-        return email;
-      }
-    }
+    // Try to extract from text content
+    if (data.text) return this.extractEmailFromString(data.text);
+    if (data.content) return this.extractEmailFromString(data.content);
+    if (data.subject) return this.extractEmailFromString(data.subject);
 
-    // Try to extract from subject or other fields
-    if (data.subject) {
-      const email = this.extractEmailFromString(data.subject);
-      if (email) {
-        console.log("Found email in subject:", email);
-        return email;
-      }
-    }
-
-    console.log("No email found in data");
     return null;
   }
 
   extractEmailFromString(text) {
-    if (!text || typeof text !== 'string') return null;
-
-    // Email regex pattern
+    if (!text) return null;
+    
     const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
     const match = text.match(emailRegex);
-    
-    if (match) {
-      const email = match[0].toLowerCase().trim();
-      console.log("Extracted email from string:", email);
-      return email;
-    }
-
-    return null;
+    return match ? match[0] : null;
   }
 
   async getEmailFromMissiveAPI() {
-    if (!window.Missive) {
-      console.log("Missive API not available");
-      return null;
-    }
-
     try {
-      console.log("Attempting to get email from Missive API...");
-      
-      // Try to get the current email/thread information
-      const currentEmail = await window.Missive.getCurrentEmail();
-      if (currentEmail) {
-        console.log("Got current email from Missive API:", currentEmail);
-        return this.extractEmailFromData(currentEmail);
+      if (window.Missive && Missive.getCurrentEmail) {
+        const emailData = await Missive.getCurrentEmail();
+        return this.extractEmailFromData(emailData);
       }
-
-      // Try to get thread information
-      const currentThread = await window.Missive.getCurrentThread();
-      if (currentThread) {
-        console.log("Got current thread from Missive API:", currentThread);
-        return this.extractEmailFromData(currentThread);
-      }
-
-      console.log("Could not get email from Missive API");
-      return null;
     } catch (error) {
       console.error("Error getting email from Missive API:", error);
-      return null;
     }
+    return null;
   }
 
   async performAutoSearch(email) {
-    console.log("Performing auto-search for email:", email);
+    if (!email || email === this.lastSearchedEmail) return;
     
-    if (!email || !email.trim()) {
-      console.log("No valid email provided for auto-search");
-      return;
-    }
-
+    this.lastSearchedEmail = email;
     this.showLoading();
-    console.log("Auto-searching for:", email);
-
+    
     try {
-      // Reset pagination
-      this.currentPage = 1;
-      this.allOrders = [];
-
-      // Search orders by email
       await this.searchOrdersByEmail(email);
     } catch (error) {
-      console.error("Auto-search error:", error);
-      this.showError(`Auto-search failed: ${error.message}`);
+      console.error("Auto-search failed:", error);
+      this.showError("Auto-search failed: " + error.message);
     }
   }
 }
 
 // Initialize the app and handle any errors
 try {
-  console.log("Starting application...");
-  console.log("App version: 2.0 - Customer Info Update");
+  console.log("Starting Miss-Woo application...");
   window.app = new MissWooApp();
-  
   // Ensure loading state is cleared after initialization
   setTimeout(() => {
     const loading = document.getElementById("loading");
