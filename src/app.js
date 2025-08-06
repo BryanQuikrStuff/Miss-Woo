@@ -462,34 +462,41 @@ class MissWooApp {
       // Check if the order has sales_order_rows with serial numbers
       if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
         console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
-        for (const row of katanaOrder.sales_order_rows) {
-          console.log(`Examining sales order row:`, row);
+        
+        // Check ALL sales order rows for serial numbers
+        for (let i = 0; i < katanaOrder.sales_order_rows.length; i++) {
+          const row = katanaOrder.sales_order_rows[i];
+          console.log(`Examining sales order row ${i + 1}:`, row);
+          
           if (row.serial_numbers && Array.isArray(row.serial_numbers) && row.serial_numbers.length > 0) {
-            console.log(`✅ Found serial numbers in sales order row:`, row.serial_numbers);
-            const numericSerial = row.serial_numbers[0];
+            console.log(`✅ Found serial numbers in sales order row ${i + 1}:`, row.serial_numbers);
             
-            // Debug: Show expected combination for order #26312
-            if (katanaOrder.order_no === '26312') {
-              console.log(`🎯 EXPECTED: Order #26312 should have combination "0211"`);
-            }
-            
-            // Get the formatted serial number
-            const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
-            if (formattedSerial) {
-              // Extract just the 4-digit combination
-              const combination = this.extractCombination(formattedSerial);
-              if (combination) {
-                console.log(`✅ Extracted combination ${combination} for order #${katanaOrder.order_no}`);
-                if (katanaOrder.order_no === '26312') {
-                  console.log(`🔍 COMPARISON: Got ${combination}, Expected 0211`);
+            // Check each serial number in this row
+            for (let j = 0; j < row.serial_numbers.length; j++) {
+              const numericSerial = row.serial_numbers[j];
+              console.log(`🔍 Checking serial number ${j + 1}: ${numericSerial}`);
+              
+              // Debug: Show expected combination for order #26312
+              if (katanaOrder.order_no === '26312') {
+                console.log(`🎯 EXPECTED: Order #26312 should have combination "0211"`);
+              }
+              
+              // Get the formatted serial number
+              const formattedSerial = await this.getFormattedSerialNumber(numericSerial);
+              if (formattedSerial) {
+                // Extract just the 4-digit combination
+                const combination = this.extractCombination(formattedSerial);
+                if (combination) {
+                  console.log(`✅ Extracted combination ${combination} for order #${katanaOrder.order_no} (row ${i + 1}, serial ${j + 1})`);
+                  if (katanaOrder.order_no === '26312') {
+                    console.log(`🔍 COMPARISON: Got ${combination}, Expected 0211`);
+                  }
+                  return combination;
                 }
-                return combination;
               }
             }
-            
-            // Fallback to numeric serial if formatted lookup fails
-            console.log(`Using numeric serial as fallback: ${numericSerial}`);
-            return numericSerial.toString();
+          } else {
+            console.log(`No serial numbers in row ${i + 1}`);
           }
         }
       } else {
