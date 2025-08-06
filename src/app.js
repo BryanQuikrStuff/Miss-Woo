@@ -363,33 +363,16 @@ class MissWooApp {
 
       console.log(`Found Katana order ID: ${katanaOrder.id} for WooCommerce order #${order.number}`);
 
-      // First, try to get serial numbers from the sales order details itself
+      // Try to get serial numbers from the sales order details itself
       const serialNumber = await this.getSerialNumberFromOrder(katanaOrder);
       if (serialNumber) {
         console.log(`Found serial number in order details for #${order.number}: ${serialNumber}`);
         return serialNumber;
       }
 
-      // Second, try to get serial numbers from line items
-      const serialNumberFromLineItems = await this.getSerialNumbersFromLineItems(katanaOrder.id);
-      if (serialNumberFromLineItems) {
-        console.log(`Found serial number in line items for #${order.number}: ${serialNumberFromLineItems}`);
-        return serialNumberFromLineItems;
-      }
-
-      // If not found in order details or line items, try the serial numbers endpoint
-      const serialNumbers = await this.getKatanaSerialNumbers(katanaOrder.id);
-      if (!serialNumbers || serialNumbers.length === 0) {
-        console.log(`No serial numbers found for Katana order #${katanaOrder.id}`);
-        return null;
-      }
-
-      console.log(`Found ${serialNumbers.length} serial numbers for order #${order.number}:`, serialNumbers);
-      
-      // Return the first serial number (or we could return all of them if needed)
-      const serialNumberFromList = serialNumbers[0];
-      console.log(`Selected serial number for order #${order.number}: ${serialNumberFromList}`);
-      return serialNumberFromList;
+      // If not found in order details, return null instead of using the problematic serial numbers endpoint
+      console.log(`No serial number found for order #${order.number}, returning null`);
+      return null;
     } catch (error) {
       console.error('Error getting serial number:', error);
       return null;
@@ -472,14 +455,21 @@ class MissWooApp {
     try {
       console.log(`Looking for serial numbers in Katana order details:`, katanaOrder);
       
+      // Log the complete order structure to understand the data
+      console.log(`Full Katana order structure for debugging:`, JSON.stringify(katanaOrder, null, 2));
+      
       // Check if the order has line items with serial numbers
       if (katanaOrder.line_items && Array.isArray(katanaOrder.line_items)) {
+        console.log(`Found line_items array with ${katanaOrder.line_items.length} items`);
         for (const lineItem of katanaOrder.line_items) {
+          console.log(`Examining line item:`, lineItem);
           if (lineItem.serial_numbers && Array.isArray(lineItem.serial_numbers) && lineItem.serial_numbers.length > 0) {
             console.log(`Found serial numbers in line item:`, lineItem.serial_numbers);
             return lineItem.serial_numbers[0]; // Return first serial number
           }
         }
+      } else {
+        console.log(`No line_items found in order`);
       }
       
       // Check if the order has a serial_numbers field directly
@@ -494,6 +484,15 @@ class MissWooApp {
         if (katanaOrder[field]) {
           console.log(`Found serial number in field ${field}:`, katanaOrder[field]);
           return katanaOrder[field];
+        }
+      }
+      
+      // Check all fields for any serial number patterns
+      console.log(`Checking all order fields for serial number patterns...`);
+      for (const [key, value] of Object.entries(katanaOrder)) {
+        if (typeof value === 'string' && value.match(/^\d+-\d+-\d+$/)) {
+          console.log(`Found potential serial number in field ${key}: ${value}`);
+          return value;
         }
       }
       
