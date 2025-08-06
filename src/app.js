@@ -370,7 +370,14 @@ class MissWooApp {
         return serialNumber;
       }
 
-      // If not found in order details, try the serial numbers endpoint
+      // Second, try to get serial numbers from line items
+      const serialNumberFromLineItems = await this.getSerialNumbersFromLineItems(katanaOrder.id);
+      if (serialNumberFromLineItems) {
+        console.log(`Found serial number in line items for #${order.number}: ${serialNumberFromLineItems}`);
+        return serialNumberFromLineItems;
+      }
+
+      // If not found in order details or line items, try the serial numbers endpoint
       const serialNumbers = await this.getKatanaSerialNumbers(katanaOrder.id);
       if (!serialNumbers || serialNumbers.length === 0) {
         console.log(`No serial numbers found for Katana order #${katanaOrder.id}`);
@@ -411,6 +418,13 @@ class MissWooApp {
       const katanaOrder = data.data?.[0] || null;
       if (katanaOrder) {
         console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
+        
+        // Try to get the full sales order with line items
+        const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
+        if (fullOrder) {
+          console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
+          return fullOrder;
+        }
       } else {
         console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
       }
@@ -418,6 +432,32 @@ class MissWooApp {
       return katanaOrder;
     } catch (error) {
       console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
+      return null;
+    }
+  }
+
+  async getKatanaOrderDetails(katanaOrderId) {
+    try {
+      const url = `${this.katanaApiBaseUrl}/sales_orders/${katanaOrderId}`;
+      console.log(`Fetching full Katana order details for ID ${katanaOrderId}:`, url);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.log(`Could not get full order details for ${katanaOrderId}, status: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log(`Full Katana order details for ID ${katanaOrderId}:`, data);
+      return data.data || data;
+    } catch (error) {
+      console.error(`Error fetching full Katana order details for ${katanaOrderId}:`, error);
       return null;
     }
   }
@@ -455,6 +495,47 @@ class MissWooApp {
       return null;
     } catch (error) {
       console.error('Error extracting serial number from order:', error);
+      return null;
+    }
+  }
+
+  async getSerialNumbersFromLineItems(katanaOrderId) {
+    try {
+      const url = `${this.katanaApiBaseUrl}/sales_orders/${katanaOrderId}/line_items`;
+      console.log(`Fetching line items for Katana order ID ${katanaOrderId}:`, url);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      console.log(`Line items API response status for Katana order ${katanaOrderId}:`, response.status);
+
+      if (!response.ok) {
+        console.log(`Could not get line items for ${katanaOrderId}, status: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log(`Line items data for Katana order ${katanaOrderId}:`, data);
+      
+      // Look for serial numbers in line items
+      const lineItems = data.data || data;
+      if (Array.isArray(lineItems)) {
+        for (const lineItem of lineItems) {
+          if (lineItem.serial_numbers && Array.isArray(lineItem.serial_numbers) && lineItem.serial_numbers.length > 0) {
+            console.log(`Found serial numbers in line item:`, lineItem.serial_numbers);
+            return lineItem.serial_numbers[0];
+          }
+        }
+      }
+      
+      console.log(`No serial numbers found in line items`);
+      return null;
+    } catch (error) {
+      console.error(`Error fetching line items for order ${katanaOrderId}:`, error);
       return null;
     }
   }
