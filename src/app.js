@@ -28,24 +28,13 @@ class MissWooApp {
   }
 
   detectMissiveEnvironment() {
-    // Multiple detection methods for Missive environment
-    const checks = [
-      // Check if Missive API is available
-      typeof window !== 'undefined' && window.Missive,
-      // Check if we're in an iframe (common for Missive)
-      typeof window !== 'undefined' && window.self !== window.top,
-      // Check for Missive-specific URL patterns
-      typeof window !== 'undefined' && window.location.href.includes('missive'),
-      // Check for Missive iframe script - but don't rely on this alone
-      false // Removed this check as it was causing false positives
-    ];
+    // Simplified detection - only check for actual Missive API
+    const isMissive = typeof window !== 'undefined' && window.Missive;
     
-    const isMissive = checks.some(check => check);
     console.log("Missive environment detection:", {
       windowMissive: typeof window !== 'undefined' && window.Missive,
       inIframe: typeof window !== 'undefined' && window.self !== window.top,
       urlContainsMissive: typeof window !== 'undefined' && window.location.href.includes('missive'),
-      hasMissiveScript: false, // Removed this check
       finalResult: isMissive
     });
     
@@ -56,6 +45,9 @@ class MissWooApp {
     console.log("Initializing Miss-Woo application...");
     console.log(`Environment: ${this.isMissiveEnvironment ? 'Missive' : 'Web'}`);
     console.log(`Auto-search: ${this.autoSearchEnabled ? 'Enabled' : 'Disabled'}`);
+    
+    // Clear loading state immediately at start
+    this.hideLoading();
     
     try {
       await this.bindEvents();
@@ -77,6 +69,7 @@ class MissWooApp {
     
     // Fallback: Ensure loading is cleared after a timeout
     setTimeout(() => {
+      console.log("Fallback: Clearing loading state after timeout");
       this.hideLoading();
     }, 3000);
   }
