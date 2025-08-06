@@ -19,13 +19,38 @@ class MissWooApp {
     // Store all matched orders
     this.allOrders = [];
     
-    // Auto-search configuration - detect Missive environment
-    this.isMissiveEnvironment = typeof window !== 'undefined' && window.Missive;
+    // Auto-search configuration - detect Missive environment with multiple checks
+    this.isMissiveEnvironment = this.detectMissiveEnvironment();
     this.autoSearchEnabled = this.isMissiveEnvironment; // Enable auto-search only in Missive
     this.lastSearchedEmail = null; // Prevent duplicate searches
     
     // Initialize after constructor
     this.initialize();
+  }
+
+  detectMissiveEnvironment() {
+    // Multiple detection methods for Missive environment
+    const checks = [
+      // Check if Missive API is available
+      typeof window !== 'undefined' && window.Missive,
+      // Check if we're in an iframe (common for Missive)
+      typeof window !== 'undefined' && window.self !== window.top,
+      // Check for Missive-specific URL patterns
+      typeof window !== 'undefined' && window.location.href.includes('missive'),
+      // Check for Missive iframe script
+      typeof window !== 'undefined' && document.querySelector('script[src*="missive.com"]')
+    ];
+    
+    const isMissive = checks.some(check => check);
+    console.log("Missive environment detection:", {
+      windowMissive: typeof window !== 'undefined' && window.Missive,
+      inIframe: typeof window !== 'undefined' && window.self !== window.top,
+      urlContainsMissive: typeof window !== 'undefined' && window.location.href.includes('missive'),
+      hasMissiveScript: typeof window !== 'undefined' && document.querySelector('script[src*="missive.com"]'),
+      finalResult: isMissive
+    });
+    
+    return isMissive;
   }
 
   async initialize() {
@@ -58,27 +83,7 @@ class MissWooApp {
       }
 
       // Configure UI based on environment
-      if (this.isMissiveEnvironment) {
-        // Missive environment: Hide search UI and show auto-search indicator
-        if (searchBtn) searchBtn.style.display = 'none';
-        if (searchInput) searchInput.style.display = 'none';
-        const searchSection = document.querySelector('.search-section');
-        if (searchSection) {
-          searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused in Missive</div>';
-        }
-      } else {
-        // Web environment: Show manual search UI
-        if (searchBtn) {
-          searchBtn.addEventListener("click", () => this.handleSearch());
-          searchBtn.style.display = 'block';
-        }
-        if (searchInput) {
-          searchInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") this.handleSearch();
-          });
-          searchInput.style.display = 'block';
-        }
-      }
+      this.updateUIForEnvironment();
 
       console.log("Events bound successfully");
     } catch (error) {
@@ -695,8 +700,63 @@ class MissWooApp {
     if (window.Missive) {
       console.log("Missive detected, setting up integration...");
       this.setupMissiveEventListeners();
+      // Re-check environment after Missive is ready
+      this.recheckMissiveEnvironment();
     } else {
       console.log("Missive not detected, running in standalone mode");
+      // Try to detect Missive after a delay in case it loads later
+      setTimeout(() => {
+        if (window.Missive && !this.isMissiveEnvironment) {
+          console.log("Missive detected after delay, updating environment...");
+          this.isMissiveEnvironment = true;
+          this.autoSearchEnabled = true;
+          this.updateUIForEnvironment();
+          this.setupMissiveEventListeners();
+        }
+      }, 2000);
+    }
+  }
+
+  recheckMissiveEnvironment() {
+    // Re-check environment after a short delay
+    setTimeout(() => {
+      const wasMissive = this.isMissiveEnvironment;
+      this.isMissiveEnvironment = this.detectMissiveEnvironment();
+      
+      if (this.isMissiveEnvironment !== wasMissive) {
+        console.log(`Environment changed: ${wasMissive ? 'Missive' : 'Web'} -> ${this.isMissiveEnvironment ? 'Missive' : 'Web'}`);
+        this.autoSearchEnabled = this.isMissiveEnvironment;
+        this.updateUIForEnvironment();
+      }
+    }, 1000);
+  }
+
+  updateUIForEnvironment() {
+    const searchBtn = document.getElementById("searchBtn");
+    const searchInput = document.getElementById("orderSearch");
+    const searchSection = document.querySelector('.search-section');
+
+    if (this.isMissiveEnvironment) {
+      // Missive environment: Hide search UI and show auto-search indicator
+      if (searchBtn) searchBtn.style.display = 'none';
+      if (searchInput) searchInput.style.display = 'none';
+      if (searchSection) {
+        searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused in Missive</div>';
+      }
+    } else {
+      // Web environment: Show manual search UI
+      if (searchBtn) {
+        searchBtn.style.display = 'block';
+        // Re-bind event listeners
+        searchBtn.onclick = () => this.handleSearch();
+      }
+      if (searchInput) {
+        searchInput.style.display = 'block';
+        // Re-bind event listeners
+        searchInput.onkeypress = (e) => {
+          if (e.key === "Enter") this.handleSearch();
+        };
+      }
     }
   }
 
