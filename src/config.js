@@ -12,4 +12,5 @@ const config = {
     }
 };
 
-export default config;
+// Make config available globally
+window.config = config;

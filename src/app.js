@@ -1,20 +1,19 @@
 // Miss-Woo Frontend Application
 // VERSION 2.0 - Clean and Optimized
-import config from './config.js';
 
 class MissWooApp {
   constructor() {
     console.log("🚀 Miss-Woo v2.0 - Clean and Optimized 🚀");
     
     // WooCommerce REST API v3 endpoint
-    this.apiBaseUrl = config.woocommerce.apiBaseUrl;
-    this.consumerKey = config.woocommerce.consumerKey;
-    this.consumerSecret = config.woocommerce.consumerSecret;
-    this.siteUrl = config.woocommerce.siteUrl;
+    this.apiBaseUrl = window.config.woocommerce.apiBaseUrl;
+    this.consumerKey = window.config.woocommerce.consumerKey;
+    this.consumerSecret = window.config.woocommerce.consumerSecret;
+    this.siteUrl = window.config.woocommerce.siteUrl;
     
     // Katana MRP API endpoint
-    this.katanaApiBaseUrl = config.katana.apiBaseUrl;
-    this.katanaApiKey = config.katana.apiKey;
+    this.katanaApiBaseUrl = window.config.katana.apiBaseUrl;
+    this.katanaApiKey = window.config.katana.apiKey;
     
     // Store all matched orders
     this.allOrders = [];
@@ -37,8 +36,8 @@ class MissWooApp {
       typeof window !== 'undefined' && window.self !== window.top,
       // Check for Missive-specific URL patterns
       typeof window !== 'undefined' && window.location.href.includes('missive'),
-      // Check for Missive iframe script
-      typeof window !== 'undefined' && document.querySelector('script[src*="missive.com"]')
+      // Check for Missive iframe script - but don't rely on this alone
+      false // Removed this check as it was causing false positives
     ];
     
     const isMissive = checks.some(check => check);
@@ -46,7 +45,7 @@ class MissWooApp {
       windowMissive: typeof window !== 'undefined' && window.Missive,
       inIframe: typeof window !== 'undefined' && window.self !== window.top,
       urlContainsMissive: typeof window !== 'undefined' && window.location.href.includes('missive'),
-      hasMissiveScript: typeof window !== 'undefined' && document.querySelector('script[src*="missive.com"]'),
+      hasMissiveScript: false, // Removed this check
       finalResult: isMissive
     });
     
@@ -781,6 +780,9 @@ class MissWooApp {
     Missive.on("email:focus", (data) => this.handleEmailFocus(data));
     Missive.on("email:open", (data) => this.handleEmailOpen(data));
     Missive.on("thread:focus", (data) => this.handleThreadFocus(data));
+    
+    // Add conversation change listener for better auto-search
+    Missive.on("change:conversations", (data) => this.handleConversationChange(data));
   }
 
   async handleEmailFocus(data) {
@@ -808,6 +810,17 @@ class MissWooApp {
       const email = this.extractEmailFromData(data);
       if (email && email !== this.lastSearchedEmail) {
         console.log("Thread focused, auto-searching:", email);
+        await this.performAutoSearch(email);
+      }
+    }
+  }
+
+  async handleConversationChange(data) {
+    if (this.autoSearchEnabled) {
+      console.log("Conversation changed:", data);
+      const email = this.extractEmailFromData(data);
+      if (email && email !== this.lastSearchedEmail) {
+        console.log("Conversation change detected, auto-searching:", email);
         await this.performAutoSearch(email);
       }
     }
