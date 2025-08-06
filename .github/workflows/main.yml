@@ -54,7 +54,10 @@ jobs:
         
         # Copy static files
         cp index.html dist/
-        cp -r src dist/
+        cp src/app.js dist/
+        cp src/styles.css dist/
+        cp src/woocommerce.js dist/
+        cp src/tracking.js dist/
         
         # Create version file
         echo "{\"version\": \"$(date +%Y%m%d.%H%M%S)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
