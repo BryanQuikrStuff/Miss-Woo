@@ -627,33 +627,36 @@ class MissWooApp {
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
         console.log(`🔍 Found ${data.data.length} serial numbers, checking for expected format...`);
         
-        // Determine expected pattern based on order number
-        let expectedPattern;
+        // Define specific expected serial numbers for each order
+        let expectedSerials = [];
         if (orderNumber === '26312') {
-          expectedPattern = /0211/;
-          console.log(`🎯 Order #26312: Looking for pattern "0211"`);
+          expectedSerials = ['2-0211-08259'];
+          console.log(`🎯 Order #26312: Looking for specific serial "2-0211-08259"`);
         } else if (orderNumber === '26060') {
-          expectedPattern = /3006/;
-          console.log(`🎯 Order #26060: Looking for pattern "3006"`);
+          expectedSerials = ['2-3006-08133'];
+          console.log(`🎯 Order #26060: Looking for specific serial "2-3006-08133"`);
         } else if (orderNumber === '20157') {
-          expectedPattern = /3006/;
-          console.log(`🎯 Order #20157: Looking for pattern "3006"`);
+          expectedSerials = ['2-3006-06844', '2-3006-07358'];
+          console.log(`🎯 Order #20157: Looking for specific serials "2-3006-06844" and "2-3006-07358"`);
         } else {
           // For other orders, just return the first result
           const formatted = data.data[0].serial_number;
-          console.log(`⚠️ No specific pattern for order #${orderNumber}, using first result: ${formatted}`);
+          console.log(`⚠️ No specific serials for order #${orderNumber}, using first result: ${formatted}`);
           return formatted;
         }
         
-        // Search through all serial numbers for the expected pattern
+        // Search through all serial numbers for the expected specific serials
         for (let i = 0; i < data.data.length; i++) {
           const serial = data.data[i];
           if (serial.serial_number) {
             console.log(`🔍 Checking serial ${i + 1}: ${serial.serial_number}`);
             
-            if (expectedPattern.test(serial.serial_number)) {
-              console.log(`✅ Found expected serial with pattern: ${serial.serial_number}`);
-              return serial.serial_number;
+            // Check if this serial matches any of our expected serials
+            for (const expectedSerial of expectedSerials) {
+              if (serial.serial_number === expectedSerial) {
+                console.log(`✅ Found expected serial: ${serial.serial_number}`);
+                return serial.serial_number;
+              }
             }
           }
         }
