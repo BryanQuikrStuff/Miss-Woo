@@ -23,6 +23,9 @@ class MissWooApp {
     this.autoSearchEnabled = this.isMissiveEnvironment; // Enable auto-search only in Missive
     this.lastSearchedEmail = null; // Prevent duplicate searches
     
+    // Clear loading state immediately in constructor
+    this.hideLoading();
+    
     // Initialize after constructor
     this.initialize();
   }
@@ -67,11 +70,21 @@ class MissWooApp {
       this.hideLoading();
     }
     
-    // Fallback: Ensure loading is cleared after a timeout
+    // Multiple fallbacks: Ensure loading is cleared after timeouts
     setTimeout(() => {
-      console.log("Fallback: Clearing loading state after timeout");
+      console.log("Fallback 1: Clearing loading state after 1 second");
+      this.hideLoading();
+    }, 1000);
+    
+    setTimeout(() => {
+      console.log("Fallback 2: Clearing loading state after 3 seconds");
       this.hideLoading();
     }, 3000);
+    
+    setTimeout(() => {
+      console.log("Fallback 3: Clearing loading state after 5 seconds");
+      this.hideLoading();
+    }, 5000);
   }
 
   async bindEvents() {
@@ -686,8 +699,21 @@ class MissWooApp {
   }
 
   hideLoading() {
+    console.log("hideLoading() called");
     const loading = document.getElementById("loading");
-    if (loading) loading.classList.add("hidden");
+    if (loading) {
+      loading.classList.add("hidden");
+      console.log("Loading element hidden");
+    } else {
+      console.log("Loading element not found");
+    }
+    
+    // Also try to hide any visible loading elements directly
+    const allLoadingElements = document.querySelectorAll('.loading');
+    allLoadingElements.forEach(el => {
+      el.classList.add("hidden");
+      console.log("Hidden loading element:", el);
+    });
   }
 
   showError(message) {
