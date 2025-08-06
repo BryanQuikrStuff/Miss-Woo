@@ -4,11 +4,43 @@ A WooCommerce integration app for Missive that provides order management and tra
 
 ## Features
 
-- 🔍 **Order Search**: Search orders by ID or customer email
+- 🔍 **Automatic Order Search**: Automatically searches for orders when customer emails are focused
 - 📦 **Tracking Information**: Automatic tracking number extraction and carrier detection
 - 📊 **Order Management**: View order details, status, and customer information
 - 🔗 **WooCommerce Integration**: Direct links to WooCommerce admin
 - 📱 **Missive Ready**: Optimized for Missive iframe sidebar
+- ⚡ **Smart Debouncing**: Prevents excessive API calls with intelligent debouncing
+
+## Automatic Search Feature
+
+The app now includes automatic search functionality that triggers when:
+
+1. **Email Focus**: When a customer email is focused in Missive
+2. **Email Open**: When a customer email is opened
+3. **Thread Focus**: When a thread containing customer emails is focused
+
+### How It Works
+
+- The app listens for Missive events (`email:focus`, `email:open`, `thread:focus`)
+- Extracts customer email addresses from the email data
+- Automatically searches WooCommerce for matching orders
+- Displays results without requiring manual input
+- Prevents duplicate searches for the same email
+- Uses debouncing to avoid excessive API calls
+
+### Configuration
+
+The automatic search can be enabled/disabled by modifying the `autoSearchEnabled` flag in the app:
+
+```javascript
+// In src/app.js constructor
+this.autoSearchEnabled = true; // Set to false to disable auto-search
+```
+
+When auto-search is enabled:
+- The search button and input field are hidden
+- An indicator shows that auto-search is active
+- Manual search is still available if needed
 
 ## Setup
 
@@ -36,7 +68,7 @@ npm test
 
 The frontend application is static and consists of:
 - `index.html` - Main entry point for Missive iframe
-- `src/app.js` - Frontend application logic
+- `src/app.js` - Frontend application logic with automatic search
 - `src/styles.css` - Clean, responsive styling
 - `src/woocommerce.js` - WooCommerce API integration
 - `src/tracking.js` - Order tracking functionality
@@ -54,11 +86,11 @@ this.apiBaseUrl = 'https://your-woocommerce-site.com/wp-json/wc/v3';
 ```
 Miss-Woo/
 ├── .github/          # GitHub Actions configuration
-├── __tests__/        # Test files
+├── __tests__/        # Test files including auto-search tests
 ├── config/           # API configuration
 ├── src/             # Source files
-│   ├── app.js       # Main application logic
-│   ├── styles.css   # Styles
+│   ├── app.js       # Main application logic with auto-search
+│   ├── styles.css   # Styles including auto-search indicator
 │   ├── tracking.js  # Tracking functionality
 │   └── woocommerce.js # WooCommerce API integration
 ├── .env             # Environment variables (not in git)
@@ -77,8 +109,15 @@ Miss-Woo/
 
 ## Available Features
 
+### Automatic Order Management
+- **Auto-search on email focus**: Searches for orders when customer emails are focused
+- **Email extraction**: Intelligently extracts customer emails from various data sources
+- **Debounced search**: Prevents excessive API calls with 500ms debouncing
+- **Duplicate prevention**: Avoids searching the same email multiple times
+- **Manual override**: Still allows manual search when needed
+
 ### Order Management
-- Search orders by ID or email
+- Search orders by ID or email (manual mode)
 - View recent orders
 - Track order status
 - View customer information
@@ -115,11 +154,39 @@ Miss-Woo/
    - Write tests for new features
    - Run tests before commits
    - Maintain test coverage
+   - Test auto-search functionality with `npm test`
 
 3. **Git Workflow**
    - Use feature branches
    - Follow conventional commits
    - Keep PRs focused and small
+
+## Troubleshooting
+
+### Auto-Search Issues
+
+1. **Auto-search not working**:
+   - Check browser console for errors
+   - Verify Missive API is available (`window.Missive`)
+   - Ensure email extraction is working
+
+2. **Too many API calls**:
+   - Check debouncing is working (500ms delay)
+   - Verify duplicate prevention is active
+   - Monitor network tab for excessive requests
+
+3. **Email not found**:
+   - Check email extraction logic
+   - Verify Missive event data structure
+   - Test with different email formats
+
+### General Issues
+
+For issues or questions:
+1. Check the console logs
+2. Verify WooCommerce API credentials
+3. Ensure proper environment configuration
+4. Test API connectivity
 
 ## Support
 
