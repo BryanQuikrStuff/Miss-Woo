@@ -19,8 +19,9 @@ class MissWooApp {
     // Store all matched orders
     this.allOrders = [];
     
-    // Auto-search configuration
-    this.autoSearchEnabled = false; // Set to false for local testing
+    // Auto-search configuration - detect Missive environment
+    this.isMissiveEnvironment = typeof window !== 'undefined' && window.Missive;
+    this.autoSearchEnabled = this.isMissiveEnvironment; // Enable auto-search only in Missive
     this.lastSearchedEmail = null; // Prevent duplicate searches
     
     // Initialize after constructor
@@ -29,11 +30,14 @@ class MissWooApp {
 
   async initialize() {
     console.log("Initializing Miss-Woo application...");
+    console.log(`Environment: ${this.isMissiveEnvironment ? 'Missive' : 'Web'}`);
+    console.log(`Auto-search: ${this.autoSearchEnabled ? 'Enabled' : 'Disabled'}`);
+    
     try {
       await this.bindEvents();
       await this.initializeMissive();
       // Only test connection if not in Missive environment
-      if (!window.Missive) {
+      if (!this.isMissiveEnvironment) {
         await this.testConnection();
       }
       console.log("Application initialized successfully");
@@ -53,19 +57,26 @@ class MissWooApp {
         throw new Error("Required DOM elements not found");
       }
 
-      // Only bind search button if auto-search is disabled
-      if (searchBtn && !this.autoSearchEnabled) {
-        searchBtn.addEventListener("click", () => this.handleSearch());
-        searchInput.addEventListener("keypress", (e) => {
-          if (e.key === "Enter") this.handleSearch();
-        });
-      } else if (searchBtn && this.autoSearchEnabled) {
-        // Hide search button when auto-search is enabled
-        searchBtn.style.display = 'none';
-        searchInput.style.display = 'none';
+      // Configure UI based on environment
+      if (this.isMissiveEnvironment) {
+        // Missive environment: Hide search UI and show auto-search indicator
+        if (searchBtn) searchBtn.style.display = 'none';
+        if (searchInput) searchInput.style.display = 'none';
         const searchSection = document.querySelector('.search-section');
         if (searchSection) {
-          searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused</div>';
+          searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused in Missive</div>';
+        }
+      } else {
+        // Web environment: Show manual search UI
+        if (searchBtn) {
+          searchBtn.addEventListener("click", () => this.handleSearch());
+          searchBtn.style.display = 'block';
+        }
+        if (searchInput) {
+          searchInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") this.handleSearch();
+          });
+          searchInput.style.display = 'block';
         }
       }
 
