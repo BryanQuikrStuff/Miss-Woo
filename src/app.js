@@ -352,7 +352,7 @@ class MissWooApp {
 
   async getSerialNumber(order) {
     try {
-      console.log(`🚀 VERSION 7.0 - MULTIPLE SERIAL NUMBERS & DYNAMIC SEARCH 🚀`);
+      console.log(`🚀 VERSION 10.0 - SPECIFIC SERIAL NUMBER SEARCH 🚀`);
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
       // Get the Katana sales order that matches this WooCommerce order
