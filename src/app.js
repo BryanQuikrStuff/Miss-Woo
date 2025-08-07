@@ -5,10 +5,14 @@ class MissWooApp {
   constructor() {
     try {
       // Initialize API endpoints
-      this.apiBaseUrl = window.config?.woocommerce?.api_url;
-      this.consumerKey = window.config?.woocommerce?.consumer_key;
-      this.consumerSecret = window.config?.woocommerce?.consumer_secret;
-      this.siteUrl = window.config?.woocommerce?.site_url;
+      this.apiBaseUrl = window.config?.woocommerce?.apiBaseUrl;
+      this.consumerKey = window.config?.woocommerce?.consumerKey;
+      this.consumerSecret = window.config?.woocommerce?.consumerSecret;
+      this.siteUrl = window.config?.woocommerce?.siteUrl;
+      
+      // Katana MRP API configuration
+      this.katanaApiBaseUrl = window.config?.katana?.apiBaseUrl;
+      this.katanaApiKey = window.config?.katana?.apiKey;
       
       // Validate required configuration
       if (!this.apiBaseUrl || !this.consumerKey || !this.consumerSecret) {
@@ -24,6 +28,9 @@ class MissWooApp {
       this.emailCache = new Map();
       this.searchDebounceTimer = null;
       this.visibleEmails = new Set();
+      
+      // Store all matched orders
+      this.allOrders = [];
       
       // Cache-busting for Missive (10-minute cache workaround)
       this.cacheBuster = Date.now();
@@ -43,7 +50,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2031';
+    return 'V2032';
   }
 
   detectMissiveEnvironment() {
