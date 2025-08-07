@@ -32,8 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    const timestamp = Date.now().toString().slice(-4); // Last 4 digits of timestamp
-    return `v${timestamp}`; // Simple version number for cache-busting
+    return 'v2018'; // Static version matching cache-busting parameter
   }
 
   detectMissiveEnvironment() {
