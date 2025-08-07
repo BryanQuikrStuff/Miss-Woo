@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2039';
+    return 'V2040';
   }
 
   detectMissiveEnvironment() {
@@ -988,7 +988,11 @@ class MissWooApp {
   }
 
   setupMissiveEventListeners() {
-    if (!window.Missive) return;
+    if (!window.Missive) {
+      console.log("🔧 Missive API not available, setting up fallback DOM observation...");
+      this.setupFallbackAutoSearch();
+      return;
+    }
 
     console.log("🔧 Setting up Missive event listeners...");
 
@@ -1068,6 +1072,66 @@ class MissWooApp {
         setTimeout(() => this.tryGetCurrentEmail(), 500);
       }
     });
+  }
+
+  setupFallbackAutoSearch() {
+    console.log("🔧 Setting up fallback auto-search using DOM observation...");
+    
+    // Use MutationObserver to detect when emails are focused
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          // Check if an email element is focused
+          const focusedEmail = document.querySelector('.email-item.focused, .thread-item.focused, [data-email].focused');
+          if (focusedEmail) {
+            console.log("📧 Fallback: Email focused detected via DOM");
+            this.handleFallbackEmailFocus(focusedEmail);
+          }
+        }
+      });
+    });
+    
+    // Observe the entire document for class changes
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+      subtree: true
+    });
+    
+    // Also listen for click events on email elements
+    document.addEventListener('click', (event) => {
+      const emailElement = event.target.closest('[data-email], .email-item, .thread-item');
+      if (emailElement) {
+        console.log("📧 Fallback: Email clicked detected");
+        this.handleFallbackEmailFocus(emailElement);
+      }
+    });
+    
+    console.log("✅ Fallback auto-search observers set up");
+  }
+
+  handleFallbackEmailFocus(emailElement) {
+    console.log("📧 Fallback email focus handler:", emailElement);
+    
+    // Try to extract email from various data attributes
+    let email = emailElement.getAttribute('data-email') || 
+                emailElement.getAttribute('data-sender') ||
+                emailElement.getAttribute('data-recipient');
+    
+    // If no email in attributes, try to extract from text content
+    if (!email) {
+      const textContent = emailElement.textContent || emailElement.innerText;
+      email = this.extractEmailFromString(textContent);
+    }
+    
+    console.log("📧 Fallback extracted email:", email);
+    
+    if (email && this.isValidEmailForSearch(email)) {
+      console.log("🔍 Fallback auto-searching:", email);
+      this.performAutoSearch(email);
+    } else {
+      console.log("❌ Fallback: No valid email found");
+    }
   }
 
   async tryGetCurrentEmail() {
