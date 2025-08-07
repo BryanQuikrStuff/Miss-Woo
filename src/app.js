@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2023'; // Static version matching cache-busting parameter
+    return 'V2024'; // Static version matching cache-busting parameter
   }
 
   detectMissiveEnvironment() {
@@ -1068,14 +1068,6 @@ class MissWooApp {
     return null;
   }
 
-  extractEmailFromString(text) {
-
-  isValidEmailForSearch(email) {
-    if (!email || typeof email !== "string") return false;
-    
-    // Filter out @QuikrStuff.com emails
-    if (email.toLowerCase().includes("@quikrstuff.com")) {
-      console.log(`Filtered out QuikrStuff email: ${email}`);
       return false;
     }
     
@@ -1120,10 +1112,6 @@ class MissWooApp {
       console.error("Auto-search failed:", error);
       this.showError("Auto-search failed: " + error.message);
     }
-  }      console.error("Auto-search failed:", error);
-      this.showError("Auto-search failed: " + error.message);
-    }
-  }
 }
 
 // Initialize the app and handle any errors
