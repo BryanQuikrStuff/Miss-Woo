@@ -3,37 +3,47 @@
 
 class MissWooApp {
   constructor() {
-    // Initialize API endpoints
-    this.apiBaseUrl = window.config.woocommerce.api_url;
-    this.consumerKey = window.config.woocommerce.consumer_key;
-    this.consumerSecret = window.config.woocommerce.consumer_secret;
-    this.siteUrl = window.config.woocommerce.site_url;
-    
-    // Environment detection
-    this.isMissiveEnvironment = this.detectMissiveEnvironment();
-    this.autoSearchEnabled = this.isMissiveEnvironment;
-    
-    // Search state
-    this.lastSearchedEmail = null;
-    this.emailCache = new Map();
-    this.searchDebounceTimer = null;
-    this.visibleEmails = new Set();
-    
-    // Cache-busting for Missive (10-minute cache workaround)
-    this.cacheBuster = Date.now();
-    
-    // CORS headers for better Missive integration
-    this.corsHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
-    
-    this.hideLoading();
-    this.initialize();
+    try {
+      // Initialize API endpoints
+      this.apiBaseUrl = window.config?.woocommerce?.api_url;
+      this.consumerKey = window.config?.woocommerce?.consumer_key;
+      this.consumerSecret = window.config?.woocommerce?.consumer_secret;
+      this.siteUrl = window.config?.woocommerce?.site_url;
+      
+      // Validate required configuration
+      if (!this.apiBaseUrl || !this.consumerKey || !this.consumerSecret) {
+        throw new Error("Missing required WooCommerce configuration");
+      }
+      
+      // Environment detection
+      this.isMissiveEnvironment = this.detectMissiveEnvironment();
+      this.autoSearchEnabled = this.isMissiveEnvironment;
+      
+      // Search state
+      this.lastSearchedEmail = null;
+      this.emailCache = new Map();
+      this.searchDebounceTimer = null;
+      this.visibleEmails = new Set();
+      
+      // Cache-busting for Missive (10-minute cache workaround)
+      this.cacheBuster = Date.now();
+      
+      // CORS headers for better Missive integration
+      this.corsHeaders = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      this.hideLoading();
+      this.initialize();
+    } catch (error) {
+      console.error("Failed to initialize MissWooApp:", error);
+      this.showError(`Configuration error: ${error.message}`);
+    }
   }
 
   getVersion() {
-    return 'V2029';
+    return 'V2030';
   }
 
   detectMissiveEnvironment() {
@@ -252,17 +262,31 @@ class MissWooApp {
   }
 
   getAuthenticatedUrl(endpoint, params = {}) {
-    const url = new URL(this.apiBaseUrl + endpoint);
-    url.searchParams.set('consumer_key', this.consumerKey);
-    url.searchParams.set('consumer_secret', this.consumerSecret);
+    // Ensure we have a valid base URL
+    if (!this.apiBaseUrl) {
+      throw new Error("API base URL is not configured");
+    }
     
-    // Add additional parameters
-    Object.entries(params).forEach(([key, value]) => {
-      url.searchParams.set(key, value);
-    });
+    // Ensure the base URL ends with a slash for proper concatenation
+    const baseUrl = this.apiBaseUrl.endsWith('/') ? this.apiBaseUrl : this.apiBaseUrl + '/';
+    const fullUrl = baseUrl + endpoint.replace(/^\//, ''); // Remove leading slash if present
     
-    console.log("Generated URL:", url.toString());
-    return url.toString();
+    try {
+      const url = new URL(fullUrl);
+      url.searchParams.set('consumer_key', this.consumerKey);
+      url.searchParams.set('consumer_secret', this.consumerSecret);
+      
+      // Add additional parameters
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+      });
+      
+      console.log("Generated URL:", url.toString());
+      return url.toString();
+    } catch (error) {
+      console.error("Failed to construct URL:", error);
+      throw new Error(`Invalid URL construction: ${error.message}`);
+    }
   }
 
   async makeRequest(url, options = {}) {
