@@ -766,30 +766,55 @@ class MissWooApp {
   }
 
   updateUIForEnvironment() {
-    const searchBtn = document.getElementById("searchBtn");
-    const searchInput = document.getElementById("orderSearch");
     const searchSection = document.querySelector('.search-section');
 
     if (this.isMissiveEnvironment) {
-      // Missive environment: Hide search UI and show auto-search indicator
-      if (searchBtn) searchBtn.style.display = 'none';
-      if (searchInput) searchInput.style.display = 'none';
+      // Missive environment: Show auto-search indicator with manual fallback
       if (searchSection) {
-        searchSection.innerHTML = '<div class="auto-search-indicator">🔍 Auto-search enabled - searching when email is focused in Missive</div>';
+        searchSection.innerHTML = `
+          <div class="auto-search-indicator" style="background: #e8f5e8; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+            🔍 <strong>Auto-search enabled</strong> - searching when email is focused in Missive
+            <br><small>If auto-search doesn't work, use manual search below</small>
+          </div>
+          <div class="manual-search-fallback">
+            <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
+            <button id="searchBtn" class="search-btn">Search</button>
+          </div>
+        `;
+        
+        // Re-bind event listeners for the new elements
+        const newSearchBtn = document.getElementById("searchBtn");
+        const newSearchInput = document.getElementById("orderSearch");
+        
+        if (newSearchBtn) {
+          newSearchBtn.onclick = () => this.handleSearch();
+        }
+        if (newSearchInput) {
+          newSearchInput.onkeypress = (e) => {
+            if (e.key === "Enter") this.handleSearch();
+          };
+        }
       }
     } else {
-      // Web environment: Show manual search UI
-      if (searchBtn) {
-        searchBtn.style.display = 'block';
+      // Web environment: Show manual search UI only
+      if (searchSection) {
+        searchSection.innerHTML = `
+          <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
+          <button id="searchBtn" class="search-btn">Search</button>
+        `;
+        
         // Re-bind event listeners
-        searchBtn.onclick = () => this.handleSearch();
-      }
-      if (searchInput) {
-        searchInput.style.display = 'block';
-        // Re-bind event listeners
-        searchInput.onkeypress = (e) => {
-          if (e.key === "Enter") this.handleSearch();
-        };
+        const searchBtn = document.getElementById("searchBtn");
+        const searchInput = document.getElementById("orderSearch");
+        
+        if (searchBtn) {
+          searchBtn.onclick = () => this.handleSearch();
+        }
+        if (searchInput) {
+          searchInput.onkeypress = (e) => {
+            if (e.key === "Enter") this.handleSearch();
+          };
+        }
       }
     }
   }
@@ -797,22 +822,114 @@ class MissWooApp {
   setupMissiveEventListeners() {
     if (!window.Missive) return;
 
+    console.log("Setting up Missive event listeners...");
+
     Missive.on("ready", () => {
-      console.log("Missive ready");
+      console.log("Missive ready - attempting to get current email");
       this.hideLoading();
+      
+      // Try to get current email immediately when Missive is ready
+      this.tryGetCurrentEmail();
+      
+      // Also try after a short delay in case the API isn't ready yet
+      setTimeout(() => this.tryGetCurrentEmail(), 1000);
     });
 
     Missive.on("error", (error) => {
       console.error("Missive error:", error);
     });
 
-    // Set up auto-search for email focus
-    Missive.on("email:focus", (data) => this.handleEmailFocus(data));
-    Missive.on("email:open", (data) => this.handleEmailOpen(data));
-    Missive.on("thread:focus", (data) => this.handleThreadFocus(data));
+    // Set up auto-search for email focus with more aggressive event handling
+    Missive.on("email:focus", (data) => {
+      console.log("Missive email:focus event:", data);
+      this.handleEmailFocus(data);
+    });
+    
+    Missive.on("email:open", (data) => {
+      console.log("Missive email:open event:", data);
+      this.handleEmailOpen(data);
+    });
+    
+    Missive.on("thread:focus", (data) => {
+      console.log("Missive thread:focus event:", data);
+      this.handleThreadFocus(data);
+    });
     
     // Add conversation change listener for better auto-search
-    Missive.on("change:conversations", (data) => this.handleConversationChange(data));
+    Missive.on("change:conversations", (data) => {
+      console.log("Missive change:conversations event:", data);
+      this.handleConversationChange(data);
+    });
+    
+    // Additional events for better coverage
+    Missive.on("conversation:focus", (data) => {
+      console.log("Missive conversation:focus event:", data);
+      this.handleConversationChange(data);
+    });
+    
+    Missive.on("conversation:open", (data) => {
+      console.log("Missive conversation:open event:", data);
+      this.handleConversationChange(data);
+    });
+    
+    // Try to get current email periodically in case events don't fire
+    setInterval(() => {
+      if (this.isMissiveEnvironment && this.autoSearchEnabled) {
+        console.log("Periodic check for current email...");
+        this.tryGetCurrentEmail();
+      }
+    }, 5000); // Check every 5 seconds
+  }
+
+  async tryGetCurrentEmail() {
+    try {
+      console.log("Trying to get current email from Missive API...");
+      
+      // Try multiple methods to get the current email
+      let email = null;
+      
+      // Method 1: Try Missive.getCurrentEmail() if available
+      if (window.Missive && Missive.getCurrentEmail) {
+        try {
+          const emailData = await Missive.getCurrentEmail();
+          email = this.extractEmailFromData(emailData);
+          console.log("Method 1 - getCurrentEmail result:", email);
+        } catch (error) {
+          console.log("Method 1 failed:", error);
+        }
+      }
+      
+      // Method 2: Try Missive.getCurrentThread() if available
+      if (!email && window.Missive && Missive.getCurrentThread) {
+        try {
+          const threadData = await Missive.getCurrentThread();
+          email = this.extractEmailFromData(threadData);
+          console.log("Method 2 - getCurrentThread result:", email);
+        } catch (error) {
+          console.log("Method 2 failed:", error);
+        }
+      }
+      
+      // Method 3: Try Missive.getCurrentConversation() if available
+      if (!email && window.Missive && Missive.getCurrentConversation) {
+        try {
+          const conversationData = await Missive.getCurrentConversation();
+          email = this.extractEmailFromData(conversationData);
+          console.log("Method 3 - getCurrentConversation result:", email);
+        } catch (error) {
+          console.log("Method 3 failed:", error);
+        }
+      }
+      
+      if (email) {
+        console.log("Found current email:", email);
+        await this.performAutoSearch(email);
+      } else {
+        console.log("No current email found from any method");
+      }
+    } catch (error) {
+      console.error("Error getting current email:", error);
+    }
   }
 
   async handleEmailFocus(data) {
