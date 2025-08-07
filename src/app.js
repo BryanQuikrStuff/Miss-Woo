@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2025';
+    return 'V2026';
   }
 
   detectMissiveEnvironment() {
@@ -719,8 +719,8 @@ class MissWooApp {
   showLoading() {
     const loading = document.getElementById("loading");
     if (loading) {
+      loading.innerHTML = 'Loading<span class="loading-dots"></span>';
       loading.classList.remove("hidden");
-      loading.innerHTML = 'Loading...';
     }
   }
 
