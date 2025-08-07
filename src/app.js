@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2035';
+    return 'V2036';
   }
 
   detectMissiveEnvironment() {
@@ -875,12 +875,31 @@ class MissWooApp {
       // Missive environment: Show auto-search indicator with manual fallback
       if (searchSection) {
         searchSection.innerHTML = `
-          <div class="auto-search-indicator" style="background: #e8f5e8; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-            🔍 <strong>Auto-search enabled</strong> - searching when email is focused in Missive
-            <br><small>If auto-search doesn't work, use manual search below</small>
-            <br><button onclick="window.app.tryGetCurrentEmail()" style="margin-top: 5px; padding: 2px 8px; font-size: 12px;">Test Auto-Search</button>
+          <div class="auto-search-indicator" style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #4CAF50;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <span style="font-size: 20px;">🔍</span>
+              <div>
+                <strong style="color: #2E7D32;">Auto-Search Enabled</strong>
+                <br><small style="color: #666;">Automatically searches when you focus on emails in Missive</small>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button onclick="window.app.tryGetCurrentEmail()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                🔍 Trigger Auto-Search Now
+              </button>
+              <button onclick="window.app.debugMissiveStatus()" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                🔧 Debug Status
+              </button>
+            </div>
+            <div style="margin-top: 10px; font-size: 12px; color: #666;">
+              <strong>Debug Info:</strong> Auto-search is ${this.autoSearchEnabled ? 'ENABLED' : 'DISABLED'} | 
+              Missive API: ${window.Missive ? 'AVAILABLE' : 'NOT AVAILABLE'}
+            </div>
           </div>
-          <div class="manual-search-fallback">
+          <div class="manual-search-fallback" style="margin-top: 15px;">
+            <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ffeaa7;">
+              <strong>Manual Search Fallback:</strong> If auto-search doesn't work, use this
+            </div>
             <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
             <button id="searchBtn" class="search-btn">Search</button>
           </div>
@@ -936,10 +955,10 @@ class MissWooApp {
   setupMissiveEventListeners() {
     if (!window.Missive) return;
 
-    console.log("Setting up Missive event listeners...");
+    console.log("🔧 Setting up Missive event listeners...");
 
     Missive.on("ready", () => {
-      console.log("Missive ready - attempting to get current email");
+      console.log("✅ Missive ready - attempting to get current email");
       this.hideLoading();
       
       // Try to get current email immediately when Missive is ready
@@ -947,52 +966,73 @@ class MissWooApp {
       
       // Also try after a short delay in case the API isn't ready yet
       setTimeout(() => this.tryGetCurrentEmail(), 1000);
+      setTimeout(() => this.tryGetCurrentEmail(), 3000);
+      setTimeout(() => this.tryGetCurrentEmail(), 5000);
     });
 
     Missive.on("error", (error) => {
-      console.error("Missive error:", error);
+      console.error("❌ Missive error:", error);
     });
 
     // Set up auto-search for email focus with more aggressive event handling
     Missive.on("email:focus", (data) => {
-      console.log("Missive email:focus event:", data);
+      console.log("📧 Missive email:focus event:", data);
       this.handleEmailFocus(data);
     });
     
     Missive.on("email:open", (data) => {
-      console.log("Missive email:open event:", data);
+      console.log("📧 Missive email:open event:", data);
       this.handleEmailOpen(data);
     });
     
     Missive.on("thread:focus", (data) => {
-      console.log("Missive thread:focus event:", data);
+      console.log("📧 Missive thread:focus event:", data);
       this.handleThreadFocus(data);
     });
     
     // Add conversation change listener for better auto-search
     Missive.on("change:conversations", (data) => {
-      console.log("Missive change:conversations event:", data);
+      console.log("📧 Missive change:conversations event:", data);
       this.handleConversationChange(data);
     });
     
     // Additional events for better coverage
     Missive.on("conversation:focus", (data) => {
-      console.log("Missive conversation:focus event:", data);
+      console.log("📧 Missive conversation:focus event:", data);
       this.handleConversationChange(data);
     });
     
     Missive.on("conversation:open", (data) => {
-      console.log("Missive conversation:open event:", data);
+      console.log("📧 Missive conversation:open event:", data);
       this.handleConversationChange(data);
+    });
+    
+    // Add more events that might be available
+    Missive.on("email:select", (data) => {
+      console.log("📧 Missive email:select event:", data);
+      this.handleEmailFocus(data);
+    });
+    
+    Missive.on("thread:select", (data) => {
+      console.log("📧 Missive thread:select event:", data);
+      this.handleThreadFocus(data);
     });
     
     // Try to get current email periodically in case events don't fire
     setInterval(() => {
       if (this.isMissiveEnvironment && this.autoSearchEnabled) {
-        console.log("Periodic check for current email...");
+        console.log("⏰ Periodic check for current email...");
         this.tryGetCurrentEmail();
       }
-    }, 5000); // Check every 5 seconds
+    }, 3000); // Check every 3 seconds (more frequent)
+    
+    // Also try on window focus in case user switches back to Missive
+    window.addEventListener('focus', () => {
+      if (this.isMissiveEnvironment && this.autoSearchEnabled) {
+        console.log("🪟 Window focused, checking for current email...");
+        setTimeout(() => this.tryGetCurrentEmail(), 500);
+      }
+    });
   }
 
   async tryGetCurrentEmail() {
@@ -1394,6 +1434,43 @@ class MissWooApp {
     window.addEventListener('beforeunload', () => {
       this.cleanup();
     });
+  }
+
+  debugMissiveStatus() {
+    console.log("🔧 === MISSIVE DEBUG STATUS ===");
+    console.log("Environment detection:", this.isMissiveEnvironment);
+    console.log("Auto-search enabled:", this.autoSearchEnabled);
+    console.log("Missive object available:", !!window.Missive);
+    console.log("Missive methods available:", Object.keys(window.Missive || {}));
+    console.log("Last searched email:", this.lastSearchedEmail);
+    console.log("Cache size:", this.emailCache.size);
+    console.log("Current URL:", window.location.href);
+    console.log("User agent:", navigator.userAgent);
+    
+    // Test Missive API methods
+    if (window.Missive) {
+      console.log("🔧 Testing Missive API methods...");
+      
+      // Test each method
+      const methods = ['getCurrentEmail', 'getCurrentThread', 'getCurrentConversation', 'getVisibleEmails'];
+      methods.forEach(method => {
+        if (typeof window.Missive[method] === 'function') {
+          console.log(`✅ ${method} is available`);
+        } else {
+          console.log(`❌ ${method} is not available`);
+        }
+      });
+    }
+    
+    console.log("🔧 === DEBUG STATUS END ===");
+    
+    // Show a user-friendly message
+    alert(`Missive Debug Status:\n\n` +
+          `Environment: ${this.isMissiveEnvironment ? 'Missive' : 'Web'}\n` +
+          `Auto-search: ${this.autoSearchEnabled ? 'Enabled' : 'Disabled'}\n` +
+          `Missive API: ${window.Missive ? 'Available' : 'Not Available'}\n` +
+          `Available methods: ${Object.keys(window.Missive || {}).join(', ')}\n\n` +
+          `Check console for detailed debug info.`);
   }
 }
 
