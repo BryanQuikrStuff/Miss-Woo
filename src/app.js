@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2024'; // Static version matching cache-busting parameter
+    return 'V2025';
   }
 
   detectMissiveEnvironment() {
@@ -1068,13 +1068,22 @@ class MissWooApp {
     return null;
   }
 
+  isValidEmailForSearch(email) {
+    if (!email || typeof email !== 'string') {
+      return false;
+    }
+    
+    // Filter out @quikrstuff.com emails
+    if (email.toLowerCase().includes('@quikrstuff.com')) {
       return false;
     }
     
     // Basic email validation
-    const emailRegex = /^[^s@]+@[^s@]+.[^s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   }
+
+  extractEmailFromString(text) {
     if (!text) return null;
     
     const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
@@ -1112,6 +1121,7 @@ class MissWooApp {
       console.error("Auto-search failed:", error);
       this.showError("Auto-search failed: " + error.message);
     }
+  }
 }
 
 // Initialize the app and handle any errors
