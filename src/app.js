@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2040';
+    return 'V2041';
   }
 
   detectMissiveEnvironment() {
@@ -834,13 +834,19 @@ class MissWooApp {
   }
 
   initializeMissive() {
+    console.log("🔧 === INITIALIZE MISSIVE DEBUG ===");
+    console.log("window.Missive available:", !!window.Missive);
+    console.log("isMissiveEnvironment:", this.isMissiveEnvironment);
+    console.log("autoSearchEnabled:", this.autoSearchEnabled);
+    
     if (window.Missive) {
-      console.log("Missive detected, setting up integration...");
+      console.log("🔧 Missive detected, setting up integration...");
       this.setupMissiveEventListeners();
       // Re-check environment after Missive is ready
       this.recheckMissiveEnvironment();
     } else {
-      console.log("Missive not detected, running in standalone mode");
+      console.log("🔧 Missive not detected, setting up fallback...");
+      this.setupMissiveEventListeners(); // This will trigger fallback
       // Clear loading state immediately for standalone mode
       this.hideLoading();
       
@@ -855,6 +861,8 @@ class MissWooApp {
         }
       }, 2000);
     }
+    
+    console.log("🔧 === INITIALIZE MISSIVE DEBUG END ===");
   }
 
   recheckMissiveEnvironment() {
