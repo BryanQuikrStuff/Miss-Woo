@@ -32,27 +32,8 @@ class MissWooApp {
   }
 
   getVersion() {
-    const timestamp = Date.now().toString().slice(-5); // Last 5 digits of timestamp
-    const hostname = window.location.hostname;
-    const url = window.location.href;
-    
-    console.log("Version detection debug:", {
-      hostname,
-      url,
-      isMissiveEnvironment: this.isMissiveEnvironment,
-      inIframe: window.self !== window.top,
-      urlContainsMissive: url.includes('missive')
-    });
-    
-    if (this.isMissiveEnvironment) {
-      return `MA-${timestamp}`; // Missive App
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return `LH-${timestamp}`; // Local Host
-    } else if (hostname.includes('github.io')) {
-      return `GH-${timestamp}`; // GitHub Pages
-    } else {
-      return `MW-${timestamp}`; // Web version (other domains)
-    }
+    const timestamp = Date.now().toString().slice(-4); // Last 4 digits of timestamp
+    return `v${timestamp}`; // Simple version number for cache-busting
   }
 
   detectMissiveEnvironment() {
@@ -740,7 +721,7 @@ class MissWooApp {
     const loading = document.getElementById("loading");
     if (loading) {
       loading.classList.remove("hidden");
-      loading.innerHTML = '<div class="loading-spinner">🔄 Loading...</div>';
+      loading.innerHTML = 'Loading...';
     }
   }
 
