@@ -23,6 +23,9 @@ class MissWooApp {
       this.isMissiveEnvironment = this.detectMissiveEnvironment();
       this.autoSearchEnabled = this.isMissiveEnvironment;
       
+      // Version
+      this.version = this.getVersion();
+      
       // Search state
       this.lastSearchedEmail = null;
       this.emailCache = new Map();
@@ -50,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2032';
+    return 'V2033';
   }
 
   detectMissiveEnvironment() {
@@ -120,6 +123,18 @@ class MissWooApp {
       if (!searchInput) {
         throw new Error("Required DOM elements not found");
       }
+
+      // Bind search button click
+      if (searchBtn) {
+        searchBtn.addEventListener("click", () => this.handleSearch());
+      }
+
+      // Bind search input enter key
+      searchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          this.handleSearch();
+        }
+      });
 
       // Configure UI based on environment
       this.updateUIForEnvironment();
