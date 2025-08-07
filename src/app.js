@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2033a';
+    return 'V2034';
   }
 
   detectMissiveEnvironment() {
@@ -926,7 +926,10 @@ class MissWooApp {
   updateHeaderWithVersion() {
     const header = document.querySelector('.app-header h1');
     if (header) {
-      header.innerHTML = `Miss-Woo <span style="font-size: 0.6em; color: #666; font-weight: normal;">${this.version}</span>`;
+      // Check if we're in development environment (localhost)
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const devIndicator = isDevelopment ? ' DEV' : '';
+      header.innerHTML = `Miss-Woo${devIndicator} <span style="font-size: 0.6em; color: #666; font-weight: normal;">${this.version}</span>`;
     }
   }
 
