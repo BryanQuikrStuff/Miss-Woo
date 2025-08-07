@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2027a';
+    return 'V2028';
   }
 
   detectMissiveEnvironment() {
@@ -155,6 +155,15 @@ class MissWooApp {
     if (resultsContainer) {
       resultsContainer.innerHTML = "";
     }
+    
+    // Clear any "No orders found" messages
+    const noOrdersElement = document.querySelector('.no-orders');
+    if (noOrdersElement) {
+      noOrdersElement.remove();
+    }
+    
+    // Reset the allOrders array
+    this.allOrders = [];
   }
 
   async getOrderById(orderId) {
@@ -1116,6 +1125,9 @@ class MissWooApp {
       console.log(`Email validation failed for: ${email}`);
       return;
     }
+    
+    // Clear previous results before starting new search
+    this.clearPreviousResults();
     
     this.lastSearchedEmail = email;
     this.showLoading();
