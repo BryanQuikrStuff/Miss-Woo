@@ -43,7 +43,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2030';
+    return 'V2031';
   }
 
   detectMissiveEnvironment() {
@@ -71,6 +71,7 @@ class MissWooApp {
     try {
       await this.bindEvents();
       await this.initializeMissive();
+      this.setupCleanup(); // Setup proper cleanup
       // Only test connection if not in Missive environment
       if (!this.isMissiveEnvironment) {
         await this.testConnection();
@@ -1246,6 +1247,43 @@ class MissWooApp {
     } catch (error) {
       console.log(`Preloading failed for ${email}:`, error);
     }
+  }
+
+  cleanup() {
+    // Clear timers
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
+    
+    // Clear cache
+    this.emailCache.clear();
+    this.visibleEmails.clear();
+    
+    // Remove event listeners if they exist
+    const searchBtn = document.getElementById("searchBtn");
+    const searchInput = document.getElementById("orderSearch");
+    
+    if (searchBtn) {
+      searchBtn.removeEventListener("click", this.handleSearch.bind(this));
+    }
+    
+    if (searchInput) {
+      searchInput.removeEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          this.handleSearch();
+        }
+      });
+    }
+    
+    console.log("Cleanup completed");
+  }
+
+  // Add cleanup on page unload (using beforeunload instead of unload)
+  setupCleanup() {
+    window.addEventListener('beforeunload', () => {
+      this.cleanup();
+    });
   }
 }
 
