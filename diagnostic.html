@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Missive DOM Diagnostic</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .status.error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Missive DOM Diagnostic Tool</h1>
+        
+        <div class="status success">
+            <strong>Status:</strong> <span id="status">Initializing...</span>
+        </div>
+        
+        <div>
+            <button class="button" onclick="scanDOM()">🔍 Scan DOM Structure</button>
+            <button class="button" onclick="monitorClicks()">👆 Monitor All Clicks</button>
+            <button class="button" onclick="monitorChanges()">🔄 Monitor DOM Changes</button>
+            <button class="button" onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <h3>Diagnostic Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let clickCount = 0;
+        let changeCount = 0;
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            entry.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        function updateStatus(message, type = 'success') {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.parentElement.className = `status ${type}`;
+        }
+        
+        function scanDOM() {
+            log('🔍 === SCANNING DOM STRUCTURE ===');
+            
+            // Check if we're in Missive
+            const isInIframe = window.self !== window.top;
+            const hasMissiveScript = document.querySelector('script[src*="missive"]');
+            const urlContainsMissive = window.location.href.includes('missive');
+            
+            log(`In iframe: ${isInIframe}`);
+            log(`Has Missive script: ${!!hasMissiveScript}`);
+            log(`URL contains Missive: ${urlContainsMissive}`);
+            log(`Current URL: ${window.location.href}`);
+            
+            // Look for common email-related elements
+            const selectors = [
+                '[data-email]',
+                '[data-sender]',
+                '[data-recipient]',
+                '.email-item',
+                '.thread-item',
+                '.conversation-item',
+                '.focused',
+                '.selected',
+                '[role="button"]',
+                '[role="listitem"]'
+            ];
+            
+            selectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                if (elements.length > 0) {
+                    log(`✅ Found ${elements.length} elements with selector: ${selector}`);
+                    elements.forEach((el, index) => {
+                        if (index < 3) { // Only show first 3
+                            const text = el.textContent?.substring(0, 100) || 'No text';
+                            const classes = el.className || 'No classes';
+                            const attributes = Array.from(el.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ');
+                            log(`  Element ${index + 1}: classes="${classes}", attrs="${attributes}", text="${text}"`);
+                        }
+                    });
+                } else {
+                    log(`❌ No elements found with selector: ${selector}`);
+                }
+            });
+            
+            // Look for any elements with email-like content
+            const allElements = document.querySelectorAll('*');
+            const emailElements = [];
+            
+            allElements.forEach(el => {
+                const text = el.textContent || '';
+                if (text.includes('@') && text.includes('.') && text.length < 200) {
+                    emailElements.push({
+                        element: el.tagName,
+                        text: text.trim(),
+                        classes: el.className || '',
+                        id: el.id || ''
+                    });
+                }
+            });
+            
+            if (emailElements.length > 0) {
+                log(`📧 Found ${emailElements.length} elements with email-like content:`);
+                emailElements.slice(0, 10).forEach((item, index) => {
+                    log(`  ${index + 1}. ${item.element} (${item.classes}): "${item.text}"`);
+                });
+            }
+            
+            log('🔍 === DOM SCAN COMPLETE ===');
+        }
+        
+        function monitorClicks() {
+            log('👆 === MONITORING ALL CLICKS ===');
+            
+            document.addEventListener('click', (event) => {
+                clickCount++;
+                const target = event.target;
+                const tagName = target.tagName;
+                const className = target.className || '';
+                const id = target.id || '';
+                const text = target.textContent?.substring(0, 50) || '';
+                const attributes = Array.from(target.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ');
+                
+                log(`Click ${clickCount}: ${tagName} (${className}) - "${text}" - attrs: ${attributes}`);
+                
+                // Check if this might be an email element
+                if (text.includes('@') || className.includes('email') || className.includes('thread') || className.includes('conversation')) {
+                    log(`🎯 POTENTIAL EMAIL ELEMENT: ${tagName} with text "${text}"`);
+                }
+            });
+            
+            log('✅ Click monitoring active - click anywhere to see element details');
+        }
+        
+        function monitorChanges() {
+            log('🔄 === MONITORING DOM CHANGES ===');
+            
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    changeCount++;
+                    
+                    if (mutation.type === 'attributes') {
+                        const target = mutation.target;
+                        const attributeName = mutation.attributeName;
+                        const newValue = target.getAttribute(attributeName);
+                        
+                        log(`Change ${changeCount}: ${target.tagName} ${attributeName}="${newValue}"`);
+                        
+                        // Check for focus/selection changes
+                        if (attributeName === 'class' && newValue.includes('focused')) {
+                            log(`🎯 FOCUSED ELEMENT: ${target.tagName} with text "${target.textContent?.substring(0, 50)}"`);
+                        }
+                    } else if (mutation.type === 'childList') {
+                        log(`Change ${changeCount}: ${mutation.addedNodes.length} nodes added, ${mutation.removedNodes.length} nodes removed`);
+                    }
+                });
+            });
+            
+            observer.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['class', 'data-email', 'data-sender', 'data-recipient'],
+                childList: true,
+                subtree: true
+            });
+            
+            log('✅ DOM change monitoring active');
+        }
+        
+        // Initialize
+        updateStatus('Diagnostic tool ready');
+        log('🚀 Missive DOM Diagnostic Tool initialized');
+        log('Click "Scan DOM Structure" to analyze the current page');
+        
+        // Auto-scan after a short delay
+        setTimeout(() => {
+            log('🔄 Auto-scanning DOM in 3 seconds...');
+            setTimeout(scanDOM, 3000);
+        }, 1000);
+    </script>
+</body>
+</html>
