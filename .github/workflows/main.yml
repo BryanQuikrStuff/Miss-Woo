@@ -78,7 +78,7 @@ jobs:
                 apiKey: "${{ secrets.KATANA_API_KEY }}"
             }
         };
-        export default config;
+        window.config = config;
         EOL
     
     - name: Create production build
