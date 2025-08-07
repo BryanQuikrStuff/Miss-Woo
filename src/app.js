@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2041';
+    return 'V2042';
   }
 
   detectMissiveEnvironment() {
@@ -886,99 +886,67 @@ class MissWooApp {
     console.log("🔧 === UI UPDATE DEBUG ===");
     console.log("Environment detection:", this.isMissiveEnvironment);
     console.log("Auto-search enabled:", this.autoSearchEnabled);
-    console.log("Search section found:", !!document.querySelector('.search-section'));
-    
-    // Update header with version number
-    this.updateHeaderWithVersion();
     
     const searchSection = document.querySelector('.search-section');
-    console.log("Search section element:", searchSection);
-
-    if (this.isMissiveEnvironment) {
-      console.log("🔧 Setting up Missive UI...");
-      // Missive environment: Show auto-search indicator with manual fallback
-      if (searchSection) {
+    console.log("Search section found:", !!searchSection);
+    
+    if (searchSection) {
+      console.log("Search section element:", searchSection);
+      
+      if (this.isMissiveEnvironment) {
+        console.log("🔧 Setting up Missive UI...");
+        
+        // Clear existing content
+        searchSection.innerHTML = '';
+        
+        // Create Missive-specific UI
         searchSection.innerHTML = `
-          <div class="auto-search-indicator" style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #4CAF50;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-              <span style="font-size: 20px;">🔍</span>
-              <div>
-                <strong style="color: #2E7D32;">Auto-Search Enabled</strong>
-                <br><small style="color: #666;">Automatically searches when you focus on emails in Missive</small>
-              </div>
+          <div class="missive-ui">
+            <h3>🎯 Missive Auto-Search Active</h3>
+            <p>Click on emails to automatically search for orders</p>
+            
+            <div class="diagnostic-controls">
+              <button id="debugStatus" class="btn btn-info">🔍 Debug Status</button>
+              <button id="scanDOM" class="btn btn-warning">🔍 Scan DOM</button>
+              <button id="monitorClicks" class="btn btn-success">👆 Monitor Clicks</button>
+              <button id="testAutoSearch" class="btn btn-primary">🚀 Test Auto-Search</button>
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-              <button onclick="window.app.tryGetCurrentEmail()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                🔍 Trigger Auto-Search Now
-              </button>
-              <button onclick="window.app.debugMissiveStatus()" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                🔧 Debug Status
-              </button>
+            
+            <div id="diagnosticLog" class="diagnostic-log" style="display: none;">
+              <h4>Diagnostic Log:</h4>
+              <div id="logContent" style="background: #f8f9fa; padding: 10px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
             </div>
-            <div style="margin-top: 10px; font-size: 12px; color: #666;">
-              <strong>Debug Info:</strong> Auto-search is ${this.autoSearchEnabled ? 'ENABLED' : 'DISABLED'} | 
-              Missive API: ${window.Missive ? 'AVAILABLE' : 'NOT AVAILABLE'}
-            </div>
-          </div>
-          <div class="manual-search-fallback" style="margin-top: 15px;">
-            <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ffeaa7;">
-              <strong>Manual Search Fallback:</strong> If auto-search doesn't work, use this
-            </div>
-            <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
-            <button id="searchBtn" class="search-btn">Search</button>
           </div>
         `;
+        
+        // Bind diagnostic events
+        this.bindDiagnosticEvents();
+        
         console.log("✅ Missive UI updated successfully");
-        
-        // Re-bind event listeners for the new elements
-        const newSearchBtn = document.getElementById("searchBtn");
-        const newSearchInput = document.getElementById("orderSearch");
-        
-        if (newSearchBtn) {
-          newSearchBtn.onclick = () => this.handleSearch();
-          console.log("✅ Search button event bound");
-        }
-        if (newSearchInput) {
-          newSearchInput.onkeypress = (e) => {
-            if (e.key === "Enter") this.handleSearch();
-          };
-          console.log("✅ Search input event bound");
-        }
       } else {
-        console.log("❌ Search section not found for Missive UI");
-      }
-    } else {
-      console.log("🔧 Setting up Web UI...");
-      // Web environment: Show manual search UI only
-      if (searchSection) {
+        console.log("🔧 Setting up Web UI...");
+        
+        // Clear existing content
+        searchSection.innerHTML = '';
+        
+        // Create web-specific UI
         searchSection.innerHTML = `
-          <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ffeaa7;">
-            <strong>Web Mode:</strong> Manual search only. 
-            <button onclick="window.app.forceMissiveEnvironment()" style="background: #2196F3; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-left: 10px;">
-              🔧 Force Missive Mode
-            </button>
+          <div class="web-ui">
+            <h3>🌐 Web Mode</h3>
+            <p>Manual search mode - enter email or order number</p>
+            
+            <div class="search-controls">
+              <input type="text" id="searchInput" placeholder="Enter email or order number..." class="form-control">
+              <button id="searchButton" class="btn btn-primary">Search</button>
+              <button id="forceMissive" class="btn btn-warning">Force Missive Mode</button>
+            </div>
           </div>
-          <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
-          <button id="searchBtn" class="search-btn">Search</button>
         `;
+        
+        // Bind web events
+        this.bindWebEvents();
+        
         console.log("✅ Web UI updated successfully");
-        
-        // Re-bind event listeners
-        const searchBtn = document.getElementById("searchBtn");
-        const searchInput = document.getElementById("orderSearch");
-        
-        if (searchBtn) {
-          searchBtn.onclick = () => this.handleSearch();
-          console.log("✅ Search button event bound");
-        }
-        if (searchInput) {
-          searchInput.onkeypress = (e) => {
-            if (e.key === "Enter") this.handleSearch();
-          };
-          console.log("✅ Search input event bound");
-        }
-      } else {
-        console.log("❌ Search section not found for Web UI");
       }
     }
     
@@ -1600,6 +1568,189 @@ class MissWooApp {
     
     // Show user feedback
     alert("Missive environment forced! Auto-search should now be available.");
+  }
+
+  bindDiagnosticEvents() {
+    const debugStatusBtn = document.getElementById('debugStatus');
+    const scanDOMBtn = document.getElementById('scanDOM');
+    const monitorClicksBtn = document.getElementById('monitorClicks');
+    const testAutoSearchBtn = document.getElementById('testAutoSearch');
+    
+    if (debugStatusBtn) {
+      debugStatusBtn.onclick = () => this.debugMissiveStatus();
+    }
+    
+    if (scanDOMBtn) {
+      scanDOMBtn.onclick = () => this.scanDOMStructure();
+    }
+    
+    if (monitorClicksBtn) {
+      monitorClicksBtn.onclick = () => this.monitorClicks();
+    }
+    
+    if (testAutoSearchBtn) {
+      testAutoSearchBtn.onclick = () => this.testAutoSearch();
+    }
+  }
+  
+  bindWebEvents() {
+    const searchButton = document.getElementById('searchButton');
+    const searchInput = document.getElementById('searchInput');
+    const forceMissiveBtn = document.getElementById('forceMissive');
+    
+    if (searchButton) {
+      searchButton.onclick = () => this.handleSearch();
+    }
+    
+    if (searchInput) {
+      searchInput.onkeypress = (e) => {
+        if (e.key === 'Enter') this.handleSearch();
+      };
+    }
+    
+    if (forceMissiveBtn) {
+      forceMissiveBtn.onclick = () => this.forceMissiveEnvironment();
+    }
+  }
+  
+  log(message, type = 'info') {
+    const logContent = document.getElementById('logContent');
+    const diagnosticLog = document.getElementById('diagnosticLog');
+    
+    if (logContent && diagnosticLog) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+      entry.textContent = `[${timestamp}] ${message}`;
+      logContent.appendChild(entry);
+      logContent.scrollTop = logContent.scrollHeight;
+      
+      // Show the log if it was hidden
+      if (diagnosticLog.style.display === 'none') {
+        diagnosticLog.style.display = 'block';
+      }
+    }
+    
+    // Also log to console
+    console.log(`🔍 ${message}`);
+  }
+  
+  scanDOMStructure() {
+    this.log('🔍 === SCANNING DOM STRUCTURE ===');
+    
+    // Check if we're in Missive
+    const isInIframe = window.self !== window.top;
+    const hasMissiveScript = document.querySelector('script[src*="missive"]');
+    const urlContainsMissive = window.location.href.includes('missive');
+    
+    this.log(`In iframe: ${isInIframe}`);
+    this.log(`Has Missive script: ${!!hasMissiveScript}`);
+    this.log(`URL contains Missive: ${urlContainsMissive}`);
+    this.log(`Current URL: ${window.location.href}`);
+    
+    // Look for common email-related elements
+    const selectors = [
+      '[data-email]',
+      '[data-sender]',
+      '[data-recipient]',
+      '.email-item',
+      '.thread-item',
+      '.conversation-item',
+      '.focused',
+      '.selected',
+      '[role="button"]',
+      '[role="listitem"]',
+      '[class*="email"]',
+      '[class*="thread"]',
+      '[class*="conversation"]'
+    ];
+    
+    selectors.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        this.log(`✅ Found ${elements.length} elements with selector: ${selector}`);
+        elements.forEach((el, index) => {
+          if (index < 3) { // Only show first 3
+            const text = el.textContent?.substring(0, 100) || 'No text';
+            const classes = el.className || 'No classes';
+            const attributes = Array.from(el.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ');
+            this.log(`  Element ${index + 1}: classes="${classes}", attrs="${attributes}", text="${text}"`);
+          }
+        });
+      } else {
+        this.log(`❌ No elements found with selector: ${selector}`);
+      }
+    });
+    
+    // Look for any elements with email-like content
+    const allElements = document.querySelectorAll('*');
+    const emailElements = [];
+    
+    allElements.forEach(el => {
+      const text = el.textContent || '';
+      if (text.includes('@') && text.includes('.') && text.length < 200) {
+        emailElements.push({
+          element: el.tagName,
+          text: text.trim(),
+          classes: el.className || '',
+          id: el.id || ''
+        });
+      }
+    });
+    
+    if (emailElements.length > 0) {
+      this.log(`📧 Found ${emailElements.length} elements with email-like content:`);
+      emailElements.slice(0, 10).forEach((item, index) => {
+        this.log(`  ${index + 1}. ${item.element} (${item.classes}): "${item.text}"`);
+      });
+    }
+    
+    this.log('🔍 === DOM SCAN COMPLETE ===');
+  }
+  
+  monitorClicks() {
+    this.log('👆 === MONITORING ALL CLICKS ===');
+    
+    let clickCount = 0;
+    
+    const clickHandler = (event) => {
+      clickCount++;
+      const target = event.target;
+      const tagName = target.tagName;
+      const className = target.className || '';
+      const text = target.textContent?.substring(0, 50) || '';
+      const attributes = Array.from(target.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ');
+      
+      this.log(`Click ${clickCount}: ${tagName} (${className}) - "${text}" - attrs: ${attributes}`);
+      
+      // Check if this might be an email element
+      if (text.includes('@') || className.includes('email') || className.includes('thread') || className.includes('conversation')) {
+        this.log(`🎯 POTENTIAL EMAIL ELEMENT: ${tagName} with text "${text}"`);
+      }
+    };
+    
+    document.addEventListener('click', clickHandler);
+    
+    this.log('✅ Click monitoring active - click anywhere to see element details');
+    this.log('Click "Stop Monitoring" to remove the listener');
+    
+    // Store the handler so we can remove it later
+    this.clickHandler = clickHandler;
+  }
+  
+  testAutoSearch() {
+    this.log('🚀 === TESTING AUTO-SEARCH ===');
+    this.log('Attempting to get current email...');
+    
+    const email = this.tryGetCurrentEmail();
+    if (email) {
+      this.log(`✅ Found email: ${email}`);
+      this.log('Triggering auto-search...');
+      this.performAutoSearch(email);
+    } else {
+      this.log('❌ No email found from current context');
+      this.log('Try clicking on an email first, then test again');
+    }
   }
 }
 
