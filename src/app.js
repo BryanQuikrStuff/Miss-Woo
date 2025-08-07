@@ -34,6 +34,15 @@ class MissWooApp {
   getVersion() {
     const timestamp = Date.now().toString().slice(-5); // Last 5 digits of timestamp
     const hostname = window.location.hostname;
+    const url = window.location.href;
+    
+    console.log("Version detection debug:", {
+      hostname,
+      url,
+      isMissiveEnvironment: this.isMissiveEnvironment,
+      inIframe: window.self !== window.top,
+      urlContainsMissive: url.includes('missive')
+    });
     
     if (this.isMissiveEnvironment) {
       return `MA-${timestamp}`; // Missive App
@@ -132,6 +141,9 @@ class MissWooApp {
       return;
     }
 
+    // Clear previous results and errors
+    this.clearPreviousResults();
+    
     this.showLoading();
     console.log("Searching for:", searchTerm);
 
@@ -147,6 +159,21 @@ class MissWooApp {
     } catch (error) {
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
+    }
+  }
+
+  clearPreviousResults() {
+    // Clear error messages
+    const errorElement = document.getElementById("error");
+    if (errorElement) {
+      errorElement.classList.add("hidden");
+      errorElement.textContent = "";
+    }
+    
+    // Clear results
+    const resultsContainer = document.getElementById("results");
+    if (resultsContainer) {
+      resultsContainer.innerHTML = "";
     }
   }
 
@@ -711,7 +738,10 @@ class MissWooApp {
 
   showLoading() {
     const loading = document.getElementById("loading");
-    if (loading) loading.classList.remove("hidden");
+    if (loading) {
+      loading.classList.remove("hidden");
+      loading.innerHTML = '<div class="loading-spinner">🔄 Loading...</div>';
+    }
   }
 
   hideLoading() {

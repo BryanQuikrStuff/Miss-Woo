@@ -181,6 +181,16 @@ td a:hover {
     font-size: 0.9rem;
 }
 
+.loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 .error {
     background: #f8d7da;
     color: #721c24;
