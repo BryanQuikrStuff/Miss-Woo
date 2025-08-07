@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2037';
+    return 'V2038';
   }
 
   detectMissiveEnvironment() {
@@ -866,12 +866,19 @@ class MissWooApp {
   }
 
   updateUIForEnvironment() {
+    console.log("🔧 === UI UPDATE DEBUG ===");
+    console.log("Environment detection:", this.isMissiveEnvironment);
+    console.log("Auto-search enabled:", this.autoSearchEnabled);
+    console.log("Search section found:", !!document.querySelector('.search-section'));
+    
     // Update header with version number
     this.updateHeaderWithVersion();
     
     const searchSection = document.querySelector('.search-section');
+    console.log("Search section element:", searchSection);
 
     if (this.isMissiveEnvironment) {
+      console.log("🔧 Setting up Missive UI...");
       // Missive environment: Show auto-search indicator with manual fallback
       if (searchSection) {
         searchSection.innerHTML = `
@@ -904,6 +911,7 @@ class MissWooApp {
             <button id="searchBtn" class="search-btn">Search</button>
           </div>
         `;
+        console.log("✅ Missive UI updated successfully");
         
         // Re-bind event listeners for the new elements
         const newSearchBtn = document.getElementById("searchBtn");
@@ -911,20 +919,26 @@ class MissWooApp {
         
         if (newSearchBtn) {
           newSearchBtn.onclick = () => this.handleSearch();
+          console.log("✅ Search button event bound");
         }
         if (newSearchInput) {
           newSearchInput.onkeypress = (e) => {
             if (e.key === "Enter") this.handleSearch();
           };
+          console.log("✅ Search input event bound");
         }
+      } else {
+        console.log("❌ Search section not found for Missive UI");
       }
     } else {
+      console.log("🔧 Setting up Web UI...");
       // Web environment: Show manual search UI only
       if (searchSection) {
         searchSection.innerHTML = `
           <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
           <button id="searchBtn" class="search-btn">Search</button>
         `;
+        console.log("✅ Web UI updated successfully");
         
         // Re-bind event listeners
         const searchBtn = document.getElementById("searchBtn");
@@ -932,14 +946,20 @@ class MissWooApp {
         
         if (searchBtn) {
           searchBtn.onclick = () => this.handleSearch();
+          console.log("✅ Search button event bound");
         }
         if (searchInput) {
           searchInput.onkeypress = (e) => {
             if (e.key === "Enter") this.handleSearch();
           };
+          console.log("✅ Search input event bound");
         }
+      } else {
+        console.log("❌ Search section not found for Web UI");
       }
     }
+    
+    console.log("🔧 === UI UPDATE DEBUG END ===");
   }
 
   updateHeaderWithVersion() {
