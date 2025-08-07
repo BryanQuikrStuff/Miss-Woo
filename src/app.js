@@ -1,11 +1,11 @@
 // Miss-Woo Frontend Application
-// VERSION 2.0 - Clean and Optimized
+// VERSION V2021a - Major Version Backup
 
 class MissWooApp {
   constructor() {
     this.isMissiveEnvironment = this.detectMissiveEnvironment();
     this.version = this.getVersion();
-    console.log(`🚀 Miss-Woo ${this.version} - Clean and Optimized 🚀`);
+    console.log(`🚀 Miss-Woo ${this.version} - Major Version Backup 🚀`);
     
     // WooCommerce REST API v3 endpoint
     this.apiBaseUrl = window.config.woocommerce.apiBaseUrl;
@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'v2019'; // Static version matching cache-busting parameter
+    return 'V2021a'; // Static version matching cache-busting parameter
   }
 
   detectMissiveEnvironment() {
