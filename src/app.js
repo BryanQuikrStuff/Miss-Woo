@@ -3,36 +3,37 @@
 
 class MissWooApp {
   constructor() {
+    // Initialize API endpoints
+    this.apiBaseUrl = window.config.woocommerce.api_url;
+    this.consumerKey = window.config.woocommerce.consumer_key;
+    this.consumerSecret = window.config.woocommerce.consumer_secret;
+    this.siteUrl = window.config.woocommerce.site_url;
+    
+    // Environment detection
     this.isMissiveEnvironment = this.detectMissiveEnvironment();
-    this.version = this.getVersion();
-    console.log(`🚀 Miss-Woo ${this.version} - Major Version Backup 🚀`);
+    this.autoSearchEnabled = this.isMissiveEnvironment;
     
-    // WooCommerce REST API v3 endpoint
-    this.apiBaseUrl = window.config.woocommerce.apiBaseUrl;
-    this.consumerKey = window.config.woocommerce.consumerKey;
-    this.consumerSecret = window.config.woocommerce.consumerSecret;
-    this.siteUrl = window.config.woocommerce.siteUrl;
+    // Search state
+    this.lastSearchedEmail = null;
+    this.emailCache = new Map();
+    this.searchDebounceTimer = null;
+    this.visibleEmails = new Set();
     
-    // Katana MRP API endpoint
-    this.katanaApiBaseUrl = window.config.katana.apiBaseUrl;
-    this.katanaApiKey = window.config.katana.apiKey;
+    // Cache-busting for Missive (10-minute cache workaround)
+    this.cacheBuster = Date.now();
     
-    // Store all matched orders
-    this.allOrders = [];
+    // CORS headers for better Missive integration
+    this.corsHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
     
-    // Auto-search configuration - detect Missive environment with multiple checks
-    this.autoSearchEnabled = this.isMissiveEnvironment; // Enable auto-search only in Missive
-    this.lastSearchedEmail = null; // Prevent duplicate searches
-    
-    // Clear loading state immediately in constructor
     this.hideLoading();
-    
-    // Initialize after constructor
     this.initialize();
   }
 
   getVersion() {
-    return 'V2028';
+    return 'V2029';
   }
 
   detectMissiveEnvironment() {
@@ -266,9 +267,21 @@ class MissWooApp {
 
   async makeRequest(url, options = {}) {
     console.log("Making request to:", url);
+    
+    // Add cache-busting parameter for Missive environment
+    const separator = url.includes('?') ? '&' : '?';
+    const cacheBustedUrl = this.isMissiveEnvironment 
+      ? `${url}${separator}_cb=${this.cacheBuster}`
+      : url;
+    
     try {
-      const response = await fetch(url, {
+      const response = await fetch(cacheBustedUrl, {
         mode: 'cors',
+        credentials: 'omit', // Don't send cookies for CORS
+        headers: {
+          ...this.corsHeaders,
+          ...options.headers
+        },
         ...options
       });
 
@@ -1129,14 +1142,85 @@ class MissWooApp {
     // Clear previous results before starting new search
     this.clearPreviousResults();
     
-    this.lastSearchedEmail = email;
-    this.showLoading();
+    // Debounce auto-search to prevent rapid successive calls
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
+    
+    this.searchDebounceTimer = setTimeout(async () => {
+      this.lastSearchedEmail = email;
+      this.showLoading();
+      
+      try {
+        // Check cache first
+        if (this.emailCache.has(email)) {
+          console.log(`Using cached results for: ${email}`);
+          this.allOrders = this.emailCache.get(email);
+          await this.displayOrdersList();
+          return;
+        }
+        
+        await this.searchOrdersByEmail(email);
+        
+        // Cache the results
+        if (this.allOrders.length > 0) {
+          this.emailCache.set(email, [...this.allOrders]);
+          this.cleanupCache(); // Manage cache size
+        }
+      } catch (error) {
+        console.error("Auto-search failed:", error);
+        this.showError("Auto-search failed: " + error.message);
+      }
+    }, 300); // 300ms debounce delay
+  }
+
+  cleanupCache() {
+    // Keep only the last 10 cached emails to prevent memory issues
+    const maxCacheSize = 10;
+    if (this.emailCache.size > maxCacheSize) {
+      const entries = Array.from(this.emailCache.entries());
+      const toRemove = entries.slice(0, entries.length - maxCacheSize);
+      toRemove.forEach(([email]) => {
+        this.emailCache.delete(email);
+      });
+      console.log(`Cleaned up cache, removed ${toRemove.length} old entries`);
+    }
+  }
+
+  async preloadVisibleEmails() {
+    if (!this.isMissiveEnvironment) return;
     
     try {
-      await this.searchOrdersByEmail(email);
+      // Get visible emails from Missive (if available)
+      if (window.Missive && window.Missive.getVisibleEmails) {
+        const visibleEmails = await window.Missive.getVisibleEmails();
+        if (visibleEmails && Array.isArray(visibleEmails)) {
+          for (const emailData of visibleEmails) {
+            const email = this.extractEmailFromData(emailData);
+            if (email && this.isValidEmailForSearch(email)) {
+              this.visibleEmails.add(email);
+              // Preload data for visible emails
+              await this.preloadEmailData(email);
+            }
+          }
+        }
+      }
     } catch (error) {
-      console.error("Auto-search failed:", error);
-      this.showError("Auto-search failed: " + error.message);
+      console.log("Preloading visible emails failed:", error);
+    }
+  }
+
+  async preloadEmailData(email) {
+    if (this.emailCache.has(email)) return; // Already cached
+    
+    try {
+      console.log(`Preloading data for: ${email}`);
+      await this.searchOrdersByEmail(email);
+      if (this.allOrders.length > 0) {
+        this.emailCache.set(email, [...this.allOrders]);
+      }
+    } catch (error) {
+      console.log(`Preloading failed for ${email}:`, error);
     }
   }
 }
