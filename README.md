@@ -1,201 +1,160 @@
-# Miss-Woo
+# Miss-Woo - WooCommerce Integration for Missive
 
-A WooCommerce integration app for Missive that provides order management and tracking capabilities directly in your email client.
+A frontend application that integrates WooCommerce order data with Missive email client, providing auto-search functionality for customer emails.
 
-## Features
+## 🚀 Quick Start
 
-- 🔍 **Automatic Order Search**: Automatically searches for orders when customer emails are focused
-- 📦 **Tracking Information**: Automatic tracking number extraction and carrier detection
-- 📊 **Order Management**: View order details, status, and customer information
-- 🔗 **WooCommerce Integration**: Direct links to WooCommerce admin
-- 📱 **Missive Ready**: Optimized for Missive iframe sidebar
-- ⚡ **Smart Debouncing**: Prevents excessive API calls with intelligent debouncing
-
-## Automatic Search Feature
-
-The app now includes automatic search functionality that triggers when:
-
-1. **Email Focus**: When a customer email is focused in Missive
-2. **Email Open**: When a customer email is opened
-3. **Thread Focus**: When a thread containing customer emails is focused
-
-### How It Works
-
-- The app listens for Missive events (`email:focus`, `email:open`, `thread:focus`)
-- Extracts customer email addresses from the email data
-- Automatically searches WooCommerce for matching orders
-- Displays results without requiring manual input
-- Prevents duplicate searches for the same email
-- Uses debouncing to avoid excessive API calls
-
-### Configuration
-
-The automatic search can be enabled/disabled by modifying the `autoSearchEnabled` flag in the app:
-
-```javascript
-// In src/app.js constructor
-this.autoSearchEnabled = true; // Set to false to disable auto-search
+### Local Development
+```bash
+# Use the development HTML file for local development
+npx http-server -p 3000 --cors
+# Then open: http://localhost:3000/index-dev.html
 ```
 
-When auto-search is enabled:
-- The search button and input field are hidden
-- An indicator shows that auto-search is active
-- Manual search is still available if needed
+### Production Deployment
+- **GitHub Pages**: Automatically deployed from `main` branch
+- **URL**: https://bryanquikrstuff.github.io/Miss-Woo/
+- **Files**: Uses `index.html` (production paths)
 
-## Setup
+## 📁 File Structure
 
-### 1. Environment Configuration
+```
+Miss-Woo/
+├── index.html          # Production HTML (no src/ paths)
+├── index-dev.html      # Development HTML (uses src/ paths)
+├── src/
+│   ├── app.js         # Main application logic
+│   ├── config.js      # API configuration
+│   └── styles.css     # Application styles
+└── .github/workflows/
+    └── main.yml       # CI/CD pipeline
+```
 
-1. Create a `.env` file in the root directory:
-   ```env
-   WOOCOMMERCE_CONSUMER_KEY=your_consumer_key
-   WOOCOMMERCE_CONSUMER_SECRET=your_consumer_secret
-   WOOCOMMERCE_SITE_URL=your_site_url
-   WOOCOMMERCE_API_VERSION=wc/v3
-   ```
+## 🔧 Development Workflow
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+### Local Development
+1. Use `index-dev.html` for local development
+2. Files reference `src/` directory
+3. Run `npx http-server -p 3000 --cors`
+4. Open `http://localhost:3000/index-dev.html`
 
-### 2. Development
+### Production Deployment
+1. `index.html` uses root-level paths (no `src/`)
+2. GitHub Actions copies files from `src/` to `dist/`
+3. Deployed to GitHub Pages automatically
+4. Available at: https://bryanquikrstuff.github.io/Miss-Woo/
 
-Run tests:
+## ⚙️ Configuration
+
+### Environment Variables (GitHub Secrets)
+- `WOOCOMMERCE_CONSUMER_KEY`: WooCommerce API consumer key
+- `WOOCOMMERCE_CONSUMER_SECRET`: WooCommerce API consumer secret  
+- `WOOCOMMERCE_SITE_URL`: WooCommerce site URL
+- `KATANA_API_KEY`: Katana MRP API key
+
+### Local Development
+Create a `.env` file in the root directory:
+```env
+WOOCOMMERCE_CONSUMER_KEY=your_key_here
+WOOCOMMERCE_CONSUMER_SECRET=your_secret_here
+WOOCOMMERCE_SITE_URL=https://your-site.com
+KATANA_API_KEY=your_katana_key_here
+```
+
+## 🎯 Features
+
+### Missive Integration
+- **Auto-search**: Automatically searches for orders when email is focused
+- **Environment Detection**: Detects Missive vs. web environment
+- **Event Listeners**: Responds to email focus, thread changes, and conversation changes
+
+### WooCommerce Integration
+- **Order Search**: Search by customer email or order ID
+- **Order Details**: Display order information, tracking, and serial numbers
+- **Katana MRP**: Fetch serial numbers from Katana MRP system
+
+### User Interface
+- **Environment-aware**: Different UI for Missive vs. web
+- **Responsive Design**: Works on desktop and mobile
+- **Error Handling**: Graceful error display and recovery
+
+## 🧪 Testing
+
 ```bash
 npm test
 ```
 
-The frontend application is static and consists of:
-- `index.html` - Main entry point for Missive iframe
-- `src/app.js` - Frontend application logic with automatic search
-- `src/styles.css` - Clean, responsive styling
-- `src/woocommerce.js` - WooCommerce API integration
-- `src/tracking.js` - Order tracking functionality
+Runs Jest tests for:
+- WooCommerce API integration
+- Application setup and initialization
 
-### 3. Update API URL
+## 📦 Deployment
 
-In `src/app.js`, update the `apiBaseUrl` to point to your WooCommerce site:
+### Automatic Deployment
+- **Trigger**: Push to `main` branch
+- **Process**: 
+  1. Run tests
+  2. Build production files
+  3. Deploy to GitHub Pages
+- **URL**: https://bryanquikrstuff.github.io/Miss-Woo/
 
-```javascript
-this.apiBaseUrl = 'https://your-woocommerce-site.com/wp-json/wc/v3';
+### Manual Deployment
+```bash
+# Build production files
+mkdir -p dist
+cp index.html dist/
+cp src/app.js dist/
+cp src/styles.css dist/
+cp src/config.js dist/
+
+# Deploy to any static hosting service
 ```
 
-## Project Structure
+## 🔍 Troubleshooting
 
-```
-Miss-Woo/
-├── .github/          # GitHub Actions configuration
-├── __tests__/        # Test files including auto-search tests
-├── config/           # API configuration
-├── src/             # Source files
-│   ├── app.js       # Main application logic with auto-search
-│   ├── styles.css   # Styles including auto-search indicator
-│   ├── tracking.js  # Tracking functionality
-│   └── woocommerce.js # WooCommerce API integration
-├── .env             # Environment variables (not in git)
-├── .gitignore       # Git ignore rules
-├── index.html       # Main HTML file
-├── package.json     # Project dependencies
-└── README.md        # Project documentation
-```
+### Common Issues
 
-## Missive Integration
+1. **404 Errors in Missive**: 
+   - Check that GitHub Actions deployment completed
+   - Verify files are in the correct paths (no `src/` in production)
 
-1. In Missive, go to Settings → Integrations
-2. Add a new iframe integration
-3. Set the URL to your deployed static site
-4. Configure the iframe settings as needed
-
-## Available Features
-
-### Automatic Order Management
-- **Auto-search on email focus**: Searches for orders when customer emails are focused
-- **Email extraction**: Intelligently extracts customer emails from various data sources
-- **Debounced search**: Prevents excessive API calls with 500ms debouncing
-- **Duplicate prevention**: Avoids searching the same email multiple times
-- **Manual override**: Still allows manual search when needed
-
-### Order Management
-- Search orders by ID or email (manual mode)
-- View recent orders
-- Track order status
-- View customer information
-- Access order details
-
-### Tracking Integration
-- View tracking numbers
-- Track packages
-- Monitor shipping status
-- Access carrier information
-
-### WooCommerce Integration
-- Direct links to WooCommerce admin
-- Real-time order data
-- Secure API integration
-- Test connection functionality
-
-## Security
-
-⚠️ **Important Security Notes**:
-1. Never commit your `.env` file to version control
-2. Keep your WooCommerce API credentials secure
-3. Use HTTPS for all API communications
-4. Regularly update dependencies with `npm audit`
-
-## Development Guidelines
-
-1. **Code Style**
-   - Use ESLint for code quality
-   - Follow the existing code structure
-   - Add comments for complex logic
-
-2. **Testing**
-   - Write tests for new features
-   - Run tests before commits
-   - Maintain test coverage
-   - Test auto-search functionality with `npm test`
-
-3. **Git Workflow**
-   - Use feature branches
-   - Follow conventional commits
-   - Keep PRs focused and small
-
-## Troubleshooting
-
-### Auto-Search Issues
-
-1. **Auto-search not working**:
+2. **Loading State Stuck**:
    - Check browser console for errors
-   - Verify Missive API is available (`window.Missive`)
-   - Ensure email extraction is working
+   - Verify API keys are configured correctly
 
-2. **Too many API calls**:
-   - Check debouncing is working (500ms delay)
-   - Verify duplicate prevention is active
-   - Monitor network tab for excessive requests
+3. **Auto-search Not Working**:
+   - Ensure Missive environment is detected
+   - Check that email events are being received
 
-3. **Email not found**:
-   - Check email extraction logic
-   - Verify Missive event data structure
-   - Test with different email formats
+### Debug Mode
+Open browser console to see detailed logs:
+- Environment detection
+- API calls and responses
+- Error messages and stack traces
 
-### General Issues
+## 📝 Changelog
 
-For issues or questions:
-1. Check the console logs
-2. Verify WooCommerce API credentials
-3. Ensure proper environment configuration
-4. Test API connectivity
+### v2.0 (Current)
+- ✅ Fixed GitHub Pages deployment paths
+- ✅ Improved Missive environment detection
+- ✅ Added aggressive loading state clearing
+- ✅ Enhanced error handling and debugging
+- ✅ Added `change:conversations` event listener
+- ✅ Simplified configuration management
 
-## Support
+### v1.0
+- Initial release with basic WooCommerce integration
+- Manual search functionality
+- Basic Missive integration
 
-For issues or questions:
-1. Check the console logs
-2. Verify WooCommerce API credentials
-3. Ensure proper environment configuration
-4. Test API connectivity
+## 🤝 Contributing
 
-## License
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test locally using `index-dev.html`
+5. Submit a pull request
 
-MIT License - See LICENSE file for details
+## 📄 License
+
+This project is proprietary software for QuikrStuff integration with Missive.
