@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2021a'; // Static version matching cache-busting parameter
+    return 'V2022a'; // Static version matching cache-busting parameter
   }
 
   detectMissiveEnvironment() {
@@ -1069,6 +1069,20 @@ class MissWooApp {
   }
 
   extractEmailFromString(text) {
+
+  isValidEmailForSearch(email) {
+    if (!email || typeof email !== "string") return false;
+    
+    // Filter out @QuikrStuff.com emails
+    if (email.toLowerCase().includes("@quikrstuff.com")) {
+      console.log(`Filtered out QuikrStuff email: ${email}`);
+      return false;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^s@]+@[^s@]+.[^s@]+$/;
+    return emailRegex.test(email);
+  }
     if (!text) return null;
     
     const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
@@ -1091,6 +1105,12 @@ class MissWooApp {
   async performAutoSearch(email) {
     if (!email || email === this.lastSearchedEmail) return;
     
+    // Validate email before searching
+    if (!this.isValidEmailForSearch(email)) {
+      console.log(`Email validation failed for: ${email}`);
+      return;
+    }
+    
     this.lastSearchedEmail = email;
     this.showLoading();
     
@@ -1098,6 +1118,9 @@ class MissWooApp {
       await this.searchOrdersByEmail(email);
     } catch (error) {
       console.error("Auto-search failed:", error);
+      this.showError("Auto-search failed: " + error.message);
+    }
+  }      console.error("Auto-search failed:", error);
       this.showError("Auto-search failed: " + error.message);
     }
   }
