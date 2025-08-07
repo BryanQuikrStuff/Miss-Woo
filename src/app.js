@@ -3,7 +3,9 @@
 
 class MissWooApp {
   constructor() {
-    console.log("🚀 Miss-Woo v2.0 - Clean and Optimized 🚀");
+    this.isMissiveEnvironment = this.detectMissiveEnvironment();
+    this.version = this.getVersion();
+    console.log(`🚀 Miss-Woo ${this.version} - Clean and Optimized 🚀`);
     
     // WooCommerce REST API v3 endpoint
     this.apiBaseUrl = window.config.woocommerce.apiBaseUrl;
@@ -19,7 +21,6 @@ class MissWooApp {
     this.allOrders = [];
     
     // Auto-search configuration - detect Missive environment with multiple checks
-    this.isMissiveEnvironment = this.detectMissiveEnvironment();
     this.autoSearchEnabled = this.isMissiveEnvironment; // Enable auto-search only in Missive
     this.lastSearchedEmail = null; // Prevent duplicate searches
     
@@ -28,6 +29,21 @@ class MissWooApp {
     
     // Initialize after constructor
     this.initialize();
+  }
+
+  getVersion() {
+    const timestamp = Date.now().toString().slice(-5); // Last 5 digits of timestamp
+    const hostname = window.location.hostname;
+    
+    if (this.isMissiveEnvironment) {
+      return `MA-${timestamp}`; // Missive App
+    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `LH-${timestamp}`; // Local Host
+    } else if (hostname.includes('github.io')) {
+      return `GH-${timestamp}`; // GitHub Pages
+    } else {
+      return `MW-${timestamp}`; // Web version (other domains)
+    }
   }
 
   detectMissiveEnvironment() {
@@ -766,6 +782,9 @@ class MissWooApp {
   }
 
   updateUIForEnvironment() {
+    // Update header with version number
+    this.updateHeaderWithVersion();
+    
     const searchSection = document.querySelector('.search-section');
 
     if (this.isMissiveEnvironment) {
@@ -817,6 +836,13 @@ class MissWooApp {
           };
         }
       }
+    }
+  }
+
+  updateHeaderWithVersion() {
+    const header = document.querySelector('.app-header h1');
+    if (header) {
+      header.innerHTML = `Miss-Woo <span style="font-size: 0.6em; color: #666; font-weight: normal;">${this.version}</span>`;
     }
   }
 
