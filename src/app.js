@@ -53,19 +53,28 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2038';
+    return 'V2039';
   }
 
   detectMissiveEnvironment() {
-    // Simplified detection - only check for actual Missive API
-    const isMissive = typeof window !== 'undefined' && window.Missive;
+    // Enhanced detection - check multiple indicators
+    const hasMissiveAPI = typeof window !== 'undefined' && window.Missive;
+    const hasMissiveScript = typeof window !== 'undefined' && document.querySelector('script[src*="missive"]');
+    const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+    const urlContainsMissive = typeof window !== 'undefined' && window.location.href.includes('missive');
+    const hasMissiveUI = typeof window !== 'undefined' && document.querySelector('[data-missive]');
     
-    console.log("Missive environment detection:", {
-      windowMissive: typeof window !== 'undefined' && window.Missive,
-      inIframe: typeof window !== 'undefined' && window.self !== window.top,
-      urlContainsMissive: typeof window !== 'undefined' && window.location.href.includes('missive'),
-      finalResult: isMissive
-    });
+    // More permissive detection - if any Missive indicator is present
+    const isMissive = hasMissiveAPI || hasMissiveScript || isInIframe || urlContainsMissive || hasMissiveUI;
+    
+    console.log("🔍 === MISSIVE ENVIRONMENT DETECTION ===");
+    console.log("hasMissiveAPI:", hasMissiveAPI);
+    console.log("hasMissiveScript:", hasMissiveScript);
+    console.log("isInIframe:", isInIframe);
+    console.log("urlContainsMissive:", urlContainsMissive);
+    console.log("hasMissiveUI:", hasMissiveUI);
+    console.log("Final result:", isMissive);
+    console.log("🔍 === DETECTION END ===");
     
     return isMissive;
   }
@@ -935,6 +944,12 @@ class MissWooApp {
       // Web environment: Show manual search UI only
       if (searchSection) {
         searchSection.innerHTML = `
+          <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ffeaa7;">
+            <strong>Web Mode:</strong> Manual search only. 
+            <button onclick="window.app.forceMissiveEnvironment()" style="background: #2196F3; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-left: 10px;">
+              🔧 Force Missive Mode
+            </button>
+          </div>
           <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
           <button id="searchBtn" class="search-btn">Search</button>
         `;
@@ -1491,6 +1506,28 @@ class MissWooApp {
           `Missive API: ${window.Missive ? 'Available' : 'Not Available'}\n` +
           `Available methods: ${Object.keys(window.Missive || {}).join(', ')}\n\n` +
           `Check console for detailed debug info.`);
+  }
+
+  forceMissiveEnvironment() {
+    console.log("🔧 === FORCING MISSIVE ENVIRONMENT ===");
+    
+    // Force Missive environment detection
+    this.isMissiveEnvironment = true;
+    this.autoSearchEnabled = true;
+    
+    console.log("Environment forced to Missive");
+    console.log("Auto-search enabled:", this.autoSearchEnabled);
+    
+    // Re-initialize Missive
+    this.initializeMissive();
+    
+    // Update UI
+    this.updateUIForEnvironment();
+    
+    console.log("🔧 === FORCE COMPLETE ===");
+    
+    // Show user feedback
+    alert("Missive environment forced! Auto-search should now be available.");
   }
 }
 
