@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2034';
+    return 'V2035';
   }
 
   detectMissiveEnvironment() {
@@ -997,8 +997,11 @@ class MissWooApp {
 
   async tryGetCurrentEmail() {
     try {
+      console.log("🔍 === AUTO-SEARCH DEBUG ===");
       console.log("Trying to get current email from Missive API...");
+      console.log("Missive object available:", !!window.Missive);
       console.log("Available Missive methods:", Object.keys(window.Missive || {}));
+      console.log("Auto-search enabled:", this.autoSearchEnabled);
       
       // Try multiple methods to get the current email
       let email = null;
@@ -1006,109 +1009,139 @@ class MissWooApp {
       // Method 1: Try Missive.getCurrentEmail() if available
       if (window.Missive && Missive.getCurrentEmail) {
         try {
-          console.log("Trying Missive.getCurrentEmail()...");
+          console.log("📧 Method 1: Trying Missive.getCurrentEmail()...");
           const emailData = await Missive.getCurrentEmail();
-          console.log("getCurrentEmail raw data:", emailData);
+          console.log("📧 getCurrentEmail raw data:", emailData);
           email = this.extractEmailFromData(emailData);
-          console.log("Method 1 - getCurrentEmail result:", email);
+          console.log("📧 Method 1 - getCurrentEmail result:", email);
         } catch (error) {
-          console.log("Method 1 failed:", error);
+          console.log("❌ Method 1 failed:", error);
         }
       } else {
-        console.log("Missive.getCurrentEmail() not available");
+        console.log("❌ Missive.getCurrentEmail() not available");
       }
       
       // Method 2: Try Missive.getCurrentThread() if available
       if (!email && window.Missive && Missive.getCurrentThread) {
         try {
-          console.log("Trying Missive.getCurrentThread()...");
+          console.log("📧 Method 2: Trying Missive.getCurrentThread()...");
           const threadData = await Missive.getCurrentThread();
-          console.log("getCurrentThread raw data:", threadData);
+          console.log("📧 getCurrentThread raw data:", threadData);
           email = this.extractEmailFromData(threadData);
-          console.log("Method 2 - getCurrentThread result:", email);
+          console.log("📧 Method 2 - getCurrentThread result:", email);
         } catch (error) {
-          console.log("Method 2 failed:", error);
+          console.log("❌ Method 2 failed:", error);
         }
       } else if (!email) {
-        console.log("Missive.getCurrentThread() not available");
+        console.log("❌ Missive.getCurrentThread() not available");
       }
       
       // Method 3: Try Missive.getCurrentConversation() if available
       if (!email && window.Missive && Missive.getCurrentConversation) {
         try {
-          console.log("Trying Missive.getCurrentConversation()...");
+          console.log("📧 Method 3: Trying Missive.getCurrentConversation()...");
           const conversationData = await Missive.getCurrentConversation();
-          console.log("getCurrentConversation raw data:", conversationData);
+          console.log("📧 getCurrentConversation raw data:", conversationData);
           email = this.extractEmailFromData(conversationData);
-          console.log("Method 3 - getCurrentConversation result:", email);
+          console.log("📧 Method 3 - getCurrentConversation result:", email);
         } catch (error) {
-          console.log("Method 3 failed:", error);
+          console.log("❌ Method 3 failed:", error);
         }
       } else if (!email) {
-        console.log("Missive.getCurrentConversation() not available");
+        console.log("❌ Missive.getCurrentConversation() not available");
       }
       
       // Method 4: Try to get from URL parameters or other sources
       if (!email) {
-        console.log("Trying to extract email from URL or other sources...");
+        console.log("📧 Method 4: Trying to extract email from URL or other sources...");
         const urlParams = new URLSearchParams(window.location.search);
         const emailParam = urlParams.get('email');
         if (emailParam) {
           email = emailParam;
-          console.log("Found email in URL parameter:", email);
+          console.log("📧 Found email in URL parameter:", email);
         }
       }
       
       if (email) {
-        console.log("Found current email:", email);
-        await this.performAutoSearch(email);
+        console.log("✅ Found current email:", email);
+        console.log("🔍 Email validation result:", this.isValidEmailForSearch(email));
+        if (this.isValidEmailForSearch(email)) {
+          await this.performAutoSearch(email);
+        } else {
+          console.log("❌ Email failed validation, skipping auto-search");
+        }
       } else {
-        console.log("No current email found from any method");
-        console.log("This means auto-search will rely on Missive events only");
+        console.log("❌ No current email found from any method");
+        console.log("💡 Auto-search will rely on Missive events only");
       }
+      
+      console.log("🔍 === AUTO-SEARCH DEBUG END ===");
     } catch (error) {
-      console.error("Error getting current email:", error);
+      console.error("❌ Error getting current email:", error);
     }
   }
 
   async handleEmailFocus(data) {
+    console.log("📧 Email focus event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      console.log("📧 Extracted email from focus event:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("Email focused, auto-searching:", email);
+        console.log("🔍 Email focused, auto-searching:", email);
         await this.performAutoSearch(email);
+      } else {
+        console.log("❌ Email focus: No valid email or already searched");
       }
+    } else {
+      console.log("❌ Auto-search disabled, ignoring email focus");
     }
   }
 
   async handleEmailOpen(data) {
+    console.log("📧 Email open event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      console.log("📧 Extracted email from open event:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("Email opened, auto-searching:", email);
+        console.log("🔍 Email opened, auto-searching:", email);
         await this.performAutoSearch(email);
+      } else {
+        console.log("❌ Email open: No valid email or already searched");
       }
+    } else {
+      console.log("❌ Auto-search disabled, ignoring email open");
     }
   }
 
   async handleThreadFocus(data) {
+    console.log("📧 Thread focus event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      console.log("📧 Extracted email from thread focus:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("Thread focused, auto-searching:", email);
+        console.log("🔍 Thread focused, auto-searching:", email);
         await this.performAutoSearch(email);
+      } else {
+        console.log("❌ Thread focus: No valid email or already searched");
       }
+    } else {
+      console.log("❌ Auto-search disabled, ignoring thread focus");
     }
   }
 
   async handleConversationChange(data) {
+    console.log("📧 Conversation change event triggered:", data);
     if (this.autoSearchEnabled) {
-      console.log("Conversation changed:", data);
       const email = this.extractEmailFromData(data);
+      console.log("📧 Extracted email from conversation change:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("Conversation change detected, auto-searching:", email);
+        console.log("🔍 Conversation changed, auto-searching:", email);
         await this.performAutoSearch(email);
+      } else {
+        console.log("❌ Conversation change: No valid email or already searched");
       }
+    } else {
+      console.log("❌ Auto-search disabled, ignoring conversation change");
     }
   }
 
@@ -1123,25 +1156,77 @@ class MissWooApp {
   }
 
   extractEmailFromData(data) {
-    if (!data) return null;
+    console.log("🔍 Extracting email from data:", data);
+    
+    if (!data) {
+      console.log("❌ No data provided");
+      return null;
+    }
 
     // Try different data structures
-    if (data.email) return data.email;
-    if (data.recipient && data.recipient.email) return data.recipient.email;
+    if (data.email) {
+      console.log("✅ Found email in data.email:", data.email);
+      return data.email;
+    }
+    
+    if (data.recipient && data.recipient.email) {
+      console.log("✅ Found email in data.recipient.email:", data.recipient.email);
+      return data.recipient.email;
+    }
+    
     if (data.thread && data.thread.participants) {
       const participant = data.thread.participants.find(p => p.role === 'to');
-      if (participant && participant.email) return participant.email;
+      if (participant && participant.email) {
+        console.log("✅ Found email in thread.participants:", participant.email);
+        return participant.email;
+      }
     }
+    
     if (data.participants) {
       const participant = data.participants.find(p => p.role === 'to');
-      if (participant && participant.email) return participant.email;
+      if (participant && participant.email) {
+        console.log("✅ Found email in participants:", participant.email);
+        return participant.email;
+      }
+    }
+    
+    // Try to extract from text content
+    if (data.text) {
+      const email = this.extractEmailFromString(data.text);
+      if (email) {
+        console.log("✅ Found email in data.text:", email);
+        return email;
+      }
+    }
+    
+    if (data.content) {
+      const email = this.extractEmailFromString(data.content);
+      if (email) {
+        console.log("✅ Found email in data.content:", email);
+        return email;
+      }
+    }
+    
+    if (data.subject) {
+      const email = this.extractEmailFromString(data.subject);
+      if (email) {
+        console.log("✅ Found email in data.subject:", email);
+        return email;
+      }
+    }
+    
+    // Try to extract from any string properties
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'string' && value.includes('@')) {
+        const email = this.extractEmailFromString(value);
+        if (email) {
+          console.log(`✅ Found email in data.${key}:`, email);
+          return email;
+        }
+      }
     }
 
-    // Try to extract from text content
-    if (data.text) return this.extractEmailFromString(data.text);
-    if (data.content) return this.extractEmailFromString(data.content);
-    if (data.subject) return this.extractEmailFromString(data.subject);
-
+    console.log("❌ No email found in data structure");
     return null;
   }
 
