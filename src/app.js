@@ -775,6 +775,7 @@ class MissWooApp {
           <div class="auto-search-indicator" style="background: #e8f5e8; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
             🔍 <strong>Auto-search enabled</strong> - searching when email is focused in Missive
             <br><small>If auto-search doesn't work, use manual search below</small>
+            <br><button onclick="window.app.tryGetCurrentEmail()" style="margin-top: 5px; padding: 2px 8px; font-size: 12px;">Test Auto-Search</button>
           </div>
           <div class="manual-search-fallback">
             <input type="text" id="orderSearch" placeholder="Search orders by ID or customer email..." class="search-input" />
@@ -884,6 +885,7 @@ class MissWooApp {
   async tryGetCurrentEmail() {
     try {
       console.log("Trying to get current email from Missive API...");
+      console.log("Available Missive methods:", Object.keys(window.Missive || {}));
       
       // Try multiple methods to get the current email
       let email = null;
@@ -891,33 +893,56 @@ class MissWooApp {
       // Method 1: Try Missive.getCurrentEmail() if available
       if (window.Missive && Missive.getCurrentEmail) {
         try {
+          console.log("Trying Missive.getCurrentEmail()...");
           const emailData = await Missive.getCurrentEmail();
+          console.log("getCurrentEmail raw data:", emailData);
           email = this.extractEmailFromData(emailData);
           console.log("Method 1 - getCurrentEmail result:", email);
         } catch (error) {
           console.log("Method 1 failed:", error);
         }
+      } else {
+        console.log("Missive.getCurrentEmail() not available");
       }
       
       // Method 2: Try Missive.getCurrentThread() if available
       if (!email && window.Missive && Missive.getCurrentThread) {
         try {
+          console.log("Trying Missive.getCurrentThread()...");
           const threadData = await Missive.getCurrentThread();
+          console.log("getCurrentThread raw data:", threadData);
           email = this.extractEmailFromData(threadData);
           console.log("Method 2 - getCurrentThread result:", email);
         } catch (error) {
           console.log("Method 2 failed:", error);
         }
+      } else if (!email) {
+        console.log("Missive.getCurrentThread() not available");
       }
       
       // Method 3: Try Missive.getCurrentConversation() if available
       if (!email && window.Missive && Missive.getCurrentConversation) {
         try {
+          console.log("Trying Missive.getCurrentConversation()...");
           const conversationData = await Missive.getCurrentConversation();
+          console.log("getCurrentConversation raw data:", conversationData);
           email = this.extractEmailFromData(conversationData);
           console.log("Method 3 - getCurrentConversation result:", email);
         } catch (error) {
           console.log("Method 3 failed:", error);
+        }
+      } else if (!email) {
+        console.log("Missive.getCurrentConversation() not available");
+      }
+      
+      // Method 4: Try to get from URL parameters or other sources
+      if (!email) {
+        console.log("Trying to extract email from URL or other sources...");
+        const urlParams = new URLSearchParams(window.location.search);
+        const emailParam = urlParams.get('email');
+        if (emailParam) {
+          email = emailParam;
+          console.log("Found email in URL parameter:", email);
         }
       }
       
@@ -926,6 +951,7 @@ class MissWooApp {
         await this.performAutoSearch(email);
       } else {
         console.log("No current email found from any method");
+        console.log("This means auto-search will rely on Missive events only");
       }
     } catch (error) {
       console.error("Error getting current email:", error);
