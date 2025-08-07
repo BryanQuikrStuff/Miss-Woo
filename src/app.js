@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2022a'; // Static version matching cache-busting parameter
+    return 'V2023'; // Static version matching cache-busting parameter
   }
 
   detectMissiveEnvironment() {
