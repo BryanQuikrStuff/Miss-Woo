@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2042';
+    return 'V2043';
   }
 
   detectMissiveEnvironment() {
@@ -887,6 +887,9 @@ class MissWooApp {
     console.log("Environment detection:", this.isMissiveEnvironment);
     console.log("Auto-search enabled:", this.autoSearchEnabled);
     
+    // Update header with version number
+    this.updateHeaderWithVersion();
+    
     const searchSection = document.querySelector('.search-section');
     console.log("Search section found:", !!searchSection);
     
@@ -1571,26 +1574,47 @@ class MissWooApp {
   }
 
   bindDiagnosticEvents() {
+    console.log("🔧 Binding diagnostic events...");
+    
     const debugStatusBtn = document.getElementById('debugStatus');
     const scanDOMBtn = document.getElementById('scanDOM');
     const monitorClicksBtn = document.getElementById('monitorClicks');
     const testAutoSearchBtn = document.getElementById('testAutoSearch');
     
+    console.log("Debug status button found:", !!debugStatusBtn);
+    console.log("Scan DOM button found:", !!scanDOMBtn);
+    console.log("Monitor clicks button found:", !!monitorClicksBtn);
+    console.log("Test auto-search button found:", !!testAutoSearchBtn);
+    
     if (debugStatusBtn) {
-      debugStatusBtn.onclick = () => this.debugMissiveStatus();
+      debugStatusBtn.onclick = () => {
+        console.log("🔍 Debug status button clicked");
+        this.debugMissiveStatus();
+      };
     }
     
     if (scanDOMBtn) {
-      scanDOMBtn.onclick = () => this.scanDOMStructure();
+      scanDOMBtn.onclick = () => {
+        console.log("🔍 Scan DOM button clicked");
+        this.scanDOMStructure();
+      };
     }
     
     if (monitorClicksBtn) {
-      monitorClicksBtn.onclick = () => this.monitorClicks();
+      monitorClicksBtn.onclick = () => {
+        console.log("👆 Monitor clicks button clicked");
+        this.monitorClicks();
+      };
     }
     
     if (testAutoSearchBtn) {
-      testAutoSearchBtn.onclick = () => this.testAutoSearch();
+      testAutoSearchBtn.onclick = () => {
+        console.log("🚀 Test auto-search button clicked");
+        this.testAutoSearch();
+      };
     }
+    
+    console.log("✅ Diagnostic events bound");
   }
   
   bindWebEvents() {
