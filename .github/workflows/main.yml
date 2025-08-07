@@ -88,6 +88,8 @@ jobs:
         cp src/app.js dist/
         cp src/styles.css dist/
         cp src/config.js dist/
+        # Update HTML to reference files without src/ prefix
+        sed -i 's|src/||g' dist/index.html
         echo "{\"version\": \"$(date +%Y%m%d.%H%M%S)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
 
     - name: Setup Pages
