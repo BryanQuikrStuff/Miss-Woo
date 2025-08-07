@@ -32,7 +32,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2026';
+    return 'V2027';
   }
 
   detectMissiveEnvironment() {
@@ -277,15 +277,17 @@ class MissWooApp {
   }
 
   async displayOrdersList() {
-    this.hideLoading();
-    
     if (this.allOrders.length === 0) {
+      this.hideLoading();
       this.showError("No orders found");
       return;
     }
 
     const resultsContainer = document.getElementById("results");
-    if (!resultsContainer) return;
+    if (!resultsContainer) {
+      this.hideLoading();
+      return;
+    }
 
     // Create customer info section
     const customerInfoSection = this.createCustomerInfoSection();
@@ -358,6 +360,9 @@ class MissWooApp {
     resultsContainer.innerHTML = "";
     resultsContainer.appendChild(customerInfoSection);
     resultsContainer.appendChild(table);
+    
+    // Hide loading only after everything is displayed
+    this.hideLoading();
   }
 
   createCustomerInfoSection() {
