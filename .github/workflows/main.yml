@@ -85,7 +85,6 @@ jobs:
       run: |
         mkdir -p dist
         cp index.html dist/
-        cp diagnostic.html dist/
         cp src/app.js dist/
         cp src/styles.css dist/
         cp src/config.js dist/

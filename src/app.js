@@ -53,7 +53,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2044';
+    return 'V2045';
   }
 
   detectMissiveEnvironment() {
