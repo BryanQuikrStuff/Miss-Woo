@@ -162,6 +162,8 @@ class MissWooApp {
     try {
       await this.bindEvents();
       await this.initializeMissive();
+      // Always attempt URL-driven auto-search (works in web and Missive)
+      this.maybeAutoSearchFromUrl();
       this.setupCleanup(); // Setup proper cleanup
       // Only test connection if not in Missive environment
       if (!this.isMissiveEnvironment) {
@@ -193,6 +195,24 @@ class MissWooApp {
       console.log("Fallback 3: Clearing loading state after 5 seconds");
       this.hideLoading();
     }, 5000);
+  }
+
+  maybeAutoSearchFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const emailParam = params.get('email');
+      if (emailParam) {
+        const email = emailParam.trim();
+        this.setStatus(`URL param email detected → ${email}`);
+        if (this.isValidEmailForSearch(email)) {
+          this.performAutoSearch(email);
+        } else {
+          this.setStatus(`Invalid email in URL: ${email}`, 'error');
+        }
+      }
+    } catch (err) {
+      console.log('Failed parsing URL params:', err);
+    }
   }
 
   async bindEvents() {
