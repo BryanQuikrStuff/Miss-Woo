@@ -198,24 +198,30 @@ class MissWooApp {
   async bindEvents() {
     console.log("Binding events...");
     try {
-      const searchBtn = document.getElementById("searchBtn");
-      const searchInput = document.getElementById("orderSearch");
+      const searchBtnA = document.getElementById("searchBtn");
+      const searchInputA = document.getElementById("orderSearch");
+      const searchBtnB = document.getElementById("searchButton");
+      const searchInputB = document.getElementById("searchInput");
 
-      if (!searchInput) {
-        throw new Error("Required DOM elements not found");
+      // Bind classic UI
+      if (searchBtnA) {
+        searchBtnA.addEventListener("click", () => this.handleSearch());
+      }
+      if (searchInputA) {
+        searchInputA.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") this.handleSearch();
+        });
       }
 
-      // Bind search button click
-      if (searchBtn) {
-        searchBtn.addEventListener("click", () => this.handleSearch());
+      // Bind dynamic UI
+      if (searchBtnB) {
+        searchBtnB.addEventListener("click", () => this.handleSearch());
       }
-
-      // Bind search input enter key
-      searchInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-          this.handleSearch();
-        }
-      });
+      if (searchInputB) {
+        searchInputB.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") this.handleSearch();
+        });
+      }
 
       // Configure UI based on environment
       this.updateUIForEnvironment();
@@ -228,8 +234,10 @@ class MissWooApp {
     }
 
     async handleSearch() {
-    const searchInput = document.getElementById("orderSearch");
-    const searchTerm = searchInput?.value.trim();
+    const inputA = document.getElementById("orderSearch");
+    const inputB = document.getElementById("searchInput");
+    const raw = (inputA?.value ?? inputB?.value ?? '').trim();
+    const searchTerm = raw;
 
         if (!searchTerm) {
       this.showError("Please enter a customer email or order ID");
