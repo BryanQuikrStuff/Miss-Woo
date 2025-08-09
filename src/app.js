@@ -2,7 +2,7 @@
 // VERSION V2021a - Major Version Backup
 
 class MissWooApp {
-  constructor() {
+    constructor() {
     try {
       // Initialize API endpoints
       this.apiBaseUrl = window.config?.woocommerce?.apiBaseUrl;
@@ -31,6 +31,13 @@ class MissWooApp {
       this.emailCache = new Map();
       this.searchDebounceTimer = null;
       this.visibleEmails = new Set();
+      this.isBridgeReady = false;
+      this.allowedBridgeOrigins = new Set([
+        'https://web.missiveapp.com',
+        'https://missiveapp.com',
+        'app://missive',
+        'https://app.missiveapp.com'
+      ]);
       
       // Store all matched orders
       this.allOrders = [];
@@ -52,8 +59,73 @@ class MissWooApp {
     }
   }
 
+  initMissiveBridge() {
+    if (this._bridgeInitialized) return;
+    this._bridgeInitialized = true;
+    try {
+      console.log('🔗 Initializing Missive bridge (postMessage)...');
+      window.addEventListener('message', (event) => this.onBridgeMessage(event));
+      // announce readiness
+      try {
+        window.parent && window.parent.postMessage({ type: 'miss-woo:ready', version: this.version }, '*');
+      } catch (_) {}
+    } catch (err) {
+      console.log('Bridge init failed:', err);
+    }
+  }
+
+  onBridgeMessage(event) {
+    try {
+      const origin = event.origin || '';
+      if (origin && !this.allowedBridgeOrigins.has(origin)) {
+        // Ignore unknown origins silently in prod
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+          console.log('Ignoring message from origin:', origin);
+        }
+        return;
+      }
+
+      const data = event.data || {};
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'missive:bridge:ready') {
+        this.isBridgeReady = true;
+        console.log('✅ Missive bridge ready');
+        return;
+      }
+
+      // Supported forwarded events
+      switch (data.type) {
+        case 'missive:email:focus':
+        case 'missive:email:open': {
+          const email = this.extractEmailFromData(data.payload);
+          if (email) this.performAutoSearch(email);
+          break;
+        }
+        case 'missive:conversation:focus':
+        case 'missive:conversation:open':
+        case 'missive:change:conversations': {
+          // Try contact-first extraction
+          const email = this.extractEmailFromData(data.payload);
+          if (email) this.performAutoSearch(email);
+          break;
+        }
+        case 'missive:contact:focus': {
+          // Contact icon path: expect emails array or primary email
+          const email = this.extractEmailFromData(data.payload);
+          if (email) this.performAutoSearch(email);
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (err) {
+      console.log('Bridge message handling failed:', err);
+    }
+  }
+
   getVersion() {
-    return 'V2045';
+    return 'V2046';
   }
 
   detectMissiveEnvironment() {
@@ -152,34 +224,34 @@ class MissWooApp {
     } catch (error) {
       console.error("Error binding events:", error);
       throw error;
+        }
     }
-  }
 
-  async handleSearch() {
+    async handleSearch() {
     const searchInput = document.getElementById("orderSearch");
     const searchTerm = searchInput?.value.trim();
 
-    if (!searchTerm) {
+        if (!searchTerm) {
       this.showError("Please enter a customer email or order ID");
-      return;
-    }
+            return;
+        }
 
     // Clear previous results and errors
     this.clearPreviousResults();
-    
-    this.showLoading();
-    console.log("Searching for:", searchTerm);
 
-    try {
+        this.showLoading();
+    console.log("Searching for:", searchTerm);
+        
+        try {
       this.allOrders = [];
 
-      // Check if it's an order ID (numeric)
-      if (/^\d+$/.test(searchTerm)) {
-        await this.getOrderById(searchTerm);
-      } else {
-        await this.searchOrdersByEmail(searchTerm);
-      }
-    } catch (error) {
+            // Check if it's an order ID (numeric)
+            if (/^\d+$/.test(searchTerm)) {
+                await this.getOrderById(searchTerm);
+            } else {
+                await this.searchOrdersByEmail(searchTerm);
+            }
+        } catch (error) {
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
     }
@@ -209,7 +281,7 @@ class MissWooApp {
     this.allOrders = [];
   }
 
-  async getOrderById(orderId) {
+    async getOrderById(orderId) {
     console.log("Fetching order by ID:", orderId);
     try {
       const url = this.getAuthenticatedUrl(`/orders/${orderId}`);
@@ -227,13 +299,13 @@ class MissWooApp {
 
       this.allOrders = [order];
       await this.displayOrdersList();
-    } catch (error) {
+        } catch (error) {
       console.error("Get order error:", error);
-      this.showError(`Failed to fetch order ${orderId}: ${error.message}`);
+            this.showError(`Failed to fetch order ${orderId}: ${error.message}`);
+        }
     }
-  }
 
-  async searchOrdersByEmail(email) {
+    async searchOrdersByEmail(email) {
     console.log("Searching orders for email:", email);
     try {
       let allOrders = [];
@@ -315,7 +387,7 @@ class MissWooApp {
       
       console.log("Generated URL:", url.toString());
       return url.toString();
-    } catch (error) {
+        } catch (error) {
       console.error("Failed to construct URL:", error);
       throw new Error(`Invalid URL construction: ${error.message}`);
     }
@@ -348,7 +420,7 @@ class MissWooApp {
       const data = await response.json();
       console.log("API Response:", data);
       return data;
-    } catch (error) {
+        } catch (error) {
       console.error("API Request failed:", error);
       throw error;
     }
@@ -524,7 +596,7 @@ class MissWooApp {
         console.log(`No serial numbers found for order #${order.number}`);
         return "N/A";
       }
-    } catch (error) {
+        } catch (error) {
       console.error('Error getting serial number:', error);
       return "N/A";
     }
@@ -847,8 +919,10 @@ class MissWooApp {
     } else {
       console.log("🔧 Missive not detected, setting up fallback...");
       this.setupMissiveEventListeners(); // This will trigger fallback
+      // Initialize bridge to receive events from parent Missive shell
+      this.initMissiveBridge();
       // Clear loading state immediately for standalone mode
-      this.hideLoading();
+        this.hideLoading();
       
       // Try to detect Missive after a delay in case it loads later
       setTimeout(() => {
@@ -878,7 +952,7 @@ class MissWooApp {
       }
       
       // Always clear loading state after re-check
-      this.hideLoading();
+            this.hideLoading();
     }, 1000);
   }
 
@@ -911,12 +985,12 @@ class MissWooApp {
             <div class="search-controls">
               <input type="text" id="searchInput" placeholder="Manual search..." class="form-control">
               <button id="searchButton" class="btn btn-primary">Search</button>
-            </div>
+                </div>
             
             <div id="statusMessage" class="status-message" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: none;">
               <strong>Status:</strong> <span id="statusText">Ready</span>
+                </div>
             </div>
-          </div>
         `;
         
         // Bind simple events
@@ -940,7 +1014,7 @@ class MissWooApp {
               <button id="searchButton" class="btn btn-primary">Search</button>
               <button id="forceMissive" class="btn btn-warning">Force Missive Mode</button>
             </div>
-          </div>
+            </div>
         `;
         
         // Bind web events
@@ -967,6 +1041,8 @@ class MissWooApp {
     if (!window.Missive) {
       console.log("🔧 Missive API not available, setting up fallback DOM observation...");
       this.setupFallbackAutoSearch();
+      // Also try bridge listener
+      this.initMissiveBridge();
       return;
     }
 
@@ -974,7 +1050,7 @@ class MissWooApp {
 
     Missive.on("ready", () => {
       console.log("✅ Missive ready - attempting to get current email");
-      this.hideLoading();
+            this.hideLoading();
       
       // Try to get current email immediately when Missive is ready
       this.tryGetCurrentEmail();
@@ -1278,6 +1354,17 @@ class MissWooApp {
       return null;
     }
 
+    // Contact-centric shapes
+    if (data.contact) {
+      const c = data.contact;
+      if (Array.isArray(c.emails) && c.emails.length > 0) {
+        const e = c.emails.find((x) => typeof x === 'string' ? this.isValidEmailForSearch(x) : this.isValidEmailForSearch(x?.email));
+        if (typeof e === 'string') return e;
+        if (e && e.email) return e.email;
+      }
+      if (c.email && this.isValidEmailForSearch(c.email)) return c.email;
+    }
+
     // Try different data structures
     if (data.email) {
       console.log("✅ Found email in data.email:", data.email);
@@ -1298,7 +1385,8 @@ class MissWooApp {
     }
     
     if (data.participants) {
-      const participant = data.participants.find(p => p.role === 'to');
+      // Prefer non-internal participants
+      const participant = (data.participants.find(p => p.role === 'to') || data.participants.find(p => p.role === 'from') || data.participants[0]);
       if (participant && participant.email) {
         console.log("✅ Found email in participants:", participant.email);
         return participant.email;
@@ -1386,9 +1474,11 @@ class MissWooApp {
     // Validate email before searching
     if (!this.isValidEmailForSearch(email)) {
       console.log(`Email validation failed for: ${email}`);
-      return;
-    }
-    
+            return;
+        }
+    // If internal domain, skip
+    if (email.toLowerCase().endsWith('@quikrstuff.com')) return;
+        
     // Clear previous results before starting new search
     this.clearPreviousResults();
     
@@ -1421,7 +1511,7 @@ class MissWooApp {
         console.error("Auto-search failed:", error);
         this.showError("Auto-search failed: " + error.message);
       }
-    }, 300); // 300ms debounce delay
+    }, 500); // 500ms debounce delay for stability
   }
 
   cleanupCache() {
