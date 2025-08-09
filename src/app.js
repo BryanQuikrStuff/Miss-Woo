@@ -911,6 +911,18 @@ class MissWooApp {
       errorElement.textContent = message;
       errorElement.classList.remove("hidden");
     }
+    this.setStatus(message, 'error');
+  }
+
+  setStatus(message, type = 'info') {
+    const statusMessage = document.getElementById('statusMessage');
+    const statusText = document.getElementById('statusText');
+    if (statusMessage && statusText) {
+      statusMessage.style.display = 'block';
+      statusText.textContent = message;
+      statusMessage.style.background = type === 'error' ? '#f8d7da' : '#f8f9fa';
+      statusMessage.style.color = type === 'error' ? '#721c24' : '#333';
+    }
   }
 
   initializeMissive() {
@@ -921,11 +933,13 @@ class MissWooApp {
     
     if (window.Missive) {
       console.log("🔧 Missive detected, setting up integration...");
+      this.setStatus('Missive detected. Waiting for events…');
       this.setupMissiveEventListeners();
       // Re-check environment after Missive is ready
       this.recheckMissiveEnvironment();
     } else {
       console.log("🔧 Missive not detected, setting up fallback...");
+      this.setStatus('Missive API not detected. Using fallback.', 'info');
       this.setupMissiveEventListeners(); // This will trigger fallback
       // Initialize bridge to receive events from parent Missive shell
       this.initMissiveBridge();
@@ -1284,6 +1298,7 @@ class MissWooApp {
     console.log("📧 Email focus event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      this.setStatus(email ? `Email focus → ${email}` : 'Email focus event: no email');
       console.log("📧 Extracted email from focus event:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Email focused, auto-searching:", email);
@@ -1300,6 +1315,7 @@ class MissWooApp {
     console.log("📧 Email open event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      this.setStatus(email ? `Email open → ${email}` : 'Email open event: no email');
       console.log("📧 Extracted email from open event:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Email opened, auto-searching:", email);
@@ -1316,6 +1332,7 @@ class MissWooApp {
     console.log("📧 Thread focus event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      this.setStatus(email ? `Thread focus → ${email}` : 'Thread focus event: no email');
       console.log("📧 Extracted email from thread focus:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Thread focused, auto-searching:", email);
@@ -1332,6 +1349,7 @@ class MissWooApp {
     console.log("📧 Conversation change event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
+      this.setStatus(email ? `Conversation change → ${email}` : 'Conversation change: no email');
       console.log("📧 Extracted email from conversation change:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Conversation changed, auto-searching:", email);
@@ -1482,6 +1500,7 @@ class MissWooApp {
     // Validate email before searching
     if (!this.isValidEmailForSearch(email)) {
       console.log(`Email validation failed for: ${email}`);
+      this.setStatus(`Invalid email: ${email}`, 'error');
             return;
         }
     // If internal domain, skip
@@ -1498,6 +1517,7 @@ class MissWooApp {
     this.searchDebounceTimer = setTimeout(async () => {
       this.lastSearchedEmail = email;
       this.showLoading();
+      this.setStatus(`Searching orders for ${email}…`);
       
       try {
         // Check cache first
@@ -1505,6 +1525,7 @@ class MissWooApp {
           console.log(`Using cached results for: ${email}`);
           this.allOrders = this.emailCache.get(email);
           await this.displayOrdersList();
+          this.setStatus(`Loaded cached results for ${email}`);
           return;
         }
         
@@ -1514,6 +1535,9 @@ class MissWooApp {
         if (this.allOrders.length > 0) {
           this.emailCache.set(email, [...this.allOrders]);
           this.cleanupCache(); // Manage cache size
+          this.setStatus(`Found ${this.allOrders.length} order(s) for ${email}`);
+        } else {
+          this.setStatus(`No orders found for ${email}`);
         }
       } catch (error) {
         console.error("Auto-search failed:", error);
