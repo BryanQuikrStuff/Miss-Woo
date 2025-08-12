@@ -23,7 +23,7 @@ class MissWooApp {
       this.isMissiveEnvironment = this.detectMissiveEnvironment();
       this.autoSearchEnabled = this.isMissiveEnvironment;
       
-      // Version
+      // Version (will be updated from manifest if available)
       this.version = this.getVersion();
       
       // Search state
@@ -128,6 +128,28 @@ class MissWooApp {
     return 'v2047';
   }
 
+  async loadVersionFromManifest() {
+    try {
+      const cacheBust = Date.now();
+      const candidates = [
+        `version.json?_cb=${cacheBust}`,
+        `https://bryanquikrstuff.github.io/Miss-Woo/version.json?_cb=${cacheBust}`,
+      ];
+      for (const url of candidates) {
+        try {
+          const resp = await fetch(url, { cache: 'no-store', mode: 'cors', credentials: 'omit' });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          if (data && data.version) {
+            this.version = `v${data.version}`;
+            this.updateHeaderWithVersion();
+            return;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   detectMissiveEnvironment() {
     // Enhanced detection - check multiple indicators
     const hasMissiveAPI = typeof window !== 'undefined' && window.Missive;
@@ -161,6 +183,8 @@ class MissWooApp {
     
     try {
       await this.bindEvents();
+      // Try to sync version with deployed manifest so local and hosted match
+      this.loadVersionFromManifest();
       await this.initializeMissive();
       // Always attempt URL-driven auto-search (works in web and Missive)
       this.maybeAutoSearchFromUrl();
