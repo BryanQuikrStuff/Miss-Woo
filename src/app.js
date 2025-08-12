@@ -1496,25 +1496,41 @@ class MissWooApp {
       return data.email;
     }
     
-    if (data.recipient && data.recipient.email) {
+    if (data.recipient && (data.recipient.email || data.recipient.handle || data.recipient.address)) {
       console.log("✅ Found email in data.recipient.email:", data.recipient.email);
-      return data.recipient.email;
+      const candidate = data.recipient.email || data.recipient.handle || data.recipient.address;
+      if (this.isValidEmailForSearch(candidate)) return candidate;
     }
     
     if (data.thread && data.thread.participants) {
-      const participant = data.thread.participants.find(p => p.role === 'to');
-      if (participant && participant.email) {
-        console.log("✅ Found email in thread.participants:", participant.email);
-        return participant.email;
-      }
+      const emailFromParticipants = this.extractEmailFromParticipants(data.thread.participants);
+      if (emailFromParticipants) return emailFromParticipants;
     }
     
     if (data.participants) {
-      // Prefer non-internal participants
-      const participant = (data.participants.find(p => p.role === 'to') || data.participants.find(p => p.role === 'from') || data.participants[0]);
-      if (participant && participant.email) {
-        console.log("✅ Found email in participants:", participant.email);
-        return participant.email;
+      const emailFromParticipants = this.extractEmailFromParticipants(data.participants);
+      if (emailFromParticipants) return emailFromParticipants;
+    }
+
+    // Messages shape (conversation.messages or data.message)
+    if (Array.isArray(data.messages)) {
+      for (const msg of data.messages) {
+        const from = msg.from?.email || msg.from?.handle || msg.from?.address;
+        if (from && this.isValidEmailForSearch(from)) return from;
+        const toList = msg.to || [];
+        for (const t of toList) {
+          const addr = t.email || t.handle || t.address;
+          if (addr && this.isValidEmailForSearch(addr)) return addr;
+        }
+      }
+    }
+    if (data.message) {
+      const from = data.message.from?.email || data.message.from?.handle || data.message.from?.address;
+      if (from && this.isValidEmailForSearch(from)) return from;
+      const toList = data.message.to || [];
+      for (const t of toList) {
+        const addr = t.email || t.handle || t.address;
+        if (addr && this.isValidEmailForSearch(addr)) return addr;
       }
     }
     
@@ -1555,6 +1571,33 @@ class MissWooApp {
     }
 
     console.log("❌ No email found in data structure");
+    return null;
+  }
+
+  extractEmailFromParticipants(participants) {
+    if (!Array.isArray(participants)) return null;
+    // Prefer external recipients/senders over internal
+    const preferredOrder = [
+      (p) => p.role === 'to',
+      (p) => p.role === 'from',
+      () => true,
+    ];
+    for (const predicate of preferredOrder) {
+      const candidate = participants.find(predicate);
+      if (!candidate) continue;
+      const emailLike = candidate.email || candidate.handle || candidate.address || candidate?.contact?.email;
+      if (emailLike && this.isValidEmailForSearch(emailLike)) return emailLike;
+      if (Array.isArray(candidate?.contact?.emails)) {
+        const e = candidate.contact.emails.find((x) => this.isValidEmailForSearch(typeof x === 'string' ? x : x?.email));
+        if (typeof e === 'string' && this.isValidEmailForSearch(e)) return e;
+        if (e?.email && this.isValidEmailForSearch(e.email)) return e.email;
+      }
+    }
+    // Try all participants
+    for (const p of participants) {
+      const emailLike = p.email || p.handle || p.address || p?.contact?.email;
+      if (emailLike && this.isValidEmailForSearch(emailLike)) return emailLike;
+    }
     return null;
   }
 
