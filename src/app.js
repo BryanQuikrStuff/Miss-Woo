@@ -125,7 +125,7 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'V2046';
+    return 'v2047';
   }
 
   detectMissiveEnvironment() {
@@ -1054,7 +1054,6 @@ class MissWooApp {
             <div class="search-controls">
               <input type="text" id="searchInput" placeholder="Enter email or order number..." class="form-control">
               <button id="searchButton" class="btn btn-primary">Search</button>
-              <button id="forceMissive" class="btn btn-warning">Force Missive Mode</button>
             </div>
             </div>
         `;
@@ -1685,12 +1684,13 @@ class MissWooApp {
       statusMessage.style.display = 'block';
       statusText.textContent = 'Ready';
     }
+
+    // No clipboard/paste helper in Missive UI to keep it minimal and standard
   }
 
   bindWebEvents() {
     const searchButton = document.getElementById('searchButton');
     const searchInput = document.getElementById('searchInput');
-    const forceMissiveBtn = document.getElementById('forceMissive');
     
     if (searchButton) {
       searchButton.onclick = () => this.handleSearch();
@@ -1702,9 +1702,7 @@ class MissWooApp {
       };
     }
     
-    if (forceMissiveBtn) {
-      forceMissiveBtn.onclick = () => this.forceMissiveEnvironment();
-    }
+    // No force/paste helpers in Web UI to keep parity with Missive
   }
   
   log(message, type = 'info') {
