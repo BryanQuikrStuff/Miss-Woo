@@ -86,7 +86,12 @@ jobs:
         mkdir -p dist
         cp index.html dist/
         cp -r src dist/
-        echo "{\"version\": \"$(date +%Y%m%d.%H%M%S)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
+        BUILD_VERSION=$(date +%Y%m%d%H%M%S)
+        # Update cache-busting version in HTML references
+        sed -E -i "s/\?v=[0-9]+/?v=${BUILD_VERSION}/g" dist/index.html
+        # Update displayed version in app header
+        sed -E -i "s/return 'v[0-9]+';/return 'v${BUILD_VERSION}';/g" dist/src/app.js
+        echo "{\"version\": \"${BUILD_VERSION}\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
 
     - name: Setup Pages
       uses: actions/configure-pages@v4
