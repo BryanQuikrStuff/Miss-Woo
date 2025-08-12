@@ -961,11 +961,16 @@ class MissWooApp {
   setStatus(message, type = 'info') {
     const statusMessage = document.getElementById('statusMessage');
     const statusText = document.getElementById('statusText');
+    const statusDetails = document.getElementById('statusDetails');
     if (statusMessage && statusText) {
       statusMessage.style.display = 'block';
       statusText.textContent = message;
       statusMessage.style.background = type === 'error' ? '#f8d7da' : '#f8f9fa';
       statusMessage.style.color = type === 'error' ? '#721c24' : '#333';
+    }
+    if (statusDetails && typeof message === 'object') {
+      statusDetails.style.display = 'block';
+      statusDetails.textContent = JSON.stringify(message, null, 2);
     }
   }
 
@@ -1056,6 +1061,7 @@ class MissWooApp {
             <div id="statusMessage" class="status-message" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: none;">
               <strong>Status:</strong> <span id="statusText">Ready</span>
                 </div>
+            <pre id="statusDetails" style="display:none; margin-top:6px; font-size: 12px; color:#666; white-space: pre-wrap;"></pre>
             </div>
         `;
         
@@ -1079,6 +1085,7 @@ class MissWooApp {
               <input type="text" id="searchInput" placeholder="Enter email or order number..." class="form-control">
               <button id="searchButton" class="btn btn-primary">Search</button>
             </div>
+            <pre id="statusDetails" style="display:none; margin-top:6px; font-size: 12px; color:#666; white-space: pre-wrap;"></pre>
             </div>
         `;
         
@@ -1149,22 +1156,26 @@ class MissWooApp {
     // Add conversation change listener for better auto-search
     Missive.on("change:conversations", (data) => {
       console.log("📧 Missive change:conversations event:", data);
+      this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids: data?.ids||data?.conversation_ids||null });
       this.handleConversationChange(data);
     });
     // Some environments fire without payload; poll for current conversation then
     Missive.on("conversation:updated", async (data) => {
       console.log("📧 Missive conversation:updated event:", data);
+      this.setStatus({ event: 'conversation:updated', payloadKeys: Object.keys(data||{}) });
       await this.handleConversationChange(data || {});
     });
     
     // Additional events for better coverage
     Missive.on("conversation:focus", (data) => {
       console.log("📧 Missive conversation:focus event:", data);
+      this.setStatus({ event: 'conversation:focus', payloadKeys: Object.keys(data||{}) });
       this.handleConversationChange(data);
     });
     
     Missive.on("conversation:open", (data) => {
       console.log("📧 Missive conversation:open event:", data);
+      this.setStatus({ event: 'conversation:open', payloadKeys: Object.keys(data||{}) });
       this.handleConversationChange(data);
     });
     
