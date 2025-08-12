@@ -1127,6 +1127,11 @@ class MissWooApp {
       console.log("📧 Missive change:conversations event:", data);
       this.handleConversationChange(data);
     });
+    // Some environments fire without payload; poll for current conversation then
+    Missive.on("conversation:updated", async (data) => {
+      console.log("📧 Missive conversation:updated event:", data);
+      await this.handleConversationChange(data || {});
+    });
     
     // Additional events for better coverage
     Missive.on("conversation:focus", (data) => {
@@ -1316,7 +1321,13 @@ class MissWooApp {
   async handleEmailFocus(data) {
     console.log("📧 Email focus event triggered:", data);
     if (this.autoSearchEnabled) {
-      const email = this.extractEmailFromData(data);
+      let email = this.extractEmailFromData(data);
+      if (!email && window.Missive && Missive.getCurrentEmail) {
+        try {
+          const e = await Missive.getCurrentEmail();
+          email = this.extractEmailFromData(e);
+        } catch (_) {}
+      }
       this.setStatus(email ? `Email focus → ${email}` : 'Email focus event: no email');
       console.log("📧 Extracted email from focus event:", email);
       if (email && email !== this.lastSearchedEmail) {
@@ -1350,7 +1361,13 @@ class MissWooApp {
   async handleThreadFocus(data) {
     console.log("📧 Thread focus event triggered:", data);
     if (this.autoSearchEnabled) {
-      const email = this.extractEmailFromData(data);
+      let email = this.extractEmailFromData(data);
+      if (!email && window.Missive && Missive.getCurrentThread) {
+        try {
+          const t = await Missive.getCurrentThread();
+          email = this.extractEmailFromData(t);
+        } catch (_) {}
+      }
       this.setStatus(email ? `Thread focus → ${email}` : 'Thread focus event: no email');
       console.log("📧 Extracted email from thread focus:", email);
       if (email && email !== this.lastSearchedEmail) {
@@ -1366,19 +1383,58 @@ class MissWooApp {
 
   async handleConversationChange(data) {
     console.log("📧 Conversation change event triggered:", data);
-    if (this.autoSearchEnabled) {
-      const email = this.extractEmailFromData(data);
-      this.setStatus(email ? `Conversation change → ${email}` : 'Conversation change: no email');
-      console.log("📧 Extracted email from conversation change:", email);
-      if (email && email !== this.lastSearchedEmail) {
-        console.log("🔍 Conversation changed, auto-searching:", email);
-        await this.performAutoSearch(email);
-      } else {
-        console.log("❌ Conversation change: No valid email or already searched");
-      }
-    } else {
+    if (!this.autoSearchEnabled) {
       console.log("❌ Auto-search disabled, ignoring conversation change");
+      return;
     }
+
+    // First try to extract directly from the payload
+    let email = this.extractEmailFromData(data);
+    if (email) {
+      this.setStatus(`Conversation change → ${email}`);
+      if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
+      return;
+    }
+
+    // If not found, query Missive for the focused conversation's details
+    try {
+      if (window.Missive) {
+        // Try current conversation first
+        if (Missive.getCurrentConversation) {
+          const conv = await Missive.getCurrentConversation();
+          email = this.extractEmailFromData(conv);
+          if (email && this.isValidEmailForSearch(email)) {
+            this.setStatus(`Conversation change → ${email}`);
+            if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
+            return;
+          }
+        }
+
+        // Try fetchConversations with ids from the event payload
+        const ids = (data && (data.ids || data.conversation_ids)) ||
+          (Array.isArray(data?.added) ? data.added : []) ||
+          (Array.isArray(data?.updated) ? data.updated : []);
+        if (Missive.fetchConversations && ids && ids.length) {
+          const conversations = await Missive.fetchConversations({ ids });
+          if (Array.isArray(conversations) && conversations.length) {
+            for (const c of conversations) {
+              email = this.extractEmailFromData(c);
+              if (email && this.isValidEmailForSearch(email)) break;
+            }
+            if (email) {
+              this.setStatus(`Conversation change → ${email}`);
+              if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.log('Missive fetch on conversation change failed:', err);
+    }
+
+    // Still nothing
+    this.setStatus('Conversation change: no email');
   }
 
   async extractAndSearchEmail(data) {
