@@ -1423,10 +1423,19 @@ class MissWooApp {
     // If not found, query Missive for the focused conversation's details
     try {
       if (window.Missive) {
+        // Gather candidate conversation ids from multiple shapes
+        let candidateIds = [];
+        if (Array.isArray(data?.ids)) candidateIds = candidateIds.concat(data.ids);
+        if (Array.isArray(data?.conversation_ids)) candidateIds = candidateIds.concat(data.conversation_ids);
+        if (typeof data?.id === 'string') candidateIds.push(data.id);
+        if (data?.conversation?.id) candidateIds.push(data.conversation.id);
+        if (data?.thread?.conversation_id) candidateIds.push(data.thread.conversation_id);
+
         // Try current conversation first
         if (Missive.getCurrentConversation) {
           const conv = await Missive.getCurrentConversation();
           email = this.extractEmailFromData(conv);
+          if (conv?.id) candidateIds.push(conv.id);
           if (email && this.isValidEmailForSearch(email)) {
             this.setStatus(`Conversation change → ${email}`);
             if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
@@ -1434,13 +1443,12 @@ class MissWooApp {
           }
         }
 
-        // Try fetchConversations with ids from the event payload
-        const ids = (data && (data.ids || data.conversation_ids)) ||
-          (Array.isArray(data?.added) ? data.added : []) ||
-          (Array.isArray(data?.updated) ? data.updated : []);
+        // Try fetchConversations with any ids we gathered
+        const ids = candidateIds.length ? Array.from(new Set(candidateIds)) : null;
         if (Missive.fetchConversations && ids && ids.length) {
           const conversations = await Missive.fetchConversations({ ids });
           if (Array.isArray(conversations) && conversations.length) {
+            this.setStatus(`Fetching conversations (${conversations.length})…`);
             for (const c of conversations) {
               email = this.extractEmailFromData(c);
               if (email && this.isValidEmailForSearch(email)) break;
@@ -1450,6 +1458,10 @@ class MissWooApp {
               if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
               return;
             }
+            // Surface participants count to UI for quick debugging
+            const first = conversations[0];
+            const pCount = Array.isArray(first?.participants) ? first.participants.length : 0;
+            this.setStatus(`Conversation change: no email (participants: ${pCount})`);
           }
         }
       }
