@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Permissions-Policy" content="unload=()" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Miss-Woo POC — Missive Email Events</title>
+    <link rel="stylesheet" href="https://integrations.missiveapp.com/missive.css?v=0" />
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', Arial, sans-serif; margin: 16px; }
+      header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+      h1 { font-size: 18px; margin: 0; }
+      .badge { padding: 2px 6px; border-radius: 4px; font-size: 12px; background: #eef; color: #223; border: 1px solid #ccd; }
+      .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+      #status { font-size: 12px; color: #333; }
+      #emails { margin: 8px 0 0; padding-left: 20px; }
+      #emails li { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 13px; }
+      #log { height: 220px; overflow: auto; background: #fafafa; border: 1px solid #eee; padding: 8px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; }
+      button { padding: 6px 10px; border: 1px solid #ccd; background: #fff; border-radius: 6px; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Missive Email Events POC</h1>
+      <span id="env" class="badge">env: init</span>
+      <span id="ver" class="badge">v0</span>
+    </header>
+
+    <div class="row">
+      <div id="status">Booting…</div>
+      <button id="btn-copy" disabled>Copy emails</button>
+      <button id="btn-clear">Clear log</button>
+    </div>
+
+    <section style="margin-top: 10px;">
+      <strong>Emails seen</strong>
+      <ul id="emails"></ul>
+    </section>
+
+    <section style="margin-top: 12px;">
+      <strong>Event log</strong>
+      <pre id="log"></pre>
+    </section>
+
+    <script src="https://integrations.missiveapp.com/missive.js?v=0"></script>
+    <script src="./poc.js?v=0" defer></script>
+  </body>
+  </html>
+
+

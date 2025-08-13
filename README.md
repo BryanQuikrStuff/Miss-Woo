@@ -11,6 +11,16 @@ npx http-server -p 3000 --cors
 # Then open: http://localhost:3000/index-dev.html
 ```
 
+### Missive Email Events POC
+
+We provide a lightweight proof-of-concept under `poc/` to validate Missive iframe events and email extraction.
+
+- URL when deployed to GitHub Pages: `/Miss-Woo/poc/`
+- Listens to `ready`, `change:conversations`, `email:focus`, etc.
+- Displays captured emails and exposes `window.MissivePOC.getEmails()`.
+
+Use this as the Integration URL in Missive to validate dynamic email access before wiring into the main app.
+
 ### Production Deployment
 - **GitHub Pages**: Automatically deployed from `main` branch
 - **URL**: https://bryanquikrstuff.github.io/Miss-Woo/
