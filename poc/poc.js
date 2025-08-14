@@ -248,7 +248,11 @@
       } catch (_) {}
       log(`event: ${evt} (array len=${payload.length}, first=${typeof first}:${preview})`);
     } else {
-      log(`event: ${evt}`, payload || {});
+      if (payload && typeof payload === 'object' && Array.isArray(payload.ids)) {
+        log(`event: ${evt} (object with ids)`, { ids: payload.ids });
+      } else {
+        log(`event: ${evt}`, payload || {});
+      }
     }
     let got = extractEmail(payload || {});
     if (!got) {
@@ -256,6 +260,10 @@
       // If payload is an array of IDs, resolve using those IDs
       if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'string') {
         got = await resolveFromIds(payload, evt);
+      }
+      // If payload is an object with ids array, also resolve
+      if (!got && payload && typeof payload === 'object' && Array.isArray(payload.ids) && payload.ids.length > 0) {
+        got = await resolveFromIds(payload.ids, evt);
       }
       if (!got) {
         got = await resolveFromActiveConversation(evt);
@@ -297,11 +305,14 @@
       'change:conversations',
       'conversation:focus',
       'conversation:open',
+      'conversation:updated',
       'email:focus',
       'email:open',
       'email:select',
       'thread:focus',
       'thread:select',
+      // Some deployments might emit changes on messages
+      'change:messages',
     ];
 
     for (const evt of handlers) {
