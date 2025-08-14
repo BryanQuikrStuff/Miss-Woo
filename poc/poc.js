@@ -65,6 +65,17 @@
     return false;
   }
 
+  function withTimeout(promise, ms, label) {
+    let timeoutId;
+    const timeout = new Promise((resolve) => {
+      timeoutId = setTimeout(() => {
+        try { log('timeout', { label, ms }); } catch (_) {}
+        resolve({ __timeout: true });
+      }, ms);
+    });
+    return Promise.race([promise.finally(() => clearTimeout(timeoutId)), timeout]);
+  }
+
   function extractAnyEmailDeep(obj, sourceLabel, depth = 0) {
     if (!obj || depth > 4) return false;
     if (typeof obj === 'string') {
@@ -186,15 +197,23 @@
     try {
       const M = window.Missive;
       if (!M || !M.fetchConversations) return false;
-      const convos = await M.fetchConversations({ limit: 1 });
+      const convos = await withTimeout(M.fetchConversations({ limit: 1 }), 2000, 'fetchConversations.limit1');
+      if (convos && convos.__timeout) {
+        log('fetchConversations(limit:1) timed out');
+        return false;
+      }
       if (!Array.isArray(convos) || convos.length === 0) return false;
       const c = convos[0];
       log('active convo fetched', { id: c?.id, keys: Object.keys(c||{}), hasParticipants: Array.isArray(c?.participants) ? c.participants.length : 0 });
       if (extractFromConversationObject(c, `${sourceLabel}.active`)) return true;
       if (window.Missive && window.Missive.fetchMessages && c && c.id) {
-        const msgs = await window.Missive.fetchMessages({ conversation: c.id, limit: 5 });
-        log('active msgs fetched', { count: Array.isArray(msgs) ? msgs.length : 0 });
-        if (extractFromMessages(msgs, `${sourceLabel}.active.messages`)) return true;
+        const msgs = await withTimeout(window.Missive.fetchMessages({ conversation: c.id, limit: 5 }), 2000, 'fetchMessages.active');
+        if (msgs && msgs.__timeout) {
+          log('fetchMessages(active) timed out', { conversation: c.id });
+        } else {
+          log('active msgs fetched', { count: Array.isArray(msgs) ? msgs.length : 0 });
+          if (extractFromMessages(msgs, `${sourceLabel}.active.messages`)) return true;
+        }
       }
     } catch (e) {
       log('resolveFromActiveConversation error', { error: String(e) });
@@ -238,11 +257,15 @@
       // Try conversation details first
       if (M.fetchConversations) {
         try {
-          const convos = await M.fetchConversations({ ids: idArray });
-          log('fetchConversations(ids) returned', { count: Array.isArray(convos) ? convos.length : 0 });
-          if (Array.isArray(convos)) {
-            for (const c of convos) {
-              if (extractFromConversationObject(c, `${sourceLabel}.convo`)) return true;
+          const convos = await withTimeout(M.fetchConversations({ ids: idArray }), 2000, 'fetchConversations.ids');
+          if (convos && convos.__timeout) {
+            log('fetchConversations(ids) timed out', { count: idArray.length });
+          } else {
+            log('fetchConversations(ids) returned', { count: Array.isArray(convos) ? convos.length : 0 });
+            if (Array.isArray(convos)) {
+              for (const c of convos) {
+                if (extractFromConversationObject(c, `${sourceLabel}.convo`)) return true;
+              }
             }
           }
         } catch (e) {
@@ -253,9 +276,13 @@
       if (M.fetchMessages) {
         for (const id of idArray) {
           try {
-            const msgs = await M.fetchMessages({ conversation: id, limit: 10 });
-            log('fetchMessages for conv', { id, count: Array.isArray(msgs) ? msgs.length : 0 });
-            if (extractFromMessages(msgs, `${sourceLabel}.messages`)) return true;
+            const msgs = await withTimeout(M.fetchMessages({ conversation: id, limit: 10 }), 2000, 'fetchMessages.byId');
+            if (msgs && msgs.__timeout) {
+              log('fetchMessages timed out', { id });
+            } else {
+              log('fetchMessages for conv', { id, count: Array.isArray(msgs) ? msgs.length : 0 });
+              if (extractFromMessages(msgs, `${sourceLabel}.messages`)) return true;
+            }
           } catch (e) {
             log('fetchMessages error', { error: String(e), id });
           }
