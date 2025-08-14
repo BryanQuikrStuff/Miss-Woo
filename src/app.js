@@ -125,7 +125,8 @@ class MissWooApp {
   }
 
   getVersion() {
-    return 'v2047';
+    // Default shown until manifest loads; will be replaced by GH-<sha>
+    return 'GH-local';
   }
 
   async loadVersionFromManifest() {
@@ -141,7 +142,8 @@ class MissWooApp {
           if (!resp.ok) continue;
           const data = await resp.json();
           if (data && data.version) {
-            this.version = `v${data.version}`;
+            const prefix = this.isMissiveEnvironment ? 'MA' : (location.host.includes('github.io') ? 'MW' : 'GH');
+            this.version = `${prefix}-${data.version}`;
             this.updateHeaderWithVersion();
             return;
           }

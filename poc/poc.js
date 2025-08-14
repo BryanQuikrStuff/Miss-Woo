@@ -436,10 +436,14 @@
     }
     fetch('../version.json')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(v => { verEl.textContent = 'v' + (v.version || '0'); })
+      .then(v => {
+        const host = location.hostname;
+        const prefix = (host === 'localhost' || host === '127.0.0.1') ? 'LH' : (host.includes('github.io') ? 'MW' : 'GH');
+        verEl.textContent = `${prefix}-${(v.version || '0')}`;
+      })
       .catch(() => {
         const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        verEl.textContent = isLocal ? ('LH-' + ts()) : 'v0';
+        verEl.textContent = isLocal ? ('LH-' + ts()) : 'GH-local';
       });
 
     setStatus('Initializing…');
