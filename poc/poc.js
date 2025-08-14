@@ -256,6 +256,13 @@
     }
     let got = extractEmail(payload || {});
     if (!got) {
+      try {
+        const M = window.Missive || {};
+        log('capabilities at handleEvent', {
+          hasFetchConversations: !!M.fetchConversations,
+          hasFetchMessages: !!M.fetchMessages,
+        });
+      } catch (_) {}
       // Fallback to querying current conversation
       // If payload is an array of IDs, resolve using those IDs
       if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'string') {
@@ -290,6 +297,15 @@
     envEl.textContent = 'env: missive';
     setStatus('Missive API detected');
     log('Missive API detected');
+    try {
+      log('Missive capabilities (pre-ready)', {
+        hasFetchConversations: !!M.fetchConversations,
+        hasFetchMessages: !!M.fetchMessages,
+        hasGetCurrentConversation: !!M.getCurrentConversation,
+        hasGetCurrentEmail: !!M.getCurrentEmail,
+        hasOn: !!M.on,
+      });
+    } catch (_) {}
 
     M.on('ready', async () => {
       setStatus('Missive ready');
