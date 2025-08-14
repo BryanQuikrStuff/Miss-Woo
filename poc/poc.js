@@ -300,9 +300,18 @@
       setStatus('Cleared');
     });
 
-    fetch('../version.json').then(r => r.ok ? r.json() : { version: '0' }).then(v => {
-      verEl.textContent = 'v' + (v.version || '0');
-    }).catch(() => {});
+    function ts() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    }
+    fetch('../version.json')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(v => { verEl.textContent = 'v' + (v.version || '0'); })
+      .catch(() => {
+        const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        verEl.textContent = isLocal ? ('LH-' + ts()) : 'v0';
+      });
 
     setStatus('Initializing…');
     if (window.Missive) wireEvents();
