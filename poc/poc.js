@@ -65,9 +65,53 @@
     return false;
   }
 
+  function extractFromConversationObject(convo, sourceLabel) {
+    if (!convo || typeof convo !== 'object') return false;
+    if (Array.isArray(convo.participants)) {
+      if (extractFromArray(convo.participants, `${sourceLabel}.participants`)) return true;
+    }
+    if (convo.last_message && typeof convo.last_message === 'object') {
+      const m = convo.last_message;
+      if (m.from && typeof m.from === 'string' && recordEmail(m.from, `${sourceLabel}.last_message.from`)) return true;
+      if (Array.isArray(m.from)) { if (extractFromArray(m.from, `${sourceLabel}.last_message.from[]`)) return true; }
+      if (Array.isArray(m.to)) { if (extractFromArray(m.to, `${sourceLabel}.last_message.to[]`)) return true; }
+      if (Array.isArray(m.cc)) { if (extractFromArray(m.cc, `${sourceLabel}.last_message.cc[]`)) return true; }
+    }
+    return false;
+  }
+
+  function extractFromMessages(messages, sourceLabel) {
+    if (!Array.isArray(messages)) return false;
+    for (const m of messages) {
+      if (!m || typeof m !== 'object') continue;
+      if (m.from && typeof m.from === 'string' && recordEmail(m.from, `${sourceLabel}.from`)) return true;
+      if (Array.isArray(m.from)) { if (extractFromArray(m.from, `${sourceLabel}.from[]`)) return true; }
+      if (Array.isArray(m.to)) { if (extractFromArray(m.to, `${sourceLabel}.to[]`)) return true; }
+      if (Array.isArray(m.cc)) { if (extractFromArray(m.cc, `${sourceLabel}.cc[]`)) return true; }
+      if (m.headers && typeof m.headers === 'object') {
+        const from = m.headers.From || m.headers.from;
+        if (typeof from === 'string') {
+          const match = from.match(/<([^>]+)>/);
+          if (match && recordEmail(match[1], `${sourceLabel}.headers.From`)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function extractEmail(payload) {
     try {
-      if (!payload || typeof payload !== 'object') return false;
+      if (!payload) return false;
+
+      // If payload is an array, try each element
+      if (Array.isArray(payload)) {
+        for (const item of payload) {
+          if (extractEmail(item)) return true;
+        }
+        return false;
+      }
+
+      if (typeof payload !== 'object') return false;
 
       if (payload.email && recordEmail(payload.email, 'payload.email')) return true;
       if (payload.recipient && payload.recipient.email && recordEmail(payload.recipient.email, 'recipient.email')) return true;
@@ -112,6 +156,88 @@
     return false;
   }
 
+  async function resolveFromActiveConversation(sourceLabel) {
+    try {
+      const M = window.Missive;
+      if (!M || !M.fetchConversations) return false;
+      const convos = await M.fetchConversations({ limit: 1 });
+      if (!Array.isArray(convos) || convos.length === 0) return false;
+      const c = convos[0];
+      if (extractFromConversationObject(c, `${sourceLabel}.active`)) return true;
+      if (window.Missive && window.Missive.fetchMessages && c && c.id) {
+        const msgs = await window.Missive.fetchMessages({ conversation: c.id, limit: 5 });
+        if (extractFromMessages(msgs, `${sourceLabel}.active.messages`)) return true;
+      }
+    } catch (e) {
+      log('resolveFromActiveConversation error', { error: String(e) });
+    }
+    return false;
+  }
+
+  async function resolveFromIds(ids, sourceLabel) {
+    try {
+      const M = window.Missive;
+      if (!M) return false;
+      const idArray = Array.isArray(ids) ? ids : [ids];
+      // Try conversation details first
+      if (M.fetchConversations) {
+        try {
+          const convos = await M.fetchConversations({ ids: idArray });
+          if (Array.isArray(convos)) {
+            for (const c of convos) {
+              if (extractFromConversationObject(c, `${sourceLabel}.convo`)) return true;
+            }
+          }
+        } catch (e) {
+          log('fetchConversations(ids) error', { error: String(e) });
+        }
+      }
+      // Fallback to fetching recent messages per conversation
+      if (M.fetchMessages) {
+        for (const id of idArray) {
+          try {
+            const msgs = await M.fetchMessages({ conversation: id, limit: 10 });
+            if (extractFromMessages(msgs, `${sourceLabel}.messages`)) return true;
+          } catch (e) {
+            log('fetchMessages error', { error: String(e), id });
+          }
+        }
+      }
+    } catch (e) {
+      log('resolveFromIds error', { error: String(e) });
+    }
+    return false;
+  }
+
+  async function handleEvent(evt, payload) {
+    if (Array.isArray(payload)) {
+      const first = payload[0];
+      let preview = first;
+      try {
+        if (typeof first === 'object') preview = JSON.stringify(Object.keys(first));
+      } catch (_) {}
+      log(`event: ${evt} (array len=${payload.length}, first=${typeof first}:${preview})`);
+    } else {
+      log(`event: ${evt}`, payload || {});
+    }
+    let got = extractEmail(payload || {});
+    if (!got) {
+      // Fallback to querying current conversation
+      // If payload is an array of IDs, resolve using those IDs
+      if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'string') {
+        got = await resolveFromIds(payload, evt);
+      }
+      if (!got) {
+        got = await resolveFromActiveConversation(evt);
+      }
+    }
+    if (!got) setStatus(`${evt}: no email`);
+    else setStatus(`${evt}: email captured`);
+    try {
+      window.parent && window.parent.postMessage({ type: 'missive-poc:event', evt, emails: Array.from(seenEmails) }, '*');
+    } catch (_) {}
+  }
+
   function wireEvents() {
     const M = window.Missive;
     if (!M || !M.on) {
@@ -130,6 +256,8 @@
       try {
         const convos = await M.fetchConversations({ limit: 1 });
         log('fetchConversations ok', { count: Array.isArray(convos) ? convos.length : 0 });
+        // Try extracting from current context on ready
+        await handleEvent('ready:bootstrap', convos && convos[0] ? convos[0] : {});
       } catch (e) {
         log('fetchConversations error', { error: String(e) });
       }
@@ -147,15 +275,7 @@
     ];
 
     for (const evt of handlers) {
-      M.on(evt, (payload) => {
-        log(`event: ${evt}`, payload || {});
-        const got = extractEmail(payload || {});
-        if (!got) setStatus(`${evt}: no email`);
-        else setStatus(`${evt}: email captured`);
-        try {
-          window.parent && window.parent.postMessage({ type: 'missive-poc:event', evt, emails: Array.from(seenEmails) }, '*');
-        } catch (_) {}
-      });
+      M.on(evt, (payload) => { handleEvent(evt, payload); });
     }
   }
 
