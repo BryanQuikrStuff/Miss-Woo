@@ -1420,9 +1420,9 @@ class MissWooApp {
     console.log("📧 Conversation change event triggered:", data);
     if (!this.autoSearchEnabled) {
       console.log("❌ Auto-search disabled, ignoring conversation change");
-      return;
-    }
-
+            return;
+        }
+        
     // First try to extract directly from the payload
     let email = this.extractEmailFromData(data);
     if (email) {
@@ -1436,6 +1436,10 @@ class MissWooApp {
       if (window.Missive) {
         // Gather candidate conversation ids from multiple shapes
         let candidateIds = [];
+        // Some events send an array of conversation IDs directly
+        if (Array.isArray(data) && data.length && typeof data[0] === 'string') {
+          candidateIds = candidateIds.concat(data);
+        }
         if (Array.isArray(data?.ids)) candidateIds = candidateIds.concat(data.ids);
         if (Array.isArray(data?.conversation_ids)) candidateIds = candidateIds.concat(data.conversation_ids);
         if (typeof data?.id === 'string') candidateIds.push(data.id);
@@ -1473,6 +1477,40 @@ class MissWooApp {
             const first = conversations[0];
             const pCount = Array.isArray(first?.participants) ? first.participants.length : 0;
             this.setStatus(`Conversation change: no email (participants: ${pCount})`);
+          }
+        }
+
+        // Last resort: fetch recent messages for each candidate conversation
+        if (Missive.fetchMessages && Array.isArray(candidateIds) && candidateIds.length) {
+          for (const convId of candidateIds) {
+            try {
+              const messages = await Missive.fetchMessages({ conversation: convId, limit: 10 });
+              if (Array.isArray(messages) && messages.length) {
+                for (const m of messages) {
+                  // Try common message shapes
+                  const from = m?.from?.email || m?.from?.handle || m?.from?.address || (typeof m?.from === 'string' ? m.from : null);
+                  if (from && this.isValidEmailForSearch(from)) { email = from; break; }
+                  const toList = Array.isArray(m?.to) ? m.to : [];
+                  for (const t of toList) {
+                    const addr = t?.email || t?.handle || t?.address || (typeof t === 'string' ? t : null);
+                    if (addr && this.isValidEmailForSearch(addr)) { email = addr; break; }
+                  }
+                  if (email) break;
+                  const hdrFrom = m?.headers?.From || m?.headers?.from;
+                  if (typeof hdrFrom === 'string') {
+                    const match = hdrFrom.match(/<([^>]+)>/);
+                    if (match && this.isValidEmailForSearch(match[1])) { email = match[1]; break; }
+                  }
+                }
+                if (email) {
+                  this.setStatus(`Conversation change → ${email}`);
+                  if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.log('fetchMessages failed for conversation', convId, e);
+            }
           }
         }
       }
