@@ -202,6 +202,34 @@
     return false;
   }
 
+  async function resolveFromGetters(sourceLabel) {
+    try {
+      const M = window.Missive;
+      if (!M) return false;
+      if (M.getCurrentEmail) {
+        try {
+          const email = await M.getCurrentEmail();
+          log('getCurrentEmail result', { email });
+          if (typeof email === 'string' && recordEmail(email, `${sourceLabel}.getCurrentEmail`)) return true;
+        } catch (e) {
+          log('getCurrentEmail error', { error: String(e) });
+        }
+      }
+      if (M.getCurrentConversation) {
+        try {
+          const convo = await M.getCurrentConversation();
+          log('getCurrentConversation result', { keys: convo ? Object.keys(convo) : [] });
+          if (convo && extractFromConversationObject(convo, `${sourceLabel}.getCurrentConversation`)) return true;
+        } catch (e) {
+          log('getCurrentConversation error', { error: String(e) });
+        }
+      }
+    } catch (e) {
+      log('resolveFromGetters error', { error: String(e) });
+    }
+    return false;
+  }
+
   async function resolveFromIds(ids, sourceLabel) {
     try {
       const M = window.Missive;
@@ -273,6 +301,10 @@
       if (!got && payload && typeof payload === 'object' && Array.isArray(payload.ids) && payload.ids.length > 0) {
         log('attempt resolveFromIds (object.ids)', { evt, count: payload.ids.length });
         got = await resolveFromIds(payload.ids, evt);
+      }
+      if (!got) {
+        log('attempt resolveFromGetters', { evt });
+        got = await resolveFromGetters(evt);
       }
       if (!got) {
         log('attempt resolveFromActiveConversation', { evt });
