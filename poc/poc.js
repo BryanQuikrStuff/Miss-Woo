@@ -259,13 +259,16 @@
       // Fallback to querying current conversation
       // If payload is an array of IDs, resolve using those IDs
       if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'string') {
+        log('attempt resolveFromIds (array)', { evt, count: payload.length });
         got = await resolveFromIds(payload, evt);
       }
       // If payload is an object with ids array, also resolve
       if (!got && payload && typeof payload === 'object' && Array.isArray(payload.ids) && payload.ids.length > 0) {
+        log('attempt resolveFromIds (object.ids)', { evt, count: payload.ids.length });
         got = await resolveFromIds(payload.ids, evt);
       }
       if (!got) {
+        log('attempt resolveFromActiveConversation', { evt });
         got = await resolveFromActiveConversation(evt);
       }
     }
@@ -291,6 +294,15 @@
     M.on('ready', async () => {
       setStatus('Missive ready');
       log('event: ready');
+      try {
+        log('Missive capabilities', {
+          hasFetchConversations: !!M.fetchConversations,
+          hasFetchMessages: !!M.fetchMessages,
+          hasGetCurrentConversation: !!M.getCurrentConversation,
+          hasGetCurrentEmail: !!M.getCurrentEmail,
+          hasOn: !!M.on,
+        });
+      } catch (_) {}
       try {
         const convos = await M.fetchConversations({ limit: 1 });
         log('fetchConversations ok', { count: Array.isArray(convos) ? convos.length : 0 });
@@ -318,6 +330,7 @@
     for (const evt of handlers) {
       M.on(evt, (payload) => { handleEvent(evt, payload); });
     }
+    try { log('wired events', { handlers }); } catch (_) {}
   }
 
   function init() {
