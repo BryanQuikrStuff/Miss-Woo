@@ -65,8 +65,29 @@
     return false;
   }
 
+  function extractAnyEmailDeep(obj, sourceLabel, depth = 0) {
+    if (!obj || depth > 4) return false;
+    if (typeof obj === 'string') {
+      if (/@/.test(obj) && isValidEmail(obj)) return recordEmail(obj, sourceLabel);
+      return false;
+    }
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        if (extractAnyEmailDeep(item, sourceLabel, depth + 1)) return true;
+      }
+      return false;
+    }
+    if (typeof obj === 'object') {
+      for (const [k, v] of Object.entries(obj)) {
+        if (extractAnyEmailDeep(v, `${sourceLabel}.${k}`, depth + 1)) return true;
+      }
+    }
+    return false;
+  }
+
   function extractFromConversationObject(convo, sourceLabel) {
     if (!convo || typeof convo !== 'object') return false;
+    try { log('convo keys', Object.keys(convo)); } catch (_) {}
     if (Array.isArray(convo.participants)) {
       if (extractFromArray(convo.participants, `${sourceLabel}.participants`)) return true;
     }
@@ -77,13 +98,17 @@
       if (Array.isArray(m.to)) { if (extractFromArray(m.to, `${sourceLabel}.last_message.to[]`)) return true; }
       if (Array.isArray(m.cc)) { if (extractFromArray(m.cc, `${sourceLabel}.last_message.cc[]`)) return true; }
     }
+    // Deep scan as last resort
+    if (extractAnyEmailDeep(convo, `${sourceLabel}.deep`)) return true;
     return false;
   }
 
   function extractFromMessages(messages, sourceLabel) {
     if (!Array.isArray(messages)) return false;
+    try { log(`${sourceLabel}: messages.length=${messages.length}`); } catch (_) {}
     for (const m of messages) {
       if (!m || typeof m !== 'object') continue;
+      try { log('message keys', Object.keys(m)); } catch (_) {}
       if (m.from && typeof m.from === 'string' && recordEmail(m.from, `${sourceLabel}.from`)) return true;
       if (Array.isArray(m.from)) { if (extractFromArray(m.from, `${sourceLabel}.from[]`)) return true; }
       if (Array.isArray(m.to)) { if (extractFromArray(m.to, `${sourceLabel}.to[]`)) return true; }
@@ -95,6 +120,7 @@
           if (match && recordEmail(match[1], `${sourceLabel}.headers.From`)) return true;
         }
       }
+      if (extractAnyEmailDeep(m, `${sourceLabel}.deep`)) return true;
     }
     return false;
   }
@@ -163,9 +189,11 @@
       const convos = await M.fetchConversations({ limit: 1 });
       if (!Array.isArray(convos) || convos.length === 0) return false;
       const c = convos[0];
+      log('active convo fetched', { id: c?.id, keys: Object.keys(c||{}), hasParticipants: Array.isArray(c?.participants) ? c.participants.length : 0 });
       if (extractFromConversationObject(c, `${sourceLabel}.active`)) return true;
       if (window.Missive && window.Missive.fetchMessages && c && c.id) {
         const msgs = await window.Missive.fetchMessages({ conversation: c.id, limit: 5 });
+        log('active msgs fetched', { count: Array.isArray(msgs) ? msgs.length : 0 });
         if (extractFromMessages(msgs, `${sourceLabel}.active.messages`)) return true;
       }
     } catch (e) {
@@ -183,6 +211,7 @@
       if (M.fetchConversations) {
         try {
           const convos = await M.fetchConversations({ ids: idArray });
+          log('fetchConversations(ids) returned', { count: Array.isArray(convos) ? convos.length : 0 });
           if (Array.isArray(convos)) {
             for (const c of convos) {
               if (extractFromConversationObject(c, `${sourceLabel}.convo`)) return true;
@@ -197,6 +226,7 @@
         for (const id of idArray) {
           try {
             const msgs = await M.fetchMessages({ conversation: id, limit: 10 });
+            log('fetchMessages for conv', { id, count: Array.isArray(msgs) ? msgs.length : 0 });
             if (extractFromMessages(msgs, `${sourceLabel}.messages`)) return true;
           } catch (e) {
             log('fetchMessages error', { error: String(e), id });
