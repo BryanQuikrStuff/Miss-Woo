@@ -1218,13 +1218,13 @@ class MissWooApp {
     
     if (window.Missive) {
       console.log("🔧 Missive detected, setting up integration...");
-      this.setStatus('Missive detected. Waiting for events…');
+      this.setStatus('Ready for auto-search');
       this.setupMissiveEventListeners();
       // Re-check environment after Missive is ready
       this.recheckMissiveEnvironment();
     } else {
       console.log("🔧 Missive not detected, setting up fallback...");
-      this.setStatus('Missive API not detected. Using fallback.', 'info');
+      this.setStatus('Ready for manual search');
       this.setupMissiveEventListeners(); // This will trigger fallback
       // Initialize bridge to receive events from parent Missive shell
       this.initMissiveBridge();
@@ -1394,7 +1394,8 @@ class MissWooApp {
       console.log("📧 Missive change:conversations event:", data);
       // Handle both array payload (direct IDs) and object payload (with ids property)
       const ids = Array.isArray(data) ? data : (data?.ids || data?.conversation_ids || null);
-      this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids });
+      // Don't show debug info to users - just log it
+      console.log("📧 Conversation change:", { event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids });
       
       // Store conversation IDs for preloading
       if (ids && Array.isArray(ids)) {
@@ -1410,20 +1411,23 @@ class MissWooApp {
     // Some environments fire without payload; poll for current conversation then
     Missive.on("conversation:updated", async (data) => {
       console.log("📧 Missive conversation:updated event:", data);
-      this.setStatus({ event: 'conversation:updated', payloadKeys: Object.keys(data||{}) });
+      // Don't show debug info to users - just log it
+      console.log("📧 Conversation updated:", { event: 'conversation:updated', payloadKeys: Object.keys(data||{}) });
       await this.handleConversationChange(data || {});
     });
     
     // Additional events for better coverage
     Missive.on("conversation:focus", (data) => {
       console.log("📧 Missive conversation:focus event:", data);
-      this.setStatus({ event: 'conversation:focus', payloadKeys: Object.keys(data||{}) });
+      // Don't show debug info to users - just log it
+      console.log("📧 Conversation focus:", { event: 'conversation:focus', payloadKeys: Object.keys(data||{}) });
       this.handleConversationChange(data);
     });
     
     Missive.on("conversation:open", (data) => {
       console.log("📧 Missive conversation:open event:", data);
-      this.setStatus({ event: 'conversation:open', payloadKeys: Object.keys(data||{}) });
+      // Don't show debug info to users - just log it
+      console.log("📧 Conversation open:", { event: 'conversation:open', payloadKeys: Object.keys(data||{}) });
       this.handleConversationChange(data);
     });
     
@@ -1984,7 +1988,7 @@ class MissWooApp {
     if (!this.isMissiveEnvironment || this.preloadingInProgress) return;
     
     this.preloadingInProgress = true;
-    this.setStatus("🔄 Updating preloaded data...");
+    this.setStatus("Loading...");
     
     try {
       console.log("📧 Starting Team Inbox preloading...");
@@ -2014,7 +2018,7 @@ class MissWooApp {
       
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
-        this.setStatus("📧 No conversations available for preloading");
+        this.setStatus("Ready");
         return;
       }
       
@@ -2027,7 +2031,7 @@ class MissWooApp {
       
       if (emailsToPreload.length === 0) {
         console.log("❌ No valid emails found in conversations");
-        this.setStatus("📧 No valid emails found for preloading");
+        this.setStatus("Ready");
         return;
       }
       
@@ -2038,11 +2042,11 @@ class MissWooApp {
       this.cleanupArchivedConversations();
       
       console.log(`✅ Team Inbox preloading complete: ${emailsToPreload.length} emails preloaded`);
-      this.setStatus(`✅ Preloaded ${emailsToPreload.length} Team Inbox emails`);
+      this.setStatus("Ready");
       
     } catch (error) {
       console.error("❌ Team Inbox preloading failed:", error);
-      this.setStatus("❌ Preloading failed");
+      this.setStatus("Ready");
     } finally {
       this.preloadingInProgress = false;
     }
