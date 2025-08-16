@@ -1538,6 +1538,10 @@ class MissWooApp {
 
   extractEmailFromData(data) {
     console.log("🔍 Extracting email from data:", data);
+    console.log("🔍 Data keys:", Object.keys(data || {}));
+    if (data && typeof data === 'object') {
+      console.log("🔍 Data structure:", JSON.stringify(data, null, 2));
+    }
     
     if (!data) {
       console.log("❌ No data provided");
