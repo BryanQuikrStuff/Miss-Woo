@@ -57,12 +57,20 @@ class MissWooApp {
       this.pendingRequests = new Set(); // Track pending requests
       this.backgroundTasks = []; // Background processing queue
       
+      // Dynamic preloading system
+      this.preloadedConversations = new Map(); // Track preloaded conversation data
+      this.visibleConversationIds = new Set(); // Track currently visible conversations
+      this.preloadingInProgress = false; // Prevent multiple preloading operations
+      this.preloadingDebounceTimer = null; // Debounce preloading triggers
+      this.maxPreloadedConversations = 20; // Limit preloaded conversations
+      
       // Cache configuration
       this.cacheConfig = {
         orderCache: 5 * 60 * 1000, // 5 minutes
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
-        emailCache: 2 * 60 * 1000 // 2 minutes
+        emailCache: 2 * 60 * 1000, // 2 minutes
+        preloadedCache: 15 * 60 * 1000 // 15 minutes for preloaded data
       };
       
       this.hideLoading();
@@ -205,6 +213,8 @@ class MissWooApp {
       // Always attempt URL-driven auto-search (works in web and Missive)
       this.maybeAutoSearchFromUrl();
       this.setupCleanup(); // Setup proper cleanup
+      // Initialize dynamic preloading for Team Inboxes
+      await this.initializePreloading();
       // Only test connection if not in Missive environment
       if (!this.isMissiveEnvironment) {
         await this.testConnection();
@@ -444,7 +454,7 @@ class MissWooApp {
       await this.processOrdersWithDetails(matchingOrders, email);
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       this.logPerformanceStats();
-    } catch (error) {
+        } catch (error) {
       console.error("Search orders error:", error);
       this.showError(`Failed to search orders: ${error.message}`);
     }
@@ -551,7 +561,7 @@ class MissWooApp {
         const data = await response.json();
         console.log("API Response:", data);
         return data;
-      } catch (error) {
+        } catch (error) {
         console.error("API Request failed:", error);
         throw error;
       } finally {
@@ -700,7 +710,7 @@ class MissWooApp {
     if (task) {
       try {
         await task();
-      } catch (error) {
+        } catch (error) {
         console.log('Background task error:', error);
       }
     }
@@ -1361,13 +1371,16 @@ class MissWooApp {
       this.handleThreadFocus(data);
     });
     
-    // Add conversation change listener for better auto-search
+    // Add conversation change listener for better auto-search and dynamic preloading
     Missive.on("change:conversations", (data) => {
       console.log("📧 Missive change:conversations event:", data);
       // Handle both array payload (direct IDs) and object payload (with ids property)
       const ids = Array.isArray(data) ? data : (data?.ids || data?.conversation_ids || null);
       this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids });
       this.handleConversationChange(data);
+      
+      // Trigger dynamic preloading when conversations change
+      this.triggerDynamicPreloading();
     });
     // Some environments fire without payload; poll for current conversation then
     Missive.on("conversation:updated", async (data) => {
@@ -1991,40 +2004,214 @@ class MissWooApp {
     }
   }
 
-  async preloadVisibleEmails() {
-    if (!this.isMissiveEnvironment) return;
+  // Dynamic preloading system for Team Inboxes
+  async preloadTeamInboxConversations() {
+    if (!this.isMissiveEnvironment || this.preloadingInProgress) return;
+    
+    this.preloadingInProgress = true;
+    this.setStatus("🔄 Updating preloaded data...");
     
     try {
-      // Get visible emails from Missive (if available)
-      if (window.Missive && window.Missive.getVisibleEmails) {
-        const visibleEmails = await window.Missive.getVisibleEmails();
-        if (visibleEmails && Array.isArray(visibleEmails)) {
-          for (const emailData of visibleEmails) {
-            const email = this.extractEmailFromData(emailData);
-            if (email && this.isValidEmailForSearch(email)) {
-              this.visibleEmails.add(email);
-              // Preload data for visible emails
-              await this.preloadEmailData(email);
-            }
-          }
-        }
+      console.log("📧 Starting Team Inbox preloading...");
+      
+      // Fetch oldest 20 conversations from Team Inboxes
+      const conversations = await this.fetchTeamInboxConversations();
+      if (!conversations || conversations.length === 0) {
+        console.log("❌ No conversations found for preloading");
+        return;
       }
+      
+      // Update visible conversation tracking
+      this.updateVisibleConversations(conversations);
+      
+      // Extract and preload emails
+      const emailsToPreload = this.extractEmailsFromConversations(conversations);
+      console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
+      
+      // Preload data for each email
+      await this.preloadEmailsData(emailsToPreload);
+      
+      // Clean up archived conversations
+      this.cleanupArchivedConversations();
+      
+      console.log(`✅ Team Inbox preloading complete: ${emailsToPreload.length} emails preloaded`);
+      this.setStatus(`✅ Preloaded ${emailsToPreload.length} Team Inbox emails`);
+      
     } catch (error) {
-      console.log("Preloading visible emails failed:", error);
+      console.error("❌ Team Inbox preloading failed:", error);
+      this.setStatus("❌ Preloading failed");
+    } finally {
+      this.preloadingInProgress = false;
     }
   }
 
-  async preloadEmailData(email) {
-    if (this.emailCache.has(email)) return; // Already cached
-    
+  async fetchTeamInboxConversations() {
     try {
-      console.log(`Preloading data for: ${email}`);
-      await this.searchOrdersByEmail(email);
-      if (this.allOrders.length > 0) {
-        this.emailCache.set(email, [...this.allOrders]);
+      // Try to fetch oldest 20 conversations from Team Inboxes
+      if (Missive.fetchConversations) {
+        const conversations = await Missive.fetchConversations({ 
+          limit: this.maxPreloadedConversations,
+          sort: 'oldest' // Get oldest conversations first
+        });
+        
+        if (Array.isArray(conversations)) {
+          console.log(`📧 Fetched ${conversations.length} Team Inbox conversations`);
+          return conversations;
+        }
       }
+      
+      console.log("❌ fetchConversations not available or returned invalid data");
+      return [];
     } catch (error) {
-      console.log(`Preloading failed for ${email}:`, error);
+      console.error("❌ Failed to fetch Team Inbox conversations:", error);
+      return [];
+    }
+  }
+
+  updateVisibleConversations(conversations) {
+    this.visibleConversationIds.clear();
+    
+    for (const conversation of conversations) {
+      if (conversation.id) {
+        this.visibleConversationIds.add(conversation.id);
+      }
+    }
+    
+    console.log(`📧 Updated visible conversations: ${this.visibleConversationIds.size} conversations`);
+  }
+
+  extractEmailsFromConversations(conversations) {
+    const emails = new Set();
+    
+    for (const conversation of conversations) {
+      const email = this.extractEmailFromData(conversation);
+      if (email && this.isValidEmailForSearch(email)) {
+        emails.add(email);
+      }
+    }
+    
+    return Array.from(emails);
+  }
+
+  async preloadEmailsData(emails) {
+    const preloadPromises = emails.map(async (email) => {
+      try {
+        // Check if already preloaded and still valid
+        if (this.isPreloadedDataValid(email)) {
+          console.log(`📧 Skipping ${email} - already preloaded and valid`);
+          return;
+        }
+        
+        console.log(`📧 Preloading data for: ${email}`);
+        
+        // Store current orders to restore after preloading
+        const currentOrders = [...this.allOrders];
+        
+        // Preload order data
+        await this.searchOrdersByEmail(email);
+        
+        // Store preloaded data
+        if (this.allOrders.length > 0) {
+          this.preloadedConversations.set(email, {
+            orders: [...this.allOrders],
+            timestamp: Date.now()
+          });
+          console.log(`✅ Preloaded ${this.allOrders.length} orders for ${email}`);
+        }
+        
+        // Restore current orders
+        this.allOrders = currentOrders;
+        
+      } catch (error) {
+        console.error(`❌ Failed to preload data for ${email}:`, error);
+      }
+    });
+    
+    await Promise.all(preloadPromises);
+  }
+
+  isPreloadedDataValid(email) {
+    const preloadedData = this.preloadedConversations.get(email);
+    if (!preloadedData) return false;
+    
+    const now = Date.now();
+    const age = now - preloadedData.timestamp;
+    const maxAge = this.cacheConfig.preloadedCache;
+    
+    return age < maxAge;
+  }
+
+  cleanupArchivedConversations() {
+    const emailsToRemove = [];
+    
+    for (const [email, data] of this.preloadedConversations) {
+      // Check if email is still from a visible conversation
+      const isStillVisible = this.isEmailFromVisibleConversation(email);
+      
+      if (!isStillVisible) {
+        emailsToRemove.push(email);
+        console.log(`🗑️ Marking ${email} for cleanup - no longer visible`);
+      }
+    }
+    
+    // Remove archived conversation data
+    for (const email of emailsToRemove) {
+      this.preloadedConversations.delete(email);
+      this.emailCache.delete(email);
+    }
+    
+    if (emailsToRemove.length > 0) {
+      console.log(`🧹 Cleaned up ${emailsToRemove.length} archived conversations`);
+    }
+  }
+
+  isEmailFromVisibleConversation(email) {
+    // This is a simplified check - in a real implementation,
+    // we'd need to track which email belongs to which conversation
+    // For now, we'll keep preloaded data unless explicitly cleaned up
+    return true;
+  }
+
+  // Enhanced preloading that uses preloaded data when available
+  async performAutoSearch(email) {
+    // Check if we have preloaded data for this email
+    if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
+      console.log(`⚡ Using preloaded data for: ${email}`);
+      const preloadedData = this.preloadedConversations.get(email);
+      this.allOrders = [...preloadedData.orders];
+      this.displayOrdersList();
+      this.setStatus(`⚡ Instant results for ${email} (preloaded)`);
+      return;
+    }
+    
+    // Fall back to normal search
+    console.log(`🔍 No preloaded data for ${email}, performing normal search`);
+    await this.searchOrdersByEmail(email);
+  }
+
+  // Trigger dynamic preloading with debouncing
+  triggerDynamicPreloading() {
+    // Debounce preloading to avoid excessive API calls
+    if (this.preloadingDebounceTimer) {
+      clearTimeout(this.preloadingDebounceTimer);
+    }
+    
+    this.preloadingDebounceTimer = setTimeout(async () => {
+      if (this.isMissiveEnvironment && !this.preloadingInProgress) {
+        console.log("🔄 Triggering dynamic preloading...");
+        await this.preloadTeamInboxConversations();
+      }
+    }, 2000); // Wait 2 seconds after last conversation change
+  }
+
+  // Initialize preloading on app start
+  async initializePreloading() {
+    if (this.isMissiveEnvironment) {
+      console.log("🚀 Initializing Team Inbox preloading...");
+      // Wait a bit for Missive to be ready
+      setTimeout(async () => {
+        await this.preloadTeamInboxConversations();
+      }, 3000);
     }
   }
 
@@ -2035,9 +2222,18 @@ class MissWooApp {
       this.searchDebounceTimer = null;
     }
     
+    if (this.preloadingDebounceTimer) {
+      clearTimeout(this.preloadingDebounceTimer);
+      this.preloadingDebounceTimer = null;
+    }
+    
     // Clear cache
     this.emailCache.clear();
     this.visibleEmails.clear();
+    
+    // Clear preloading data
+    this.preloadedConversations.clear();
+    this.visibleConversationIds.clear();
     
     // Clear performance caches
     this.orderCache = {};
@@ -2069,7 +2265,8 @@ class MissWooApp {
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
     this.cacheExpiry.clear();
-    console.log('Performance caches cleared');
+    this.preloadedConversations.clear();
+    console.log('Performance caches and preloaded data cleared');
   }
 
   isCacheValid(key, cacheType) {
