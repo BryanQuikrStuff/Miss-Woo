@@ -60,6 +60,7 @@ class MissWooApp {
       // Dynamic preloading system
       this.preloadedConversations = new Map(); // Track preloaded conversation data
       this.visibleConversationIds = new Set(); // Track currently visible conversations
+      this.seenConversationIds = new Set(); // Track all conversation IDs we've seen
       this.preloadingInProgress = false; // Prevent multiple preloading operations
       this.preloadingDebounceTimer = null; // Debounce preloading triggers
       this.maxPreloadedConversations = 20; // Limit preloaded conversations
@@ -1383,6 +1384,13 @@ class MissWooApp {
       // Handle both array payload (direct IDs) and object payload (with ids property)
       const ids = Array.isArray(data) ? data : (data?.ids || data?.conversation_ids || null);
       this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids });
+      
+      // Store conversation IDs for preloading
+      if (ids && Array.isArray(ids)) {
+        ids.forEach(id => this.seenConversationIds.add(id));
+        console.log(`📧 Stored ${ids.length} conversation IDs, total seen: ${this.seenConversationIds.size}`);
+      }
+      
       this.handleConversationChange(data);
       
       // Trigger dynamic preloading when conversations change
@@ -1970,10 +1978,32 @@ class MissWooApp {
     try {
       console.log("📧 Starting Team Inbox preloading...");
       
-      // Fetch oldest 20 conversations from Team Inboxes
-      const conversations = await this.fetchTeamInboxConversations();
+      // Try to get conversations from various sources
+      let conversations = [];
+      
+      // First try to fetch conversations we've seen
+      if (this.seenConversationIds.size > 0 && Missive.fetchConversations) {
+        try {
+          const idsToFetch = Array.from(this.seenConversationIds).slice(0, this.maxPreloadedConversations);
+          console.log(`📧 Fetching ${idsToFetch.length} conversations from seen IDs...`);
+          const fetchedConversations = await Missive.fetchConversations(idsToFetch);
+          if (Array.isArray(fetchedConversations)) {
+            conversations = fetchedConversations;
+            console.log(`📧 Successfully fetched ${conversations.length} conversations`);
+          }
+        } catch (error) {
+          console.log("❌ Failed to fetch conversations from seen IDs:", error);
+        }
+      }
+      
+      // If no conversations from seen IDs, try other methods
+      if (conversations.length === 0) {
+        conversations = await this.fetchTeamInboxConversations();
+      }
+      
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
+        this.setStatus("📧 No conversations available for preloading");
         return;
       }
       
@@ -1983,6 +2013,12 @@ class MissWooApp {
       // Extract and preload emails
       const emailsToPreload = this.extractEmailsFromConversations(conversations);
       console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
+      
+      if (emailsToPreload.length === 0) {
+        console.log("❌ No valid emails found in conversations");
+        this.setStatus("📧 No valid emails found for preloading");
+        return;
+      }
       
       // Preload data for each email
       await this.preloadEmailsData(emailsToPreload);
@@ -2003,21 +2039,47 @@ class MissWooApp {
 
   async fetchTeamInboxConversations() {
     try {
-      // Try to fetch oldest 20 conversations from Team Inboxes
-      if (Missive.fetchConversations) {
-        const conversations = await Missive.fetchConversations({ 
-          limit: this.maxPreloadedConversations,
-          sort: 'oldest' // Get oldest conversations first
-        });
-        
-        if (Array.isArray(conversations)) {
-          console.log(`📧 Fetched ${conversations.length} Team Inbox conversations`);
-          return conversations;
+      // Try to get current conversation first
+      let conversations = [];
+      
+      if (Missive.getCurrentConversation) {
+        try {
+          const currentConv = await Missive.getCurrentConversation();
+          if (currentConv && currentConv.id) {
+            conversations.push(currentConv);
+            console.log(`📧 Got current conversation: ${currentConv.id}`);
+          }
+        } catch (error) {
+          console.log("❌ Failed to get current conversation:", error);
         }
       }
       
-      console.log("❌ fetchConversations not available or returned invalid data");
-      return [];
+      // Try to fetch conversations using the options approach
+      if (Missive.fetchConversations && conversations.length === 0) {
+        try {
+          console.log("📧 Trying fetchConversations with options...");
+          const fetchedConversations = await Missive.fetchConversations({ 
+            limit: this.maxPreloadedConversations,
+            sort: 'oldest'
+          });
+          
+          if (Array.isArray(fetchedConversations)) {
+            conversations = fetchedConversations;
+            console.log(`📧 Fetched ${conversations.length} conversations with options`);
+          }
+        } catch (error) {
+          console.log("❌ fetchConversations with options failed:", error);
+        }
+      }
+      
+      // If we still don't have conversations, try a different approach
+      if (conversations.length === 0) {
+        console.log("📧 No conversations found, preloading will be triggered by events");
+        return [];
+      }
+      
+      console.log(`📧 Total conversations for preloading: ${conversations.length}`);
+      return conversations;
     } catch (error) {
       console.error("❌ Failed to fetch Team Inbox conversations:", error);
       return [];
