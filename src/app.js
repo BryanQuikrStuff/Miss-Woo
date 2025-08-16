@@ -2210,8 +2210,16 @@ class MissWooApp {
     const errorElement = document.getElementById("error");
     if (errorElement) {
       errorElement.classList.add("hidden");
-      console.log("🧹 Hidden error element");
+      errorElement.textContent = ''; // Clear the error text content
+      console.log("🧹 Hidden error element and cleared text");
     }
+    
+    // Clear any "No orders found" messages that might be in the results container
+    const noOrdersElements = document.querySelectorAll('.no-orders, .error-message');
+    noOrdersElements.forEach(element => {
+      element.remove();
+      console.log("🧹 Removed no-orders element");
+    });
     
     // Show loading state briefly
     this.showLoading();
