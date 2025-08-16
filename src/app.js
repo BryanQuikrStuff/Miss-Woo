@@ -387,6 +387,12 @@ class MissWooApp {
     const startTime = performance.now();
     console.log("Searching orders for email:", email);
     
+    // Clear previous data if this is a new email search
+    if (this.lastSearchedEmail !== email) {
+      this.clearCurrentEmailData();
+      this.lastSearchedEmail = email;
+    }
+    
     // Check cache first with expiration
     if (this.orderCache && this.orderCache[email] && this.isCacheValid(email, 'orderCache')) {
       console.log("Using cached results for:", email);
@@ -2174,6 +2180,9 @@ class MissWooApp {
 
   // Enhanced preloading that uses preloaded data when available
   async performAutoSearch(email) {
+    // Clear previous email's data immediately
+    this.clearCurrentEmailData();
+    
     // Check if we have preloaded data for this email
     if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
       console.log(`⚡ Using preloaded data for: ${email}`);
@@ -2187,6 +2196,30 @@ class MissWooApp {
     // Fall back to normal search
     console.log(`🔍 No preloaded data for ${email}, performing normal search`);
     await this.searchOrdersByEmail(email);
+  }
+
+  // Clear current email's data immediately
+  clearCurrentEmailData() {
+    console.log("🧹 Clearing current email data...");
+    this.allOrders = [];
+    this.lastSearchedEmail = null;
+    
+    // Clear the orders display
+    const ordersContainer = document.getElementById("ordersContainer");
+    if (ordersContainer) {
+      ordersContainer.innerHTML = '';
+    }
+    
+    // Clear any error messages
+    const errorElement = document.getElementById("error");
+    if (errorElement) {
+      errorElement.classList.add("hidden");
+    }
+    
+    // Show loading state briefly
+    this.showLoading();
+    
+    console.log("✅ Current email data cleared");
   }
 
   // Trigger dynamic preloading with debouncing
