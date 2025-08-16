@@ -5,7 +5,7 @@ A frontend application that integrates WooCommerce order data with Missive email
 ## 🚀 Quick Start
 
 ### Local Development
-```bash
+   ```bash
 # Use the development HTML file for local development
 npx http-server -p 3000 --cors
 # Then open: http://localhost:3000/index-dev.html

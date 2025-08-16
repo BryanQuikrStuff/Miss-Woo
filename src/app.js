@@ -1160,29 +1160,12 @@ class MissWooApp {
   }
 
   showLoading() {
-    const loading = document.getElementById("loading");
-    if (loading) {
-      loading.innerHTML = 'Loading<span class="loading-dots"></span>';
-      loading.classList.remove("hidden");
-    }
+    // Loading animation removed - only status messages are used now
+    this.setStatus('Loading...');
   }
 
   hideLoading() {
-    console.log("hideLoading() called");
-    const loading = document.getElementById("loading");
-    if (loading) {
-      loading.classList.add("hidden");
-      console.log("Loading element hidden");
-    } else {
-      console.log("Loading element not found");
-    }
-    
-    // Also try to hide any visible loading elements directly
-    const allLoadingElements = document.querySelectorAll('.loading');
-    allLoadingElements.forEach(el => {
-      el.classList.add("hidden");
-      console.log("Hidden loading element:", el);
-    });
+    // Loading animation removed - status messages handle this now
   }
 
   showError(message) {
