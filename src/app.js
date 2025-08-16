@@ -361,62 +361,111 @@ class MissWooApp {
 
     async searchOrdersByEmail(email) {
     console.log("Searching orders for email:", email);
+    
+    // Check cache first
+    if (this.orderCache && this.orderCache[email]) {
+      console.log("Using cached results for:", email);
+      this.allOrders = this.orderCache[email];
+      await this.displayOrdersList();
+      return;
+    }
+    
     try {
       let allOrders = [];
       let page = 1;
-      const maxPages = 5; // Search up to 5 pages to find orders
+      const maxPages = 3; // Reduced from 5 to 3 pages for faster search
 
-      while (page <= maxPages) {
-        console.log(`Searching page ${page}...`);
-        const url = this.getAuthenticatedUrl('/orders', {
-          search: email,
-          per_page: 100,
-          page: page
-        });
+      // Fetch first page immediately to show results faster
+      console.log(`Searching page ${page}...`);
+      const firstPageUrl = this.getAuthenticatedUrl('/orders', {
+        search: email,
+        per_page: 100,
+        page: page
+      });
+      
+      const firstPageData = await this.makeRequest(firstPageUrl);
+      console.log(`Found ${firstPageData.length} orders on page ${page}`);
+      
+      if (firstPageData.length > 0) {
+        allOrders = allOrders.concat(firstPageData);
         
-        const data = await this.makeRequest(url);
-        console.log(`Found ${data.length} orders on page ${page}`);
-        
-        if (data.length === 0) {
-          break; // No more orders to fetch
+        // If we have enough orders, start processing immediately
+        const matchingOrders = this.filterOrdersByEmail(allOrders, email);
+        if (matchingOrders.length >= 3) {
+          console.log(`Found ${matchingOrders.length} matching orders on first page, processing immediately`);
+          await this.processOrdersWithDetails(matchingOrders.slice(0, 5), email);
+          return;
         }
         
-        allOrders = allOrders.concat(data);
+        // Continue searching if needed
         page++;
+        while (page <= maxPages) {
+          console.log(`Searching page ${page}...`);
+          const url = this.getAuthenticatedUrl('/orders', {
+            search: email,
+            per_page: 100,
+            page: page
+          });
+          
+          const data = await this.makeRequest(url);
+          console.log(`Found ${data.length} orders on page ${page}`);
+          
+          if (data.length === 0) {
+            break; // No more orders to fetch
+          }
+          
+          allOrders = allOrders.concat(data);
+          page++;
+        }
       }
 
       console.log(`Total orders found: ${allOrders.length}`);
 
       // Filter for exact email matches and get the latest 5
-      const matchingOrders = allOrders
-        .filter(order => {
-          const orderEmail = order.billing?.email || '';
-          const matches = orderEmail.toLowerCase() === email.toLowerCase();
-          console.log(`Checking order ${order.number}: ${orderEmail} against ${email}: ${matches}`);
-          return matches;
-        })
-        .slice(0, 5); // Get latest 5 orders
-
+      const matchingOrders = this.filterOrdersByEmail(allOrders, email);
       console.log(`Total matching orders (latest 5): ${matchingOrders.length}`);
 
-      // Get notes for each order
-      for (const order of matchingOrders) {
-        try {
-          const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
-          const notes = await this.makeRequest(notesUrl);
-          order.notes = notes;
-        } catch (error) {
-          console.error(`Failed to get notes for order ${order.id}:`, error);
-          order.notes = [];
-        }
-      }
-
-      this.allOrders = matchingOrders;
-      await this.displayOrdersList();
+      await this.processOrdersWithDetails(matchingOrders, email);
     } catch (error) {
       console.error("Search orders error:", error);
       this.showError(`Failed to search orders: ${error.message}`);
     }
+  }
+
+  filterOrdersByEmail(orders, email) {
+    return orders
+      .filter(order => {
+        const orderEmail = order.billing?.email || '';
+        const matches = orderEmail.toLowerCase() === email.toLowerCase();
+        console.log(`Checking order ${order.number}: ${orderEmail} against ${email}: ${matches}`);
+        return matches;
+      })
+      .slice(0, 5); // Get latest 5 orders
+  }
+
+  async processOrdersWithDetails(orders, email) {
+    // Get notes for all orders in parallel
+    const orderPromises = orders.map(async (order) => {
+      try {
+        const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
+        const notes = await this.makeRequest(notesUrl);
+        order.notes = notes;
+        return order;
+      } catch (error) {
+        console.error(`Failed to get notes for order ${order.id}:`, error);
+        order.notes = [];
+        return order;
+      }
+    });
+
+    const processedOrders = await Promise.all(orderPromises);
+    this.allOrders = processedOrders;
+    
+    // Cache the results
+    if (!this.orderCache) this.orderCache = {};
+    this.orderCache[email] = processedOrders;
+    
+    await this.displayOrdersList();
   }
 
   getAuthenticatedUrl(endpoint, params = {}) {
@@ -513,7 +562,7 @@ class MissWooApp {
     thead.appendChild(headerRow);
     table.appendChild(thead);
     
-    // Create body
+    // Create body with basic info first
     const tbody = document.createElement("tbody");
     
     for (const order of this.allOrders) {
@@ -535,24 +584,16 @@ class MissWooApp {
       orderCell.appendChild(orderLink);
       row.appendChild(orderCell);
       
-      // Serial number
+      // Serial number (show loading initially)
       const serialCell = document.createElement("td");
-      const serialNumber = await this.getSerialNumber(order);
-      serialCell.textContent = serialNumber;
+      serialCell.textContent = "Loading...";
+      serialCell.id = `serial-${order.id}`;
       row.appendChild(serialCell);
       
-      // Tracking
+      // Tracking (show loading initially)
       const trackingCell = document.createElement("td");
-      const trackingInfo = this.getTrackingInfo(order);
-      if (trackingInfo) {
-        const trackingLink = document.createElement("a");
-        trackingLink.href = trackingInfo.url;
-        trackingLink.target = "_blank";
-        trackingLink.textContent = trackingInfo.number;
-        trackingCell.appendChild(trackingLink);
-      } else {
-        trackingCell.textContent = "N/A";
-      }
+      trackingCell.textContent = "Loading...";
+      trackingCell.id = `tracking-${order.id}`;
       row.appendChild(trackingCell);
       
       tbody.appendChild(row);
@@ -560,13 +601,39 @@ class MissWooApp {
     
     table.appendChild(tbody);
     
-    // Clear and populate results
+    // Clear and populate results with basic info
     resultsContainer.innerHTML = "";
     resultsContainer.appendChild(customerInfoSection);
     resultsContainer.appendChild(table);
     
-    // Hide loading only after everything is displayed
+    // Hide loading after basic info is displayed
     this.hideLoading();
+    
+    // Then enhance with serial numbers and tracking info in parallel
+    const enhancementPromises = this.allOrders.map(async (order) => {
+      // Get serial number
+      const serialNumber = await this.getSerialNumber(order);
+      const serialCell = document.getElementById(`serial-${order.id}`);
+      if (serialCell) serialCell.textContent = serialNumber;
+      
+      // Get tracking info
+      const trackingInfo = this.getTrackingInfo(order);
+      const trackingCell = document.getElementById(`tracking-${order.id}`);
+      if (trackingCell) {
+        if (trackingInfo) {
+          const trackingLink = document.createElement("a");
+          trackingLink.href = trackingInfo.url;
+          trackingLink.target = "_blank";
+          trackingLink.textContent = trackingInfo.number;
+          trackingCell.innerHTML = "";
+          trackingCell.appendChild(trackingLink);
+        } else {
+          trackingCell.textContent = "N/A";
+        }
+      }
+    });
+    
+    await Promise.all(enhancementPromises);
   }
 
   createCustomerInfoSection() {
@@ -631,10 +698,18 @@ class MissWooApp {
     try {
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
+      // Check cache first
+      if (!this.serialNumberCache) this.serialNumberCache = {};
+      if (this.serialNumberCache[order.number]) {
+        console.log(`Using cached serial numbers for order #${order.number}`);
+        return this.serialNumberCache[order.number];
+      }
+      
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
+        this.serialNumberCache[order.number] = "N/A";
         return "N/A";
       }
 
@@ -645,13 +720,17 @@ class MissWooApp {
       
       if (serialNumbers && serialNumbers.length > 0) {
         console.log(`Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
-        return serialNumbers.join(', ');
+        const result = serialNumbers.join(', ');
+        this.serialNumberCache[order.number] = result;
+        return result;
       } else {
         console.log(`No serial numbers found for order #${order.number}`);
+        this.serialNumberCache[order.number] = "N/A";
         return "N/A";
       }
         } catch (error) {
       console.error('Error getting serial number:', error);
+      this.serialNumberCache[order.number] = "N/A";
       return "N/A";
     }
   }
@@ -660,31 +739,32 @@ class MissWooApp {
     try {
       console.log(`Looking for serial numbers in Katana order details`);
       
-      const allSerialNumbers = [];
-      
       // Check if the order has sales_order_rows
       if (katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
         console.log(`Found sales_order_rows array with ${katanaOrder.sales_order_rows.length} items`);
         
-        for (const [index, row] of katanaOrder.sales_order_rows.entries()) {
-          console.log(`Examining sales order row ${index + 1}:`, row);
-          
-          // Use the row.id to fetch serial numbers for this specific row
-          if (row.id) {
+        // Fetch serial numbers for all rows in parallel
+        const serialNumberPromises = katanaOrder.sales_order_rows
+          .filter(row => row.id)
+          .map(async (row, index) => {
+            console.log(`Examining sales order row ${index + 1}:`, row);
             console.log(`Fetching serial numbers for row ID: ${row.id}`);
             const serialNumbers = await this.getSerialNumbersForRow(row.id);
             if (serialNumbers && serialNumbers.length > 0) {
               console.log(`Found ${serialNumbers.length} serial number(s) for row ID ${row.id}:`, serialNumbers);
-              allSerialNumbers.push(...serialNumbers);
             }
-          }
-        }
+            return serialNumbers || [];
+          });
+        
+        const allSerialNumberArrays = await Promise.all(serialNumberPromises);
+        const allSerialNumbers = allSerialNumberArrays.flat();
+        
+        console.log(`Total serial numbers found: ${allSerialNumbers.length}`);
+        return allSerialNumbers;
       } else {
         console.log(`No sales_order_rows found in order`);
+        return [];
       }
-      
-      console.log(`Total serial numbers found: ${allSerialNumbers.length}`);
-      return allSerialNumbers;
     } catch (error) {
       console.error('Error extracting serial numbers from order:', error);
       return [];
@@ -731,6 +811,13 @@ class MissWooApp {
     try {
       console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
       
+      // Check cache first
+      if (!this.katanaOrderCache) this.katanaOrderCache = {};
+      if (this.katanaOrderCache[wooOrderNumber]) {
+        console.log(`Using cached Katana order for #${wooOrderNumber}`);
+        return this.katanaOrderCache[wooOrderNumber];
+      }
+      
       const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
       console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
       const response = await fetch(url, {
@@ -757,17 +844,21 @@ class MissWooApp {
         const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
         if (fullOrder) {
           console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
+          this.katanaOrderCache[wooOrderNumber] = fullOrder;
           return fullOrder;
         } else {
           console.log(`Could not get full order details, returning basic order`);
+          this.katanaOrderCache[wooOrderNumber] = katanaOrder;
+          return katanaOrder;
         }
       } else {
         console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
+        this.katanaOrderCache[wooOrderNumber] = null;
+        return null;
       }
-      
-      return katanaOrder;
     } catch (error) {
       console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
+      this.katanaOrderCache[wooOrderNumber] = null;
       return null;
     }
   }
@@ -1833,6 +1924,11 @@ class MissWooApp {
     this.emailCache.clear();
     this.visibleEmails.clear();
     
+    // Clear performance caches
+    this.orderCache = {};
+    this.katanaOrderCache = {};
+    this.serialNumberCache = {};
+    
     // Remove event listeners if they exist
     const searchBtn = document.getElementById("searchBtn");
     const searchInput = document.getElementById("orderSearch");
@@ -1850,6 +1946,14 @@ class MissWooApp {
     }
     
     console.log("Cleanup completed");
+  }
+
+  clearCaches() {
+    console.log('Clearing all performance caches...');
+    this.orderCache = {};
+    this.katanaOrderCache = {};
+    this.serialNumberCache = {};
+    console.log('Performance caches cleared');
   }
 
   // Add cleanup on page unload (using beforeunload instead of unload)
