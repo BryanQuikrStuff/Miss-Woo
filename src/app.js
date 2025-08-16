@@ -51,6 +51,20 @@ class MissWooApp {
         'Accept': 'application/json'
       };
       
+      // Performance optimizations
+      this.requestQueue = new Map(); // Request deduplication
+      this.cacheExpiry = new Map(); // Cache expiration tracking
+      this.pendingRequests = new Set(); // Track pending requests
+      this.backgroundTasks = []; // Background processing queue
+      
+      // Cache configuration
+      this.cacheConfig = {
+        orderCache: 5 * 60 * 1000, // 5 minutes
+        katanaCache: 10 * 60 * 1000, // 10 minutes  
+        serialCache: 30 * 60 * 1000, // 30 minutes
+        emailCache: 2 * 60 * 1000 // 2 minutes
+      };
+      
       this.hideLoading();
       this.initialize();
     } catch (error) {
@@ -360,13 +374,15 @@ class MissWooApp {
     }
 
     async searchOrdersByEmail(email) {
+    const startTime = performance.now();
     console.log("Searching orders for email:", email);
     
-    // Check cache first
-    if (this.orderCache && this.orderCache[email]) {
+    // Check cache first with expiration
+    if (this.orderCache && this.orderCache[email] && this.isCacheValid(email, 'orderCache')) {
       console.log("Using cached results for:", email);
       this.allOrders = this.orderCache[email];
       await this.displayOrdersList();
+      console.log(`Cache hit - Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       return;
     }
     
@@ -426,6 +442,8 @@ class MissWooApp {
       console.log(`Total matching orders (latest 5): ${matchingOrders.length}`);
 
       await this.processOrdersWithDetails(matchingOrders, email);
+      console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
+      this.logPerformanceStats();
     } catch (error) {
       console.error("Search orders error:", error);
       this.showError(`Failed to search orders: ${error.message}`);
@@ -461,9 +479,10 @@ class MissWooApp {
     const processedOrders = await Promise.all(orderPromises);
     this.allOrders = processedOrders;
     
-    // Cache the results
+    // Cache the results with expiration
     if (!this.orderCache) this.orderCache = {};
     this.orderCache[email] = processedOrders;
+    this.setCacheExpiry(email, 'orderCache');
     
     await this.displayOrdersList();
   }
@@ -499,34 +518,54 @@ class MissWooApp {
   async makeRequest(url, options = {}) {
     console.log("Making request to:", url);
     
+    // Request deduplication - if same request is pending, wait for it
+    const requestKey = `${url}-${JSON.stringify(options)}`;
+    if (this.pendingRequests.has(requestKey)) {
+      console.log("Request already pending, waiting for result:", requestKey);
+      return this.requestQueue.get(requestKey);
+    }
+    
     // Add cache-busting parameter for Missive environment
     const separator = url.includes('?') ? '&' : '?';
     const cacheBustedUrl = this.isMissiveEnvironment 
       ? `${url}${separator}_cb=${this.cacheBuster}`
       : url;
     
-    try {
-      const response = await fetch(cacheBustedUrl, {
-        mode: 'cors',
-        credentials: 'omit', // Don't send cookies for CORS
-        headers: {
-          ...this.corsHeaders,
-          ...options.headers
-        },
-        ...options
-      });
+    // Create promise for this request
+    const requestPromise = (async () => {
+      try {
+        const response = await fetch(cacheBustedUrl, {
+          mode: 'cors',
+          credentials: 'omit', // Don't send cookies for CORS
+          headers: {
+            ...this.corsHeaders,
+            ...options.headers
+          },
+          ...options
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("API Response:", data);
+        return data;
+      } catch (error) {
+        console.error("API Request failed:", error);
+        throw error;
+      } finally {
+        // Clean up request tracking
+        this.pendingRequests.delete(requestKey);
+        this.requestQueue.delete(requestKey);
       }
-
-      const data = await response.json();
-      console.log("API Response:", data);
-      return data;
-        } catch (error) {
-      console.error("API Request failed:", error);
-      throw error;
-    }
+    })();
+    
+    // Track this request
+    this.pendingRequests.add(requestKey);
+    this.requestQueue.set(requestKey, requestPromise);
+    
+    return requestPromise;
   }
 
   async displayOrdersList() {
@@ -634,6 +673,80 @@ class MissWooApp {
     });
     
     await Promise.all(enhancementPromises);
+    
+    // Start background processing for additional data
+    this.startBackgroundProcessing();
+  }
+
+  startBackgroundProcessing() {
+    // Process additional data in background without blocking UI
+    this.backgroundTasks.push(async () => {
+      try {
+        // Preload related data for better UX
+        await this.preloadRelatedData();
+      } catch (error) {
+        console.log('Background processing error:', error);
+      }
+    });
+    
+    // Process background tasks
+    this.processBackgroundTasks();
+  }
+
+  async processBackgroundTasks() {
+    if (this.backgroundTasks.length === 0) return;
+    
+    const task = this.backgroundTasks.shift();
+    if (task) {
+      try {
+        await task();
+      } catch (error) {
+        console.log('Background task error:', error);
+      }
+    }
+    
+    // Process next task after a short delay
+    if (this.backgroundTasks.length > 0) {
+      setTimeout(() => this.processBackgroundTasks(), 100);
+    }
+  }
+
+  async preloadRelatedData() {
+    // Preload data for orders that might be accessed next
+    if (this.allOrders.length > 0) {
+      const firstOrder = this.allOrders[0];
+      const customerEmail = firstOrder.billing?.email;
+      
+      if (customerEmail && !this.orderCache[customerEmail]) {
+        console.log('Preloading related order data for:', customerEmail);
+        // Preload in background without blocking UI
+        setTimeout(async () => {
+          try {
+            await this.searchOrdersByEmail(customerEmail);
+          } catch (error) {
+            console.log('Preload failed:', error);
+          }
+        }, 1000);
+      }
+    }
+  }
+
+  getPerformanceStats() {
+    return {
+      cacheHits: {
+        orders: Object.keys(this.orderCache || {}).length,
+        katana: Object.keys(this.katanaOrderCache || {}).length,
+        serials: Object.keys(this.serialNumberCache || {}).length
+      },
+      pendingRequests: this.pendingRequests.size,
+      backgroundTasks: this.backgroundTasks.length,
+      cacheExpiryEntries: this.cacheExpiry.size
+    };
+  }
+
+  logPerformanceStats() {
+    const stats = this.getPerformanceStats();
+    console.log('📊 Performance Stats:', stats);
   }
 
   createCustomerInfoSection() {
@@ -698,9 +811,9 @@ class MissWooApp {
     try {
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
-      // Check cache first
+      // Check cache first with expiration
       if (!this.serialNumberCache) this.serialNumberCache = {};
-      if (this.serialNumberCache[order.number]) {
+      if (this.serialNumberCache[order.number] && this.isCacheValid(order.number, 'serialCache')) {
         console.log(`Using cached serial numbers for order #${order.number}`);
         return this.serialNumberCache[order.number];
       }
@@ -722,6 +835,7 @@ class MissWooApp {
         console.log(`Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
         const result = serialNumbers.join(', ');
         this.serialNumberCache[order.number] = result;
+        this.setCacheExpiry(order.number, 'serialCache');
         return result;
       } else {
         console.log(`No serial numbers found for order #${order.number}`);
@@ -811,9 +925,9 @@ class MissWooApp {
     try {
       console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
       
-      // Check cache first
+      // Check cache first with expiration
       if (!this.katanaOrderCache) this.katanaOrderCache = {};
-      if (this.katanaOrderCache[wooOrderNumber]) {
+      if (this.katanaOrderCache[wooOrderNumber] && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
         console.log(`Using cached Katana order for #${wooOrderNumber}`);
         return this.katanaOrderCache[wooOrderNumber];
       }
@@ -845,6 +959,7 @@ class MissWooApp {
         if (fullOrder) {
           console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
           this.katanaOrderCache[wooOrderNumber] = fullOrder;
+          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
           return fullOrder;
         } else {
           console.log(`Could not get full order details, returning basic order`);
@@ -1953,7 +2068,30 @@ class MissWooApp {
     this.orderCache = {};
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
+    this.cacheExpiry.clear();
     console.log('Performance caches cleared');
+  }
+
+  isCacheValid(key, cacheType) {
+    const expiryKey = `${cacheType}-${key}`;
+    const expiryTime = this.cacheExpiry.get(expiryKey);
+    if (!expiryTime) return false;
+    
+    const now = Date.now();
+    const isValid = now < expiryTime;
+    
+    if (!isValid) {
+      console.log(`Cache expired for ${cacheType}:${key}`);
+      this.cacheExpiry.delete(expiryKey);
+    }
+    
+    return isValid;
+  }
+
+  setCacheExpiry(key, cacheType) {
+    const expiryKey = `${cacheType}-${key}`;
+    const expiryTime = Date.now() + this.cacheConfig[cacheType];
+    this.cacheExpiry.set(expiryKey, expiryTime);
   }
 
   // Add cleanup on page unload (using beforeunload instead of unload)
