@@ -1463,7 +1463,7 @@ class MissWooApp {
         // Try fetchConversations with any ids we gathered
         const ids = candidateIds.length ? Array.from(new Set(candidateIds)) : null;
         if (Missive.fetchConversations && ids && ids.length) {
-          const conversations = await Missive.fetchConversations({ ids });
+          const conversations = await Missive.fetchConversations(ids);
           if (Array.isArray(conversations) && conversations.length) {
             this.setStatus(`Fetching conversations (${conversations.length})…`);
             for (const c of conversations) {
@@ -1486,7 +1486,7 @@ class MissWooApp {
         if (Missive.fetchMessages && Array.isArray(candidateIds) && candidateIds.length) {
           for (const convId of candidateIds) {
             try {
-              const messages = await Missive.fetchMessages({ conversation: convId, limit: 10 });
+                              const messages = await Missive.fetchMessages(convId, { limit: 10 });
               if (Array.isArray(messages) && messages.length) {
                 for (const m of messages) {
                   // Try common message shapes
