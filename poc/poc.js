@@ -207,7 +207,7 @@
       log('active convo fetched', { id: c?.id, keys: Object.keys(c||{}), hasParticipants: Array.isArray(c?.participants) ? c.participants.length : 0 });
       if (extractFromConversationObject(c, `${sourceLabel}.active`)) return true;
       if (window.Missive && window.Missive.fetchMessages && c && c.id) {
-        const msgs = await withTimeout(window.Missive.fetchMessages({ conversation: c.id, limit: 5 }), 2000, 'fetchMessages.active');
+        const msgs = await withTimeout(window.Missive.fetchMessages(c.id, { limit: 5 }), 2000, 'fetchMessages.active');
         if (msgs && msgs.__timeout) {
           log('fetchMessages(active) timed out', { conversation: c.id });
         } else {
@@ -257,7 +257,7 @@
       // Try conversation details first
       if (M.fetchConversations) {
         try {
-          const convos = await withTimeout(M.fetchConversations({ ids: idArray }), 2000, 'fetchConversations.ids');
+          const convos = await withTimeout(M.fetchConversations(idArray), 2000, 'fetchConversations.ids');
           if (convos && convos.__timeout) {
             log('fetchConversations(ids) timed out', { count: idArray.length });
           } else {
@@ -276,7 +276,7 @@
       if (M.fetchMessages) {
         for (const id of idArray) {
           try {
-            const msgs = await withTimeout(M.fetchMessages({ conversation: id, limit: 10 }), 2000, 'fetchMessages.byId');
+            const msgs = await withTimeout(M.fetchMessages(id, { limit: 10 }), 2000, 'fetchMessages.byId');
             if (msgs && msgs.__timeout) {
               log('fetchMessages timed out', { id });
             } else {
