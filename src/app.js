@@ -1158,7 +1158,9 @@ class MissWooApp {
     // Add conversation change listener for better auto-search
     Missive.on("change:conversations", (data) => {
       console.log("📧 Missive change:conversations event:", data);
-      this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids: data?.ids||data?.conversation_ids||null });
+      // Handle both array payload (direct IDs) and object payload (with ids property)
+      const ids = Array.isArray(data) ? data : (data?.ids || data?.conversation_ids || null);
+      this.setStatus({ event: 'change:conversations', payloadKeys: Object.keys(data||{}), ids });
       this.handleConversationChange(data);
     });
     // Some environments fire without payload; poll for current conversation then
