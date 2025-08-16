@@ -1580,6 +1580,21 @@ class MissWooApp {
       const emailFromParticipants = this.extractEmailFromParticipants(data.participants);
       if (emailFromParticipants) return emailFromParticipants;
     }
+    
+    // Check email_addresses array (Missive conversation format)
+    if (Array.isArray(data.email_addresses) && data.email_addresses.length > 0) {
+      console.log("✅ Found email_addresses array:", data.email_addresses);
+      // Filter out @quikrstuff.com emails and get the first external email
+      const externalEmail = data.email_addresses.find(emailObj => {
+        const address = emailObj.address || emailObj.email;
+        return address && this.isValidEmailForSearch(address);
+      });
+      if (externalEmail) {
+        const email = externalEmail.address || externalEmail.email;
+        console.log("✅ Found external email in email_addresses:", email);
+        return email;
+      }
+    }
 
     // Messages shape (conversation.messages or data.message)
     if (Array.isArray(data.messages)) {
