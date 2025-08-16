@@ -224,6 +224,17 @@ class MissWooApp {
       
       // Always clear loading state after initialization
       this.hideLoading();
+      
+      // Add debug methods to global scope for testing
+      window.MissWooDebug = {
+        logStatus: () => this.logPreloadingStatus(),
+        triggerPreload: () => this.triggerPreloading(),
+        getPreloadedEmails: () => Array.from(this.preloadedConversations.keys()),
+        getSeenConversations: () => Array.from(this.seenConversationIds),
+        clearPreloaded: () => { this.preloadedConversations.clear(); console.log("Cleared preloaded data"); }
+      };
+      console.log("🔧 Debug methods available: window.MissWooDebug");
+      
     } catch (error) {
       console.error("Initialization failed:", error);
       this.showError("Failed to initialize application: " + error.message);
@@ -2207,7 +2218,28 @@ class MissWooApp {
     // Clear previous email's data immediately
     this.clearCurrentEmailData();
     
-    // Debounce auto-search to prevent rapid successive calls
+    // Check for preloaded data immediately (no delay)
+    if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
+      console.log(`⚡ Using preloaded data for: ${email}`);
+      const preloadedData = this.preloadedConversations.get(email);
+      this.allOrders = [...preloadedData.orders];
+      this.lastSearchedEmail = email;
+      await this.displayOrdersList();
+      this.setStatus(`⚡ Instant results for ${email} (preloaded)`);
+      return;
+    }
+    
+    // Check regular cache immediately (no delay)
+    if (this.emailCache.has(email)) {
+      console.log(`Using cached results for: ${email}`);
+      this.allOrders = this.emailCache.get(email);
+      this.lastSearchedEmail = email;
+      await this.displayOrdersList();
+      this.setStatus(`Loaded cached results for ${email}`);
+      return;
+    }
+    
+    // Only debounce actual API calls
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
     }
@@ -2217,25 +2249,6 @@ class MissWooApp {
       this.setStatus(`Searching orders for ${email}…`);
       
       try {
-        // Check if we have preloaded data for this email
-        if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
-          console.log(`⚡ Using preloaded data for: ${email}`);
-          const preloadedData = this.preloadedConversations.get(email);
-          this.allOrders = [...preloadedData.orders];
-          await this.displayOrdersList();
-          this.setStatus(`⚡ Instant results for ${email} (preloaded)`);
-          return;
-        }
-        
-        // Check regular cache first
-        if (this.emailCache.has(email)) {
-          console.log(`Using cached results for: ${email}`);
-          this.allOrders = this.emailCache.get(email);
-          await this.displayOrdersList();
-          this.setStatus(`Loaded cached results for ${email}`);
-          return;
-        }
-        
         // Fall back to normal search
         console.log(`🔍 No preloaded data for ${email}, performing normal search`);
         await this.searchOrdersByEmail(email);
@@ -2252,7 +2265,7 @@ class MissWooApp {
         console.error("Auto-search failed:", error);
         this.showError("Auto-search failed: " + error.message);
       }
-    }, 500); // 500ms debounce delay for stability
+    }, 300); // Reduced debounce delay for API calls only
   }
 
   // Clear current email's data immediately
@@ -2311,8 +2324,34 @@ class MissWooApp {
       // Wait a bit for Missive to be ready
       setTimeout(async () => {
         await this.preloadTeamInboxConversations();
+        // Log preloading status after initialization
+        this.logPreloadingStatus();
       }, 3000);
     }
+  }
+
+  // Debug method to check preloading status
+  logPreloadingStatus() {
+    console.log("📊 === PRELOADING STATUS ===");
+    console.log(`📧 Seen conversation IDs: ${this.seenConversationIds.size}`);
+    console.log(`📧 Preloaded conversations: ${this.preloadedConversations.size}`);
+    console.log(`📧 Visible conversation IDs: ${this.visibleConversationIds.size}`);
+    console.log(`📧 Email cache size: ${this.emailCache.size}`);
+    
+    if (this.preloadedConversations.size > 0) {
+      console.log("📧 Preloaded emails:");
+      for (const [email, data] of this.preloadedConversations) {
+        console.log(`  - ${email}: ${data.orders.length} orders (age: ${Math.round((Date.now() - data.timestamp) / 1000)}s)`);
+      }
+    }
+    console.log("📊 === PRELOADING STATUS END ===");
+  }
+
+  // Manual trigger for preloading (for testing)
+  async triggerPreloading() {
+    console.log("🔧 Manual preloading trigger...");
+    await this.preloadTeamInboxConversations();
+    this.logPreloadingStatus();
   }
 
   cleanup() {
