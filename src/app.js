@@ -680,9 +680,12 @@ class MissWooApp {
     
     if (this.allOrders.length === 0) {
       this.hideLoading();
-      this.showError("No orders found");
+      this.setStatus("No orders found");
       return;
     }
+
+    // Set correct status when orders are found
+    this.setStatus(`Found ${this.allOrders.length} order(s)`);
 
     const resultsContainer = document.getElementById("results");
     if (!resultsContainer) {
@@ -2331,9 +2334,6 @@ class MissWooApp {
         if (this.allOrders.length > 0 && this.emailCache) {
           this.emailCache.set(email, [...this.allOrders]);
           this.cleanupCache(); // Manage cache size
-          this.setStatus(`Found ${this.allOrders.length} order(s) for ${email}`);
-        } else {
-          this.setStatus(`No orders found for ${email}`);
         }
       } catch (error) {
         console.error("Auto-search failed:", error);
