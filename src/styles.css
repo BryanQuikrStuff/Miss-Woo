@@ -47,12 +47,12 @@ body {
 }
 
 .version-badge {
-  font-size: 0.5rem; /* Reduced from 0.6rem */
-  font-weight: 400;
-  opacity: 0.8;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.05rem 0.2rem; /* Reduced from 0.1rem 0.3rem */
-  border-radius: 4px; /* Reduced from 6px */
+  font-size: 1.2rem; /* Increased from 0.5rem */
+  font-weight: 600;
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.2rem 0.5rem; /* Increased from 0.05rem 0.2rem */
+  border-radius: 6px; /* Increased from 4px */
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
