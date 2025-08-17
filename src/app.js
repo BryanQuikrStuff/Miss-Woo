@@ -1419,10 +1419,10 @@ class MissWooApp {
       const versionBadge = header.querySelector('.version-badge');
       
       if (versionBadge) {
-        versionBadge.textContent = `v${this.version}${devIndicator}`;
+        versionBadge.textContent = `v3.0${devIndicator}`;
       } else {
         // Fallback: update the entire header
-        header.innerHTML = `Miss-Woo <span class="version-badge">v${this.version}${devIndicator}</span>`;
+        header.innerHTML = `<span class="version-badge">v3.0${devIndicator}</span>`;
       }
     }
   }
@@ -1948,38 +1948,89 @@ class MissWooApp {
       }
     }
     
-    // Try to extract from text content
+    // Try to extract from text content (email body)
     if (data.text) {
       const email = this.extractEmailFromString(data.text);
-      if (email) {
-        console.log("✅ Found email in data.text:", email);
+      if (email && this.isValidEmailForSearch(email)) {
+        console.log("✅ Found email in data.text (body):", email);
         return email;
       }
     }
     
     if (data.content) {
       const email = this.extractEmailFromString(data.content);
-      if (email) {
-        console.log("✅ Found email in data.content:", email);
+      if (email && this.isValidEmailForSearch(email)) {
+        console.log("✅ Found email in data.content (body):", email);
+        return email;
+      }
+    }
+    
+    if (data.body) {
+      const email = this.extractEmailFromString(data.body);
+      if (email && this.isValidEmailForSearch(email)) {
+        console.log("✅ Found email in data.body:", email);
+        return email;
+      }
+    }
+    
+    if (data.html) {
+      const email = this.extractEmailFromString(data.html);
+      if (email && this.isValidEmailForSearch(email)) {
+        console.log("✅ Found email in data.html:", email);
         return email;
       }
     }
     
     if (data.subject) {
       const email = this.extractEmailFromString(data.subject);
-      if (email) {
+      if (email && this.isValidEmailForSearch(email)) {
         console.log("✅ Found email in data.subject:", email);
         return email;
       }
     }
     
-    // Try to extract from any string properties
+    // Try to extract from any string properties (including message content)
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string' && value.includes('@')) {
         const email = this.extractEmailFromString(value);
-        if (email) {
+        if (email && this.isValidEmailForSearch(email)) {
           console.log(`✅ Found email in data.${key}:`, email);
           return email;
+        }
+      }
+    }
+    
+    // Check messages array for body content
+    if (Array.isArray(data.messages)) {
+      for (const msg of data.messages) {
+        // Check message body content
+        if (msg.text) {
+          const email = this.extractEmailFromString(msg.text);
+          if (email && this.isValidEmailForSearch(email)) {
+            console.log("✅ Found email in message.text:", email);
+            return email;
+          }
+        }
+        if (msg.content) {
+          const email = this.extractEmailFromString(msg.content);
+          if (email && this.isValidEmailForSearch(email)) {
+            console.log("✅ Found email in message.content:", email);
+            return email;
+          }
+        }
+        if (msg.body) {
+          const email = this.extractEmailFromString(msg.body);
+          if (email && this.isValidEmailForSearch(email)) {
+            console.log("✅ Found email in message.body:", email);
+            return email;
+          }
+        }
+        if (msg.html) {
+          const email = this.extractEmailFromString(msg.html);
+          if (email && this.isValidEmailForSearch(email)) {
+            console.log("✅ Found email in message.html:", email);
+            return email;
+          }
         }
       }
     }
@@ -2033,9 +2084,20 @@ class MissWooApp {
   extractEmailFromString(text) {
     if (!text) return null;
     
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
-    const match = text.match(emailRegex);
-    return match ? match[0] : null;
+    // More comprehensive email regex that handles various formats
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+    const matches = text.match(emailRegex);
+    
+    if (!matches || matches.length === 0) return null;
+    
+    // Return the first valid email (filter out @quikrstuff.com)
+    for (const match of matches) {
+      if (this.isValidEmailForSearch(match)) {
+        return match;
+      }
+    }
+    
+    return null;
   }
 
   async getEmailFromMissiveAPI() {
