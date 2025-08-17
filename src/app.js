@@ -1365,7 +1365,14 @@ class MissWooApp {
       // Check if we're in development environment (localhost)
       const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const devIndicator = isDevelopment ? ' DEV' : '';
-      header.innerHTML = `Miss-Woo${devIndicator} <span style="font-size: 0.6em; color: #666; font-weight: normal;">${this.version}</span>`;
+      const versionBadge = header.querySelector('.version-badge');
+      
+      if (versionBadge) {
+        versionBadge.textContent = `v${this.version}${devIndicator}`;
+      } else {
+        // Fallback: update the entire header
+        header.innerHTML = `Miss-Woo <span class="version-badge">v${this.version}${devIndicator}</span>`;
+      }
     }
   }
 
