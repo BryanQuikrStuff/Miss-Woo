@@ -426,6 +426,14 @@ class MissWooApp {
       // Search WooCommerce orders only
       const orderResults = await this.searchWooCommerceOrders(email);
       
+      // Ensure orderResults is an array
+      if (!Array.isArray(orderResults)) {
+        console.error("searchWooCommerceOrders returned non-array:", orderResults);
+        this.allOrders = [];
+        await this.displayOrdersList();
+        return;
+      }
+      
       // Set results
       this.allOrders = orderResults;
       await this.displayOrdersList();
@@ -447,51 +455,71 @@ class MissWooApp {
     let page = 1;
     const maxPages = 3; // Reduced from 5 to 3 pages for faster search
 
-    // Fetch first page immediately to show results faster
-    console.log(`Searching WooCommerce orders page ${page}...`);
-    const firstPageUrl = this.getAuthenticatedUrl('/orders', {
-      search: email,
-      per_page: 100,
-      page: page
-    });
-    
-    const firstPageData = await this.makeRequest(firstPageUrl);
-    console.log(`Found ${firstPageData.length} orders on page ${page}`);
-    
-    if (firstPageData.length > 0) {
-      allOrders = allOrders.concat(firstPageData);
+    try {
+      // Fetch first page immediately to show results faster
+      console.log(`Searching WooCommerce orders page ${page}...`);
+      const firstPageUrl = this.getAuthenticatedUrl('/orders', {
+        search: email,
+        per_page: 100,
+        page: page
+      });
       
-      // Continue searching if needed
-      page++;
-      while (page <= maxPages) {
-        console.log(`Searching WooCommerce orders page ${page}...`);
-        const url = this.getAuthenticatedUrl('/orders', {
-          search: email,
-          per_page: 100,
-          page: page
-        });
-        
-        const data = await this.makeRequest(url);
-        console.log(`Found ${data.length} orders on page ${page}`);
-        
-        if (data.length === 0) {
-          break; // No more orders to fetch
-        }
-        
-        allOrders = allOrders.concat(data);
-        page++;
+      const firstPageData = await this.makeRequest(firstPageUrl);
+      
+      // Ensure firstPageData is an array
+      if (!Array.isArray(firstPageData)) {
+        console.error("API returned non-array data:", firstPageData);
+        return [];
       }
+      
+      console.log(`Found ${firstPageData.length} orders on page ${page}`);
+      
+      if (firstPageData.length > 0) {
+        allOrders = allOrders.concat(firstPageData);
+        
+        // Continue searching if needed
+        page++;
+        while (page <= maxPages) {
+          console.log(`Searching WooCommerce orders page ${page}...`);
+          const url = this.getAuthenticatedUrl('/orders', {
+            search: email,
+            per_page: 100,
+            page: page
+          });
+          
+          const data = await this.makeRequest(url);
+          
+          // Ensure data is an array
+          if (!Array.isArray(data)) {
+            console.error("API returned non-array data on page", page, ":", data);
+            break;
+          }
+          
+          console.log(`Found ${data.length} orders on page ${page}`);
+          
+          if (data.length === 0) {
+            break; // No more orders to fetch
+          }
+          
+          allOrders = allOrders.concat(data);
+          page++;
+        }
+      }
+
+      console.log(`Total WooCommerce orders found: ${allOrders.length}`);
+
+      // Filter for exact email matches and get the latest 5
+      const matchingOrders = this.filterOrdersByEmail(allOrders, email);
+      console.log(`Total matching WooCommerce orders (latest 5): ${matchingOrders.length}`);
+
+      // Process order details
+      const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
+      return Array.isArray(processedOrders) ? processedOrders : [];
+      
+    } catch (error) {
+      console.error("Error in searchWooCommerceOrders:", error);
+      return [];
     }
-
-    console.log(`Total WooCommerce orders found: ${allOrders.length}`);
-
-    // Filter for exact email matches and get the latest 5
-    const matchingOrders = this.filterOrdersByEmail(allOrders, email);
-    console.log(`Total matching WooCommerce orders (latest 5): ${matchingOrders.length}`);
-
-    // Process order details
-    const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
-    return processedOrders;
   }
 
   async searchContactFormSubmissions(email) {
