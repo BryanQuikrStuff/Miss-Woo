@@ -415,7 +415,8 @@ class MissWooApp {
     // Check cache first with expiration
     if (this.orderCache && this.orderCache.has(email) && this.isCacheValid(email, 'orderCache')) {
       console.log("Using cached results for:", email);
-      this.allOrders = this.orderCache.get(email);
+      const cachedOrders = this.orderCache.get(email);
+      this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
       await this.displayOrdersList();
       console.log(`Cache hit - Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       return;
@@ -554,9 +555,10 @@ class MissWooApp {
     this.allOrders = processedOrders;
     
     // Cache the results with expiration
-    if (!this.orderCache) this.orderCache = {};
-    this.orderCache[email] = processedOrders;
-    this.setCacheExpiry(email, 'orderCache');
+    if (this.orderCache) {
+      this.orderCache.set(email, processedOrders);
+      this.setCacheExpiry(email, 'orderCache');
+    }
     
     await this.displayOrdersList();
   }
@@ -643,6 +645,11 @@ class MissWooApp {
   }
 
   async displayOrdersList() {
+    // Ensure allOrders is always an array
+    if (!Array.isArray(this.allOrders)) {
+      this.allOrders = [];
+    }
+    
     if (this.allOrders.length === 0) {
       this.hideLoading();
       this.showError("No orders found");
@@ -2270,7 +2277,8 @@ class MissWooApp {
     // Check regular cache immediately (no delay)
     if (this.emailCache && this.emailCache.has(email)) {
       console.log(`Using cached results for: ${email}`);
-      this.allOrders = this.emailCache.get(email);
+      const cachedOrders = this.emailCache.get(email);
+      this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
       this.lastSearchedEmail = email;
       await this.displayOrdersList();
       this.setStatus(`Loaded cached results for ${email}`);
