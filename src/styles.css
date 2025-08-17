@@ -249,13 +249,8 @@ tr:last-child td {
 }
 
 .order-type.woocommerce {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.order-type.contact_form {
-  background: #f3e5f5;
-  color: #7b1fa2;
+  background-color: #7c3aed;
+  color: white;
 }
 
 /* Links */
