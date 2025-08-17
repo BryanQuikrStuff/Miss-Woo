@@ -8,36 +8,44 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Miss-Woo - WooCommerce Integration</title>
-                <link rel="stylesheet" href="src/styles.css?v=2047" />
+    <link rel="stylesheet" href="src/styles.css?v=10d9aeb" />
     <link rel="stylesheet" href="https://integrations.missiveapp.com/missive.css" />
     <script src="https://integrations.missiveapp.com/missive.js"></script>
-          </head>
-          <body>
-            <div id="app">
-              <header class="app-header">
-                <h1>Miss-Woo</h1>
-                <p class="subtitle">WooCommerce Integration</p>
-              </header>
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div class="header-content">
+          <h1>Miss-Woo</h1>
+          <p class="subtitle">WooCommerce & Contact Form Integration</p>
+          <div class="version-info" id="versionInfo"></div>
+        </div>
+      </header>
 
-              <main class="app-content">
-                <div class="search-section">
-                  <input
-                    type="text"
-                    id="orderSearch"
-                    placeholder="Search orders by ID or customer email..."
-                    class="search-input"
-                  />
-                  <button id="searchBtn" class="search-btn">Search</button>
-                </div>
+      <main class="app-content">
+        <div class="search-section">
+          <div class="search-container">
+            <input
+              type="text"
+              id="orderSearch"
+              placeholder="Search orders, contact forms, or customer email..."
+              class="search-input"
+            />
+            <button id="searchBtn" class="search-btn">Search</button>
+          </div>
+          <div class="search-hint">
+            <span class="hint-text">Auto-search enabled in Missive</span>
+          </div>
+        </div>
 
-                <div class="results-section">
-                  <div id="error" class="error hidden"></div>
-                  <div id="results" class="results-container"></div>
-                </div>
-              </main>
-            </div>
+        <div class="results-section">
+          <div id="error" class="error hidden"></div>
+          <div id="results" class="results-container"></div>
+        </div>
+      </main>
+    </div>
 
-            <script src="src/config.js?v=2047"></script>
-            <script type="module" src="src/app.js?v=2047"></script>
+    <script src="src/config.js?v=10d9aeb"></script>
+    <script type="module" src="src/app.js?v=10d9aeb"></script>
   </body>
 </html>

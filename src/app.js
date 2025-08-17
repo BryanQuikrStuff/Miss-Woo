@@ -2,68 +2,39 @@
 // VERSION V2021a - Major Version Backup
 
 class MissWooApp {
-    constructor() {
+    constructor(config) {
     try {
-      // Initialize API endpoints
-      this.apiBaseUrl = window.config?.woocommerce?.apiBaseUrl;
-      this.consumerKey = window.config?.woocommerce?.consumerKey;
-      this.consumerSecret = window.config?.woocommerce?.consumerSecret;
-      this.siteUrl = window.config?.woocommerce?.siteUrl;
-      
-      // Katana MRP API configuration
-      this.katanaApiBaseUrl = window.config?.katana?.apiBaseUrl;
-      this.katanaApiKey = window.config?.katana?.apiKey;
-      
-      // Validate required configuration
-      if (!this.apiBaseUrl || !this.consumerKey || !this.consumerSecret) {
-        throw new Error("Missing required WooCommerce configuration");
-      }
+      // Configuration
+      this.apiBaseUrl = config.apiBaseUrl;
+      this.consumerKey = config.consumerKey;
+      this.consumerSecret = config.consumerSecret;
+      this.katanaApiBaseUrl = config.katanaApiBaseUrl;
+      this.katanaApiKey = config.katanaApiKey;
       
       // Environment detection
       this.isMissiveEnvironment = this.detectMissiveEnvironment();
       this.autoSearchEnabled = this.isMissiveEnvironment;
       
-      // Version (will be updated from manifest if available)
-      this.version = this.getVersion();
-      
-      // Search state
-      this.lastSearchedEmail = null;
-      this.emailCache = new Map();
-      this.searchDebounceTimer = null;
-      this.visibleEmails = new Set();
-      this.isBridgeReady = false;
-      this.allowedBridgeOrigins = new Set([
-        'https://web.missiveapp.com',
-        'https://missiveapp.com',
-        'app://missive',
-        'https://app.missiveapp.com'
-      ]);
-      
-      // Store all matched orders
-      this.allOrders = [];
-      
-      // Cache-busting for Missive (10-minute cache workaround)
+      // Performance optimizations
+      this.requestQueue = new Map();
+      this.pendingRequests = new Set();
       this.cacheBuster = Date.now();
-      
-      // CORS headers for better Missive integration
       this.corsHeaders = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       };
       
-      // Performance optimizations
-      this.requestQueue = new Map(); // Request deduplication
-      this.cacheExpiry = new Map(); // Cache expiration tracking
-      this.pendingRequests = new Set(); // Track pending requests
-      this.backgroundTasks = []; // Background processing queue
-      
-      // Dynamic preloading system
-      this.preloadedConversations = new Map(); // Track preloaded conversation data
-      this.visibleConversationIds = new Set(); // Track currently visible conversations
-      this.seenConversationIds = new Set(); // Track all conversation IDs we've seen
-      this.preloadingInProgress = false; // Prevent multiple preloading operations
-      this.preloadingDebounceTimer = null; // Debounce preloading triggers
-      this.maxPreloadedConversations = 20; // Limit preloaded conversations
+      // Caching system
+      this.orderCache = {};
+      this.katanaOrderCache = {};
+      this.serialNumberCache = {};
+      this.emailCache = {};
+      this.preloadedConversations = new Map();
+      this.visibleConversationIds = new Set();
+      this.seenConversationIds = new Set();
+      this.preloadingInProgress = false;
+      this.preloadingDebounceTimer = null;
+      this.maxPreloadedConversations = 20;
       
       // Cache configuration
       this.cacheConfig = {
@@ -73,6 +44,13 @@ class MissWooApp {
         emailCache: 2 * 60 * 1000, // 2 minutes
         preloadedCache: 15 * 60 * 1000 // 15 minutes for preloaded data
       };
+      
+      // Search state management
+      this.allOrders = [];
+      this.lastSearchedEmail = null;
+      this.searchDebounceTimer = null;
+      this.lastSearchTime = 0;
+      this.minSearchInterval = 500; // Minimum 500ms between searches for same email
       
       this.hideLoading();
       this.initialize();
@@ -397,7 +375,7 @@ class MissWooApp {
 
     async searchOrdersByEmail(email) {
     const startTime = performance.now();
-    console.log("Searching orders for email:", email);
+    console.log("Searching orders and contact forms for email:", email);
     
     // Clear previous data if this is a new email search
     if (this.lastSearchedEmail !== email) {
@@ -415,66 +393,111 @@ class MissWooApp {
     }
     
     try {
-      let allOrders = [];
-      let page = 1;
-      const maxPages = 3; // Reduced from 5 to 3 pages for faster search
-
-      // Fetch first page immediately to show results faster
-      console.log(`Searching page ${page}...`);
-      const firstPageUrl = this.getAuthenticatedUrl('/orders', {
-        search: email,
-        per_page: 100,
-        page: page
-      });
+      // Search both orders and contact forms in parallel
+      const [orderResults, contactFormResults] = await Promise.all([
+        this.searchWooCommerceOrders(email),
+        this.searchContactFormSubmissions(email)
+      ]);
       
-      const firstPageData = await this.makeRequest(firstPageUrl);
-      console.log(`Found ${firstPageData.length} orders on page ${page}`);
+      // Combine results
+      const allResults = [...orderResults, ...contactFormResults];
+      console.log(`Total results found: ${allResults.length} (${orderResults.length} orders, ${contactFormResults.length} contact forms)`);
       
-      if (firstPageData.length > 0) {
-        allOrders = allOrders.concat(firstPageData);
-        
-        // If we have enough orders, start processing immediately
-        const matchingOrders = this.filterOrdersByEmail(allOrders, email);
-        if (matchingOrders.length >= 3) {
-          console.log(`Found ${matchingOrders.length} matching orders on first page, processing immediately`);
-          await this.processOrdersWithDetails(matchingOrders.slice(0, 5), email);
-          return;
-        }
-        
-        // Continue searching if needed
-        page++;
-        while (page <= maxPages) {
-          console.log(`Searching page ${page}...`);
-          const url = this.getAuthenticatedUrl('/orders', {
-            search: email,
-            per_page: 100,
-            page: page
-          });
-          
-          const data = await this.makeRequest(url);
-          console.log(`Found ${data.length} orders on page ${page}`);
-          
-          if (data.length === 0) {
-            break; // No more orders to fetch
-          }
-          
-          allOrders = allOrders.concat(data);
-          page++;
-        }
-      }
-
-      console.log(`Total orders found: ${allOrders.length}`);
-
-      // Filter for exact email matches and get the latest 5
-      const matchingOrders = this.filterOrdersByEmail(allOrders, email);
-      console.log(`Total matching orders (latest 5): ${matchingOrders.length}`);
-
-      await this.processOrdersWithDetails(matchingOrders, email);
+      this.allOrders = allResults;
+      await this.displayOrdersList();
+      
+      // Cache the combined results
+      this.orderCache[email] = [...allResults];
+      this.setCacheExpiry(email, 'orderCache');
+      
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       this.logPerformanceStats();
-        } catch (error) {
-      console.error("Search orders error:", error);
-      this.showError(`Failed to search orders: ${error.message}`);
+    } catch (error) {
+      console.error("Search error:", error);
+      this.showError(`Failed to search: ${error.message}`);
+    }
+  }
+
+  async searchWooCommerceOrders(email) {
+    let allOrders = [];
+    let page = 1;
+    const maxPages = 3; // Reduced from 5 to 3 pages for faster search
+
+    // Fetch first page immediately to show results faster
+    console.log(`Searching WooCommerce orders page ${page}...`);
+    const firstPageUrl = this.getAuthenticatedUrl('/orders', {
+      search: email,
+      per_page: 100,
+      page: page
+    });
+    
+    const firstPageData = await this.makeRequest(firstPageUrl);
+    console.log(`Found ${firstPageData.length} orders on page ${page}`);
+    
+    if (firstPageData.length > 0) {
+      allOrders = allOrders.concat(firstPageData);
+      
+      // Continue searching if needed
+      page++;
+      while (page <= maxPages) {
+        console.log(`Searching WooCommerce orders page ${page}...`);
+        const url = this.getAuthenticatedUrl('/orders', {
+          search: email,
+          per_page: 100,
+          page: page
+        });
+        
+        const data = await this.makeRequest(url);
+        console.log(`Found ${data.length} orders on page ${page}`);
+        
+        if (data.length === 0) {
+          break; // No more orders to fetch
+        }
+        
+        allOrders = allOrders.concat(data);
+        page++;
+      }
+    }
+
+    console.log(`Total WooCommerce orders found: ${allOrders.length}`);
+
+    // Filter for exact email matches and get the latest 5
+    const matchingOrders = this.filterOrdersByEmail(allOrders, email);
+    console.log(`Total matching WooCommerce orders (latest 5): ${matchingOrders.length}`);
+
+    // Process order details
+    const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
+    return processedOrders;
+  }
+
+  async searchContactFormSubmissions(email) {
+    try {
+      console.log(`🔍 Searching contact form submissions for: ${email}`);
+      
+      // Search for contact form submissions in WordPress
+      const submissionsUrl = this.getAuthenticatedUrl('/contact-form-submissions', {
+        search: email,
+        per_page: 50
+      });
+      
+      const response = await this.makeRequest(submissionsUrl);
+      
+      if (Array.isArray(response)) {
+        console.log(`Found ${response.length} contact form submissions for ${email}`);
+        return response.map(submission => ({
+          ...submission,
+          type: 'contact_form',
+          source: 'Contact Form',
+          number: submission.id || submission.submission_id,
+          date_created: submission.date_created || submission.created_at,
+          status: 'completed'
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.log(`No contact form submissions found for ${email}:`, error.message);
+      return [];
     }
   }
 
@@ -2497,6 +2520,34 @@ class MissWooApp {
     
     // Also log to console
     console.log(`�� ${message}`);
+  }
+
+  async searchContactFormSubmissions(email) {
+    try {
+      console.log(`🔍 Searching contact form submissions for: ${email}`);
+      
+      // Search for contact form submissions in WordPress
+      const submissionsUrl = this.getAuthenticatedUrl('/contact-form-submissions', {
+        search: email,
+        per_page: 50
+      });
+      
+      const response = await this.makeRequest(submissionsUrl);
+      
+      if (Array.isArray(response)) {
+        console.log(`Found ${response.length} contact form submissions for ${email}`);
+        return response.map(submission => ({
+          ...submission,
+          type: 'contact_form',
+          source: 'Contact Form'
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.log(`No contact form submissions found for ${email}:`, error.message);
+      return [];
+    }
   }
 }
 
