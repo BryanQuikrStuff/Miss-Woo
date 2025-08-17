@@ -4,12 +4,30 @@
 class MissWooApp {
     constructor(config) {
     try {
-      // Configuration
-      this.apiBaseUrl = config.apiBaseUrl;
-      this.consumerKey = config.consumerKey;
-      this.consumerSecret = config.consumerSecret;
-      this.katanaApiBaseUrl = config.katanaApiBaseUrl;
-      this.katanaApiKey = config.katanaApiKey;
+      // Configuration - handle both old flat structure and new nested structure
+      if (config && config.woocommerce) {
+        // New nested structure
+        this.apiBaseUrl = config.woocommerce.apiBaseUrl;
+        this.consumerKey = config.woocommerce.consumerKey;
+        this.consumerSecret = config.woocommerce.consumerSecret;
+        this.siteUrl = config.woocommerce.siteUrl;
+        this.katanaApiBaseUrl = config.katana?.apiBaseUrl;
+        this.katanaApiKey = config.katana?.apiKey;
+      } else if (config) {
+        // Old flat structure (backward compatibility)
+        this.apiBaseUrl = config.apiBaseUrl;
+        this.consumerKey = config.consumerKey;
+        this.consumerSecret = config.consumerSecret;
+        this.katanaApiBaseUrl = config.katanaApiBaseUrl;
+        this.katanaApiKey = config.katanaApiKey;
+      } else {
+        throw new Error('Configuration object is required');
+      }
+      
+      // Validate required configuration
+      if (!this.apiBaseUrl || !this.consumerKey || !this.consumerSecret) {
+        throw new Error('Missing required WooCommerce configuration');
+      }
       
       // Environment detection
       this.isMissiveEnvironment = this.detectMissiveEnvironment();
@@ -2554,7 +2572,15 @@ class MissWooApp {
 // Initialize the app and handle any errors
 try {
   console.log("Starting Miss-Woo application...");
-  window.app = new MissWooApp();
+  
+  // Get configuration from window.config
+  const config = window.config;
+  if (!config) {
+    throw new Error('Configuration not found. Make sure config.js is loaded before app.js');
+  }
+  
+  window.app = new MissWooApp(config);
+  
   // Ensure loading state is cleared after initialization
   setTimeout(() => {
     const loading = document.getElementById("loading");
