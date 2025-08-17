@@ -2357,7 +2357,7 @@ class MissWooApp {
     console.log(`🔍 [${searchId}] Starting search for: ${email}`);
     
     // Set searching status immediately
-    this.setStatus(`Searching orders for ${email}...`);
+    this.setStatus("Loading");
     
     // Clear previous email's data immediately
     this.clearCurrentEmailData();
