@@ -1270,19 +1270,12 @@ class MissWooApp {
   }
 
   setStatus(message, type = 'info') {
-    const statusMessage = document.getElementById('statusMessage');
-    const statusText = document.getElementById('statusText');
-    const statusDetails = document.getElementById('statusDetails');
-    if (statusMessage && statusText) {
-      statusMessage.style.display = 'block';
-      statusText.textContent = message;
-      statusMessage.style.background = type === 'error' ? '#f8d7da' : '#f8f9fa';
-      statusMessage.style.color = type === 'error' ? '#721c24' : '#333';
+    const statusElement = document.getElementById('status');
+    if (statusElement) {
+      statusElement.textContent = message;
+      statusElement.className = `status ${type}`;
     }
-    if (statusDetails && typeof message === 'object') {
-      statusDetails.style.display = 'block';
-      statusDetails.textContent = JSON.stringify(message, null, 2);
-    }
+    console.log(`Status: ${message}`);
   }
 
   initializeMissive() {
@@ -1293,13 +1286,13 @@ class MissWooApp {
     
     if (window.Missive) {
       console.log("🔧 Missive detected, setting up integration...");
-      this.setStatus('Ready for auto-search');
+      this.setStatus('Ready');
       this.setupMissiveEventListeners();
       // Re-check environment after Missive is ready
       this.recheckMissiveEnvironment();
     } else {
       console.log("🔧 Missive not detected, setting up fallback...");
-      this.setStatus('Ready for manual search');
+      this.setStatus('Ready');
       this.setupMissiveEventListeners(); // This will trigger fallback
       // Initialize bridge to receive events from parent Missive shell
       this.initMissiveBridge();
@@ -1687,26 +1680,11 @@ class MissWooApp {
     }
   }
 
-  async handleEmailFocus(data) {
-    console.log("📧 Email focus event triggered:", data);
-    if (this.autoSearchEnabled) {
-      let email = this.extractEmailFromData(data);
-      if (!email && window.Missive && Missive.getCurrentEmail) {
-        try {
-          const e = await Missive.getCurrentEmail();
-          email = this.extractEmailFromData(e);
-        } catch (_) {}
-      }
-      this.setStatus(email ? `Email focus → ${email}` : 'Email focus event: no email');
-      console.log("📧 Extracted email from focus event:", email);
-      if (email && email !== this.lastSearchedEmail) {
-        console.log("🔍 Email focused, auto-searching:", email);
-        await this.performAutoSearch(email);
-      } else {
-        console.log("❌ Email focus: No valid email or already searched");
-      }
-    } else {
-      console.log("❌ Auto-search disabled, ignoring email focus");
+  handleEmailFocus(data) {
+    console.log("📧 Email focus event:", data);
+    const email = this.extractEmailFromData(data);
+    if (email) {
+      this.performAutoSearch(email);
     }
   }
 
@@ -1714,7 +1692,6 @@ class MissWooApp {
     console.log("📧 Email open event triggered:", data);
     if (this.autoSearchEnabled) {
       const email = this.extractEmailFromData(data);
-      this.setStatus(email ? `Email open → ${email}` : 'Email open event: no email');
       console.log("📧 Extracted email from open event:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Email opened, auto-searching:", email);
@@ -1737,7 +1714,6 @@ class MissWooApp {
           email = this.extractEmailFromData(t);
         } catch (_) {}
       }
-      this.setStatus(email ? `Thread focus → ${email}` : 'Thread focus event: no email');
       console.log("📧 Extracted email from thread focus:", email);
       if (email && email !== this.lastSearchedEmail) {
         console.log("🔍 Thread focused, auto-searching:", email);
@@ -1760,7 +1736,6 @@ class MissWooApp {
     // First try to extract directly from the payload
     let email = this.extractEmailFromData(data);
     if (email) {
-      this.setStatus(`Conversation change → ${email}`);
       if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
       return;
     }
@@ -1786,7 +1761,6 @@ class MissWooApp {
           email = this.extractEmailFromData(conv);
           if (conv?.id) candidateIds.push(conv.id);
           if (email && this.isValidEmailForSearch(email)) {
-            this.setStatus(`Conversation change → ${email}`);
             if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
             return;
           }
@@ -1797,20 +1771,18 @@ class MissWooApp {
         if (Missive.fetchConversations && ids && ids.length) {
           const conversations = await Missive.fetchConversations(ids);
           if (Array.isArray(conversations) && conversations.length) {
-            this.setStatus(`Fetching conversations (${conversations.length})…`);
             for (const c of conversations) {
               email = this.extractEmailFromData(c);
               if (email && this.isValidEmailForSearch(email)) break;
             }
             if (email) {
-              this.setStatus(`Conversation change → ${email}`);
               if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
               return;
             }
             // Surface participants count to UI for quick debugging
             const first = conversations[0];
             const pCount = Array.isArray(first?.participants) ? first.participants.length : 0;
-            this.setStatus(`Conversation change: no email (participants: ${pCount})`);
+            console.log(`Conversation change: no email (participants: ${pCount})`);
           }
         }
 
@@ -1837,7 +1809,6 @@ class MissWooApp {
                   }
                 }
                 if (email) {
-                  this.setStatus(`Conversation change → ${email}`);
                   if (email !== this.lastSearchedEmail) await this.performAutoSearch(email);
                   return;
                 }
@@ -1853,7 +1824,7 @@ class MissWooApp {
     }
 
     // Still nothing
-    this.setStatus('Conversation change: no email');
+    console.log('Conversation change: no email');
   }
 
   async extractAndSearchEmail(data) {
@@ -2162,7 +2133,6 @@ class MissWooApp {
       
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
-        this.setStatus("Ready");
         return;
       }
       
@@ -2175,7 +2145,6 @@ class MissWooApp {
       
       if (emailsToPreload.length === 0) {
         console.log("❌ No valid emails found in conversations");
-        this.setStatus("Ready");
         return;
       }
       
@@ -2186,11 +2155,9 @@ class MissWooApp {
       this.cleanupArchivedConversations();
       
       console.log(`✅ Team Inbox preloading complete: ${emailsToPreload.length} emails preloaded`);
-      this.setStatus("Ready");
       
     } catch (error) {
       console.error("❌ Team Inbox preloading failed:", error);
-      this.setStatus("Ready");
     } finally {
       this.preloadingInProgress = false;
     }
