@@ -46,7 +46,7 @@ class MissWooApp {
       this.orderCache = {};
       this.katanaOrderCache = {};
       this.serialNumberCache = {};
-      this.emailCache = {};
+      this.emailCache = new Map();
       this.preloadedConversations = new Map();
       this.visibleConversationIds = new Set();
       this.seenConversationIds = new Set();
