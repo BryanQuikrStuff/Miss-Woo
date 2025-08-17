@@ -439,7 +439,6 @@ class MissWooApp {
       if (!Array.isArray(orderResults)) {
         console.error("searchWooCommerceOrders returned non-array:", orderResults);
         this.allOrders = [];
-        this.setStatus("Search error: Invalid response format");
         return;
       }
       
@@ -2327,6 +2326,9 @@ class MissWooApp {
     }
     this.activeSearches.set(email, searchId);
     console.log(`🔍 [${searchId}] Starting search for: ${email}`);
+    
+    // Set searching status immediately
+    this.setStatus(`Searching orders for ${email}...`);
     
     // Clear previous email's data immediately
     this.clearCurrentEmailData();
