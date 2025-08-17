@@ -2308,7 +2308,6 @@ class MissWooApp {
       this.allOrders = [...preloadedData.orders];
       this.lastSearchedEmail = email;
       await this.displayOrdersList();
-      this.setStatus(`⚡ Instant results for ${email} (preloaded)`);
       return;
     }
     
@@ -2319,7 +2318,6 @@ class MissWooApp {
       this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
       this.lastSearchedEmail = email;
       await this.displayOrdersList();
-      this.setStatus(`Loaded cached results for ${email}`);
       return;
     }
     
