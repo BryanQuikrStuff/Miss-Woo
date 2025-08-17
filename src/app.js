@@ -80,6 +80,7 @@ class MissWooApp {
       this.searchDebounceTimer = null;
       this.lastSearchTime = 0;
       this.minSearchInterval = 500; // Minimum 500ms between searches for same email
+      this.searchInProgress = false; // Prevent multiple searches from running simultaneously
       
       this.hideLoading();
       this.initialize();
@@ -2281,6 +2282,12 @@ class MissWooApp {
   async performAutoSearch(email) {
     if (!email || email === this.lastSearchedEmail) return;
     
+    // Prevent multiple searches from running simultaneously
+    if (this.searchInProgress) {
+      console.log(`Search already in progress for ${email}, skipping...`);
+      return;
+    }
+    
     // Validate email before searching
     if (!this.isValidEmailForSearch(email)) {
       console.log(`Email validation failed for: ${email}`);
@@ -2322,6 +2329,7 @@ class MissWooApp {
     }
     
     this.searchDebounceTimer = setTimeout(async () => {
+      this.searchInProgress = true;
       this.lastSearchedEmail = email;
       this.setStatus(`Searching orders for ${email}…`);
       
@@ -2338,6 +2346,8 @@ class MissWooApp {
       } catch (error) {
         console.error("Auto-search failed:", error);
         this.showError("Auto-search failed: " + error.message);
+      } finally {
+        this.searchInProgress = false;
       }
     }, 300); // Reduced debounce delay for API calls only
   }
@@ -2369,9 +2379,6 @@ class MissWooApp {
       element.remove();
       console.log("🧹 Removed no-orders element");
     });
-    
-    // Show loading state briefly
-    this.showLoading();
     
     console.log("✅ Current email data cleared");
   }
