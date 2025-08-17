@@ -33,6 +33,15 @@ class MissWooApp {
       this.isMissiveEnvironment = this.detectMissiveEnvironment();
       this.autoSearchEnabled = this.isMissiveEnvironment;
       
+      // Bridge configuration
+      this.allowedBridgeOrigins = new Set([
+        'https://missiveapp.com',
+        'https://app.missiveapp.com',
+        'https://integrations.missiveapp.com',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+      ]);
+      
       // Performance optimizations
       this.requestQueue = new Map();
       this.pendingRequests = new Set();
