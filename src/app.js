@@ -2324,6 +2324,7 @@ class MissWooApp {
         const preloadedData = this.preloadedConversations.get(email);
         this.allOrders = [...preloadedData.orders];
         await this.displayOrdersList();
+        this.searchInProgress = false; // Reset only after preloaded data is used
         return;
       }
       
@@ -2333,6 +2334,7 @@ class MissWooApp {
         const cachedOrders = this.emailCache.get(email);
         this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
         await this.displayOrdersList();
+        this.searchInProgress = false; // Reset only after cached data is used
         return;
       }
       
@@ -2357,11 +2359,13 @@ class MissWooApp {
         } catch (error) {
           console.error("Auto-search failed:", error);
           this.showError("Auto-search failed: " + error.message);
+        } finally {
+          this.searchInProgress = false; // Reset after API search completes
         }
       }, 300); // Reduced debounce delay for API calls only
-    } finally {
-      // Reset search in progress when search completes
-      this.searchInProgress = false;
+    } catch (error) {
+      console.error("Error in performAutoSearch:", error);
+      this.searchInProgress = false; // Reset on error
     }
   }
 
