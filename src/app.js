@@ -421,7 +421,13 @@ class MissWooApp {
     if (this.orderCache && this.orderCache.has(email) && this.isCacheValid(email, 'orderCache')) {
       console.log("Using cached results for:", email);
       const cachedOrders = this.orderCache.get(email);
+      console.log("Cached orders:", cachedOrders);
+      console.log("Cached orders type:", typeof cachedOrders);
+      console.log("Cached orders is array:", Array.isArray(cachedOrders));
+      console.log("Cached orders length:", Array.isArray(cachedOrders) ? cachedOrders.length : 'not an array');
       this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
+      console.log("this.allOrders after cache:", this.allOrders);
+      console.log("this.allOrders length:", this.allOrders.length);
       await this.displayOrdersList();
       console.log(`Cache hit - Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       return;
