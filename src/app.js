@@ -52,16 +52,18 @@ class MissWooApp {
       };
       
       // Caching system
-      this.orderCache = {};
-      this.katanaOrderCache = {};
-      this.serialNumberCache = {};
+      this.orderCache = new Map();
+      this.katanaOrderCache = new Map();
+      this.serialNumberCache = new Map();
       this.emailCache = new Map();
+      this.cacheExpiry = new Map();
       this.preloadedConversations = new Map();
       this.visibleConversationIds = new Set();
       this.seenConversationIds = new Set();
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
       this.maxPreloadedConversations = 20;
+      this.backgroundTasks = [];
       
       // Cache configuration
       this.cacheConfig = {
@@ -411,30 +413,24 @@ class MissWooApp {
     }
     
     // Check cache first with expiration
-    if (this.orderCache && this.orderCache[email] && this.isCacheValid(email, 'orderCache')) {
+    if (this.orderCache && this.orderCache.has(email) && this.isCacheValid(email, 'orderCache')) {
       console.log("Using cached results for:", email);
-      this.allOrders = this.orderCache[email];
+      this.allOrders = this.orderCache.get(email);
       await this.displayOrdersList();
       console.log(`Cache hit - Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       return;
     }
     
     try {
-      // Search both orders and contact forms in parallel
-      const [orderResults, contactFormResults] = await Promise.all([
-        this.searchWooCommerceOrders(email),
-        this.searchContactFormSubmissions(email)
-      ]);
+      // Search WooCommerce orders only
+      const orderResults = await this.searchWooCommerceOrders(email);
       
-      // Combine results
-      const allResults = [...orderResults, ...contactFormResults];
-      console.log(`Total results found: ${allResults.length} (${orderResults.length} orders, ${contactFormResults.length} contact forms)`);
-      
-      this.allOrders = allResults;
+      // Set results
+      this.allOrders = orderResults;
       await this.displayOrdersList();
       
-      // Cache the combined results
-      this.orderCache[email] = [...allResults];
+      // Cache the results
+      this.orderCache.set(email, [...orderResults]);
       this.setCacheExpiry(email, 'orderCache');
       
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
@@ -795,7 +791,7 @@ class MissWooApp {
       const firstOrder = this.allOrders[0];
       const customerEmail = firstOrder.billing?.email;
       
-      if (customerEmail && !this.orderCache[customerEmail]) {
+      if (customerEmail && !this.orderCache.has(customerEmail)) {
         console.log('Preloading related order data for:', customerEmail);
         // Preload in background without blocking UI
         setTimeout(async () => {
@@ -812,9 +808,9 @@ class MissWooApp {
   getPerformanceStats() {
     return {
       cacheHits: {
-        orders: Object.keys(this.orderCache || {}).length,
-        katana: Object.keys(this.katanaOrderCache || {}).length,
-        serials: Object.keys(this.serialNumberCache || {}).length
+        orders: this.orderCache ? this.orderCache.size : 0,
+        katana: this.katanaOrderCache ? this.katanaOrderCache.size : 0,
+        serials: this.serialNumberCache ? this.serialNumberCache.size : 0
       },
       pendingRequests: this.pendingRequests.size,
       backgroundTasks: this.backgroundTasks.length,
@@ -890,17 +886,16 @@ class MissWooApp {
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
       
       // Check cache first with expiration
-      if (!this.serialNumberCache) this.serialNumberCache = {};
-      if (this.serialNumberCache[order.number] && this.isCacheValid(order.number, 'serialCache')) {
+      if (this.serialNumberCache && this.serialNumberCache.has(order.number) && this.isCacheValid(order.number, 'serialCache')) {
         console.log(`Using cached serial numbers for order #${order.number}`);
-        return this.serialNumberCache[order.number];
+        return this.serialNumberCache.get(order.number);
       }
       
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
-        this.serialNumberCache[order.number] = "N/A";
+        this.serialNumberCache.set(order.number, "N/A");
         return "N/A";
       }
 
@@ -912,17 +907,17 @@ class MissWooApp {
       if (serialNumbers && serialNumbers.length > 0) {
         console.log(`Found ${serialNumbers.length} serial number(s) for order #${order.number}:`, serialNumbers);
         const result = serialNumbers.join(', ');
-        this.serialNumberCache[order.number] = result;
+        this.serialNumberCache.set(order.number, result);
         this.setCacheExpiry(order.number, 'serialCache');
         return result;
       } else {
         console.log(`No serial numbers found for order #${order.number}`);
-        this.serialNumberCache[order.number] = "N/A";
+        this.serialNumberCache.set(order.number, "N/A");
         return "N/A";
       }
         } catch (error) {
       console.error('Error getting serial number:', error);
-      this.serialNumberCache[order.number] = "N/A";
+      this.serialNumberCache.set(order.number, "N/A");
       return "N/A";
     }
   }
@@ -1004,10 +999,9 @@ class MissWooApp {
       console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
       
       // Check cache first with expiration
-      if (!this.katanaOrderCache) this.katanaOrderCache = {};
-      if (this.katanaOrderCache[wooOrderNumber] && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
+      if (this.katanaOrderCache && this.katanaOrderCache.has(wooOrderNumber) && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
         console.log(`Using cached Katana order for #${wooOrderNumber}`);
-        return this.katanaOrderCache[wooOrderNumber];
+        return this.katanaOrderCache.get(wooOrderNumber);
       }
       
       const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
@@ -1036,22 +1030,22 @@ class MissWooApp {
         const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
         if (fullOrder) {
           console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
-          this.katanaOrderCache[wooOrderNumber] = fullOrder;
+          this.katanaOrderCache.set(wooOrderNumber, fullOrder);
           this.setCacheExpiry(wooOrderNumber, 'katanaCache');
           return fullOrder;
         } else {
           console.log(`Could not get full order details, returning basic order`);
-          this.katanaOrderCache[wooOrderNumber] = katanaOrder;
+          this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
           return katanaOrder;
         }
       } else {
         console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
-        this.katanaOrderCache[wooOrderNumber] = null;
+        this.katanaOrderCache.set(wooOrderNumber, null);
         return null;
       }
     } catch (error) {
       console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
-      this.katanaOrderCache[wooOrderNumber] = null;
+      this.katanaOrderCache.set(wooOrderNumber, null);
       return null;
     }
   }
