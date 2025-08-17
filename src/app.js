@@ -431,7 +431,7 @@ class MissWooApp {
       if (!Array.isArray(orderResults)) {
         console.error("searchWooCommerceOrders returned non-array:", orderResults);
         this.allOrders = [];
-        await this.displayOrdersList();
+        this.setStatus("Search error: Invalid response format");
         return;
       }
       
