@@ -55,7 +55,6 @@ class MissWooApp {
       this.orderCache = new Map();
       this.katanaOrderCache = new Map();
       this.serialNumberCache = new Map();
-      this.emailCache = new Map();
       this.cacheExpiry = new Map();
       this.preloadedConversations = new Map();
       this.visibleConversationIds = new Set();
@@ -70,7 +69,6 @@ class MissWooApp {
         orderCache: 5 * 60 * 1000, // 5 minutes
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
-        emailCache: 2 * 60 * 1000, // 2 minutes
         preloadedCache: 15 * 60 * 1000 // 15 minutes for preloaded data
       };
       
@@ -2057,13 +2055,13 @@ class MissWooApp {
 
 
   cleanupCache() {
-    // Keep only the last 10 cached emails to prevent memory issues
+    // Keep only the last 10 cached orders to prevent memory issues
     const maxCacheSize = 10;
-    if (this.emailCache.size > maxCacheSize) {
-      const entries = Array.from(this.emailCache.entries());
+    if (this.orderCache.size > maxCacheSize) {
+      const entries = Array.from(this.orderCache.entries());
       const toRemove = entries.slice(0, entries.length - maxCacheSize);
       toRemove.forEach(([email]) => {
-        this.emailCache.delete(email);
+        this.orderCache.delete(email);
       });
       console.log(`Cleaned up cache, removed ${toRemove.length} old entries`);
     }
@@ -2276,7 +2274,6 @@ class MissWooApp {
     // Remove archived conversation data
     for (const email of emailsToRemove) {
       this.preloadedConversations.delete(email);
-      this.emailCache.delete(email);
     }
     
     if (emailsToRemove.length > 0) {
@@ -2347,9 +2344,9 @@ class MissWooApp {
       }
       
       // Check regular cache immediately (no delay)
-      if (this.emailCache && this.emailCache.has(email)) {
+      if (this.orderCache && this.orderCache.has(email) && this.isCacheValid(email, 'orderCache')) {
         console.log(`💾 [${searchId}] Using cached results for: ${email}`);
-        const cachedOrders = this.emailCache.get(email);
+        const cachedOrders = this.orderCache.get(email);
         this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
         this.lastSearchedEmail = email;
         await this.displayOrdersList();
@@ -2370,12 +2367,6 @@ class MissWooApp {
           // Fall back to normal search
           console.log(`🔍 [${searchId}] No preloaded data for ${email}, performing normal search`);
           await this.searchOrdersByEmail(email);
-          
-          // Cache the results
-          if (this.allOrders.length > 0 && this.emailCache) {
-            this.emailCache.set(email, [...this.allOrders]);
-            this.cleanupCache(); // Manage cache size
-          }
           
           console.log(`✅ [${searchId}] API search completed successfully`);
         } catch (error) {
@@ -2458,7 +2449,7 @@ class MissWooApp {
     console.log(`📧 Seen conversation IDs: ${this.seenConversationIds.size}`);
     console.log(`📧 Preloaded conversations: ${this.preloadedConversations.size}`);
     console.log(`📧 Visible conversation IDs: ${this.visibleConversationIds.size}`);
-    console.log(`📧 Email cache size: ${this.emailCache.size}`);
+    console.log(`📧 Order cache size: ${this.orderCache.size}`);
     
     if (this.preloadedConversations.size > 0) {
       console.log("📧 Preloaded emails:");
@@ -2489,7 +2480,6 @@ class MissWooApp {
     }
     
     // Clear cache
-    this.emailCache.clear();
     this.visibleEmails.clear();
     
     // Clear preloading data
