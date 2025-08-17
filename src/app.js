@@ -2274,7 +2274,7 @@ class MissWooApp {
     }
     
     // Check regular cache immediately (no delay)
-    if (this.emailCache.has(email)) {
+    if (this.emailCache && this.emailCache.has(email)) {
       console.log(`Using cached results for: ${email}`);
       this.allOrders = this.emailCache.get(email);
       this.lastSearchedEmail = email;
@@ -2298,7 +2298,7 @@ class MissWooApp {
         await this.searchOrdersByEmail(email);
         
         // Cache the results
-        if (this.allOrders.length > 0) {
+        if (this.allOrders.length > 0 && this.emailCache) {
           this.emailCache.set(email, [...this.allOrders]);
           this.cleanupCache(); // Manage cache size
           this.setStatus(`Found ${this.allOrders.length} order(s) for ${email}`);
