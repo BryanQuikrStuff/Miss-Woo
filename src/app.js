@@ -352,6 +352,9 @@ class MissWooApp {
         } catch (error) {
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
+    } finally {
+      // Reset search in progress when search completes
+      this.searchInProgress = false;
     }
   }
 
@@ -448,6 +451,9 @@ class MissWooApp {
     } catch (error) {
       console.error("Search error:", error);
       this.showError(`Failed to search: ${error.message}`);
+    } finally {
+      // Reset search in progress when search completes
+      this.searchInProgress = false;
     }
   }
 
@@ -2280,11 +2286,17 @@ class MissWooApp {
 
   // Enhanced preloading that uses preloaded data when available
   async performAutoSearch(email) {
-    if (!email || email === this.lastSearchedEmail) return;
+    if (!email) return;
     
     // Prevent multiple searches from running simultaneously
     if (this.searchInProgress) {
       console.log(`Search already in progress for ${email}, skipping...`);
+      return;
+    }
+    
+    // Prevent searching the same email multiple times in quick succession
+    if (email === this.lastSearchedEmail) {
+      console.log(`Already searched ${email} recently, skipping...`);
       return;
     }
     
@@ -2298,63 +2310,66 @@ class MissWooApp {
     // If internal domain, skip
     if (email.toLowerCase().endsWith('@quikrstuff.com')) return;
     
+    // Set search in progress immediately to prevent multiple searches
+    this.searchInProgress = true;
+    this.lastSearchedEmail = email;
+    
     // Clear previous email's data immediately
     this.clearCurrentEmailData();
     
-    // Check for preloaded data immediately (no delay)
-    if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
-      console.log(`⚡ Using preloaded data for: ${email}`);
-      const preloadedData = this.preloadedConversations.get(email);
-      this.allOrders = [...preloadedData.orders];
-      this.lastSearchedEmail = email;
-      await this.displayOrdersList();
-      return;
-    }
-    
-    // Check regular cache immediately (no delay)
-    if (this.emailCache && this.emailCache.has(email)) {
-      console.log(`Using cached results for: ${email}`);
-      const cachedOrders = this.emailCache.get(email);
-      this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
-      this.lastSearchedEmail = email;
-      await this.displayOrdersList();
-      return;
-    }
-    
-    // Only debounce actual API calls
-    if (this.searchDebounceTimer) {
-      clearTimeout(this.searchDebounceTimer);
-    }
-    
-    this.searchDebounceTimer = setTimeout(async () => {
-      this.searchInProgress = true;
-      this.lastSearchedEmail = email;
-      this.setStatus(`Searching orders for ${email}…`);
-      
-      try {
-        // Fall back to normal search
-        console.log(`🔍 No preloaded data for ${email}, performing normal search`);
-        await this.searchOrdersByEmail(email);
-        
-        // Cache the results
-        if (this.allOrders.length > 0 && this.emailCache) {
-          this.emailCache.set(email, [...this.allOrders]);
-          this.cleanupCache(); // Manage cache size
-        }
-      } catch (error) {
-        console.error("Auto-search failed:", error);
-        this.showError("Auto-search failed: " + error.message);
-      } finally {
-        this.searchInProgress = false;
+    try {
+      // Check for preloaded data immediately (no delay)
+      if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
+        console.log(`⚡ Using preloaded data for: ${email}`);
+        const preloadedData = this.preloadedConversations.get(email);
+        this.allOrders = [...preloadedData.orders];
+        await this.displayOrdersList();
+        return;
       }
-    }, 300); // Reduced debounce delay for API calls only
+      
+      // Check regular cache immediately (no delay)
+      if (this.emailCache && this.emailCache.has(email)) {
+        console.log(`Using cached results for: ${email}`);
+        const cachedOrders = this.emailCache.get(email);
+        this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
+        await this.displayOrdersList();
+        return;
+      }
+      
+      // Only debounce actual API calls
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
+      }
+      
+      this.searchDebounceTimer = setTimeout(async () => {
+        this.setStatus(`Searching orders for ${email}…`);
+        
+        try {
+          // Fall back to normal search
+          console.log(`🔍 No preloaded data for ${email}, performing normal search`);
+          await this.searchOrdersByEmail(email);
+          
+          // Cache the results
+          if (this.allOrders.length > 0 && this.emailCache) {
+            this.emailCache.set(email, [...this.allOrders]);
+            this.cleanupCache(); // Manage cache size
+          }
+        } catch (error) {
+          console.error("Auto-search failed:", error);
+          this.showError("Auto-search failed: " + error.message);
+        }
+      }, 300); // Reduced debounce delay for API calls only
+    } finally {
+      // Reset search in progress when search completes
+      this.searchInProgress = false;
+    }
   }
 
   // Clear current email's data immediately
   clearCurrentEmailData() {
     console.log("🧹 Clearing current email data...");
     this.allOrders = [];
-    this.lastSearchedEmail = null;
+    // Don't clear lastSearchedEmail here - it prevents multiple searches
     
     // Clear the results display
     const resultsContainer = document.getElementById("results");
