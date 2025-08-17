@@ -81,6 +81,7 @@ class MissWooApp {
       this.lastSearchTime = 0;
       this.minSearchInterval = 500; // Minimum 500ms between searches for same email
       this.searchInProgress = false; // Prevent multiple searches from running simultaneously
+      this.activeSearches = new Map(); // Track active searches by email
       
       this.hideLoading();
       this.initialize();
@@ -2292,8 +2293,8 @@ class MissWooApp {
     const searchId = Date.now() + Math.random().toString(36).substr(2, 9);
     console.log(`🔍 [${searchId}] performAutoSearch called for: ${email}`);
     
-    // Prevent multiple searches from running simultaneously
-    if (this.searchInProgress) {
+    // Check if we're already searching this exact email
+    if (this.activeSearches && this.activeSearches.has(email)) {
       console.log(`🔍 [${searchId}] Search already in progress for ${email}, skipping...`);
       return;
     }
@@ -2313,28 +2314,29 @@ class MissWooApp {
     
     // If internal domain, skip
     if (email.toLowerCase().endsWith('@quikrstuff.com')) {
-      console.log(`🔍 [${searchId}] Skipping internal domain: ${email}`);
+      console.log(`🔍 [${searchId}] Skipping internal email: ${email}`);
       return;
     }
     
+    // Mark this email as being searched
+    if (!this.activeSearches) {
+      this.activeSearches = new Map();
+    }
+    this.activeSearches.set(email, searchId);
     console.log(`🔍 [${searchId}] Starting search for: ${email}`);
-    
-    // Set search in progress immediately to prevent multiple searches
-    this.searchInProgress = true;
-    this.lastSearchedEmail = email;
     
     // Clear previous email's data immediately
     this.clearCurrentEmailData();
     
     try {
       // Check for preloaded data immediately (no delay)
-      if (this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
+      if (this.preloadedConversations && this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
         console.log(`⚡ [${searchId}] Using preloaded data for: ${email}`);
         const preloadedData = this.preloadedConversations.get(email);
         this.allOrders = [...preloadedData.orders];
+        this.lastSearchedEmail = email;
         await this.displayOrdersList();
-        this.searchInProgress = false; // Reset only after preloaded data is used
-        console.log(`✅ [${searchId}] Search completed with preloaded data`);
+        this.activeSearches.delete(email);
         return;
       }
       
@@ -2343,21 +2345,20 @@ class MissWooApp {
         console.log(`💾 [${searchId}] Using cached results for: ${email}`);
         const cachedOrders = this.emailCache.get(email);
         this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
+        this.lastSearchedEmail = email;
         await this.displayOrdersList();
-        this.searchInProgress = false; // Reset only after cached data is used
-        console.log(`✅ [${searchId}] Search completed with cached data`);
+        this.activeSearches.delete(email);
         return;
       }
       
       // Only debounce actual API calls
       if (this.searchDebounceTimer) {
-        console.log(`⏱️ [${searchId}] Clearing previous debounce timer`);
         clearTimeout(this.searchDebounceTimer);
+        console.log(`⏱️ [${searchId}] Clearing previous debounce timer`);
       }
       
       this.searchDebounceTimer = setTimeout(async () => {
         console.log(`🌐 [${searchId}] Starting API search for: ${email}`);
-        this.setStatus(`Searching orders for ${email}…`);
         
         try {
           // Fall back to normal search
@@ -2369,18 +2370,20 @@ class MissWooApp {
             this.emailCache.set(email, [...this.allOrders]);
             this.cleanupCache(); // Manage cache size
           }
+          
           console.log(`✅ [${searchId}] API search completed successfully`);
         } catch (error) {
           console.error(`❌ [${searchId}] Auto-search failed:`, error);
           this.showError("Auto-search failed: " + error.message);
         } finally {
-          this.searchInProgress = false; // Reset after API search completes
+          // Reset search state
+          this.activeSearches.delete(email);
           console.log(`🏁 [${searchId}] Search state reset`);
         }
       }, 300); // Reduced debounce delay for API calls only
     } catch (error) {
       console.error(`❌ [${searchId}] Error in performAutoSearch:`, error);
-      this.searchInProgress = false; // Reset on error
+      this.activeSearches.delete(email);
     }
   }
 
