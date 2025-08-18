@@ -1419,10 +1419,10 @@ class MissWooApp {
       const versionBadge = header.querySelector('.version-badge');
       
       if (versionBadge) {
-        versionBadge.textContent = `v3.01${devIndicator}`;
+        versionBadge.textContent = `v3.02${devIndicator}`;
       } else {
         // Fallback: update the entire header
-        header.innerHTML = `<span class="version-badge">v3.01${devIndicator}</span>`;
+        header.innerHTML = `<span class="version-badge">v3.02${devIndicator}</span>`;
       }
     }
   }
