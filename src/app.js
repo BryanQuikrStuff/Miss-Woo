@@ -1270,10 +1270,17 @@ class MissWooApp {
   }
 
   setStatus(message, type = 'info') {
-    const statusElement = document.getElementById('status');
+    // Try both possible status element IDs
+    let statusElement = document.getElementById('status');
+    if (!statusElement) {
+      statusElement = document.getElementById('statusText');
+    }
+    
     if (statusElement) {
       statusElement.textContent = message;
-      statusElement.className = `status ${type}`;
+      if (statusElement.className) {
+        statusElement.className = `status ${type}`;
+      }
     }
     console.log(`Status: ${message}`);
   }
