@@ -1418,7 +1418,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.04' : 'v3.04 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.05' : 'v3.05 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2107,7 +2107,11 @@ class MissWooApp {
     if (!this.isMissiveEnvironment || this.preloadingInProgress) return;
     
     this.preloadingInProgress = true;
-    this.setStatus("Preloading visible emails...");
+    
+    // Only set preloading status if no search is in progress
+    if (!this.searchInProgress) {
+      this.setStatus("Preloading visible emails...");
+    }
     
     try {
       console.log("📧 Starting visible conversation preloading...");
@@ -2137,7 +2141,10 @@ class MissWooApp {
       
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
-        this.setStatus("Ready");
+        // Only set Ready status if no search is in progress
+        if (!this.searchInProgress) {
+          this.setStatus("Ready");
+        }
         return;
       }
       
@@ -2150,7 +2157,10 @@ class MissWooApp {
       
       if (emailsToPreload.length === 0) {
         console.log("❌ No valid emails found in conversations");
-        this.setStatus("Ready");
+        // Only set Ready status if no search is in progress
+        if (!this.searchInProgress) {
+          this.setStatus("Ready");
+        }
         return;
       }
       
@@ -2161,11 +2171,17 @@ class MissWooApp {
       this.cleanupArchivedConversations();
       
       console.log(`✅ Visible conversation preloading complete: ${emailsToPreload.length} emails preloaded`);
-      this.setStatus("Ready");
+      // Only set Ready status if no search is in progress
+      if (!this.searchInProgress) {
+        this.setStatus("Ready");
+      }
       
     } catch (error) {
       console.error("❌ Visible conversation preloading failed:", error);
-      this.setStatus("Ready");
+      // Only set Ready status if no search is in progress
+      if (!this.searchInProgress) {
+        this.setStatus("Ready");
+      }
     } finally {
       this.preloadingInProgress = false;
     }
