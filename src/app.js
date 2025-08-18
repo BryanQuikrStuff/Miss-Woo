@@ -1418,7 +1418,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.03' : 'v3.03 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.04' : 'v3.04 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2102,15 +2102,15 @@ class MissWooApp {
     }
   }
 
-  // Dynamic preloading system for Team Inboxes
-  async preloadTeamInboxConversations() {
+  // Dynamic preloading system for Visible Conversations
+  async preloadVisibleConversations() {
     if (!this.isMissiveEnvironment || this.preloadingInProgress) return;
     
     this.preloadingInProgress = true;
-    this.setStatus("Loading...");
+    this.setStatus("Preloading visible emails...");
     
     try {
-      console.log("📧 Starting Team Inbox preloading...");
+      console.log("📧 Starting visible conversation preloading...");
       
       // Try to get conversations from various sources
       let conversations = [];
@@ -2132,11 +2132,12 @@ class MissWooApp {
       
       // If no conversations from seen IDs, try other methods
       if (conversations.length === 0) {
-        conversations = await this.fetchTeamInboxConversations();
+        conversations = await this.fetchVisibleConversations();
       }
       
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
+        this.setStatus("Ready");
         return;
       }
       
@@ -2149,6 +2150,7 @@ class MissWooApp {
       
       if (emailsToPreload.length === 0) {
         console.log("❌ No valid emails found in conversations");
+        this.setStatus("Ready");
         return;
       }
       
@@ -2158,16 +2160,18 @@ class MissWooApp {
       // Clean up archived conversations
       this.cleanupArchivedConversations();
       
-      console.log(`✅ Team Inbox preloading complete: ${emailsToPreload.length} emails preloaded`);
+      console.log(`✅ Visible conversation preloading complete: ${emailsToPreload.length} emails preloaded`);
+      this.setStatus("Ready");
       
     } catch (error) {
-      console.error("❌ Team Inbox preloading failed:", error);
+      console.error("❌ Visible conversation preloading failed:", error);
+      this.setStatus("Ready");
     } finally {
       this.preloadingInProgress = false;
     }
   }
 
-  async fetchTeamInboxConversations() {
+  async fetchVisibleConversations() {
     try {
       // Try to get current conversation first
       let conversations = [];
@@ -2328,107 +2332,79 @@ class MissWooApp {
 
   // Enhanced preloading that uses preloaded data when available
   async performAutoSearch(email) {
-    if (!email) return;
-    
-    // Generate unique search ID for debugging
-    const searchId = Date.now() + Math.random().toString(36).substr(2, 9);
-    console.log(`🔍 [${searchId}] performAutoSearch called for: ${email}`);
-    
-    // Check if we're already searching this exact email
-    if (this.activeSearches && this.activeSearches.has(email)) {
-      console.log(`🔍 [${searchId}] Search already in progress for ${email}, skipping...`);
+    if (!email || !this.isValidEmailForSearch(email)) {
+      console.log("❌ Invalid email for search:", email);
       return;
     }
-    
-    // Prevent searching the same email multiple times in quick succession
-    if (email === this.lastSearchedEmail) {
-      console.log(`🔍 [${searchId}] Already searched ${email} recently, skipping...`);
-      return;
-    }
-    
-    // Validate email before searching
-    if (!this.isValidEmailForSearch(email)) {
-      console.log(`🔍 [${searchId}] Email validation failed for: ${email}`);
-      this.setStatus(`Invalid email: ${email}`, 'error');
-      return;
-    }
-    
-    // If internal domain, skip
-    if (email.toLowerCase().endsWith('@quikrstuff.com')) {
-      console.log(`🔍 [${searchId}] Skipping internal email: ${email}`);
-      return;
-    }
-    
-    // Mark this email as being searched
-    if (!this.activeSearches) {
-      this.activeSearches = new Map();
-    }
-    this.activeSearches.set(email, searchId);
-    console.log(`🔍 [${searchId}] Starting search for: ${email}`);
-    
-    // Set searching status immediately
-    this.setStatus("Loading");
-    
-    // Clear previous email's data immediately
+
+    // Clear current data immediately
     this.clearCurrentEmailData();
     
-    try {
-      // Check for preloaded data immediately (no delay)
-      if (this.preloadedConversations && this.preloadedConversations.has(email) && this.isPreloadedDataValid(email)) {
-        console.log(`⚡ [${searchId}] Using preloaded data for: ${email}`);
-        const preloadedData = this.preloadedConversations.get(email);
-        this.allOrders = [...preloadedData.orders];
-        this.lastSearchedEmail = email;
-        await this.displayOrdersList();
-        this.activeSearches.delete(email);
-        return;
-      }
-      
-      // Check regular cache immediately (no delay)
-      if (this.emailCache && this.emailCache.has(email)) {
-        console.log(`💾 [${searchId}] Using cached results for: ${email}`);
-        const cachedOrders = this.emailCache.get(email);
-        this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
-        this.lastSearchedEmail = email;
-        await this.displayOrdersList();
-        this.activeSearches.delete(email);
-        return;
-      }
-      
-      // Only debounce actual API calls
-      if (this.searchDebounceTimer) {
-        clearTimeout(this.searchDebounceTimer);
-        console.log(`⏱️ [${searchId}] Clearing previous debounce timer`);
-      }
-      
-      this.searchDebounceTimer = setTimeout(async () => {
-        console.log(`🌐 [${searchId}] Starting API search for: ${email}`);
-        
-        try {
-          // Fall back to normal search
-          console.log(`🔍 [${searchId}] No preloaded data for ${email}, performing normal search`);
-          await this.searchOrdersByEmail(email);
-          
-          // Cache the results
-          if (this.allOrders.length > 0 && this.emailCache) {
-            this.emailCache.set(email, [...this.allOrders]);
-            this.cleanupCache(); // Manage cache size
-          }
-          
-          console.log(`✅ [${searchId}] API search completed successfully`);
-        } catch (error) {
-          console.error(`❌ [${searchId}] Auto-search failed:`, error);
-          this.showError("Auto-search failed: " + error.message);
-        } finally {
-          // Reset search state
-          this.activeSearches.delete(email);
-          console.log(`🏁 [${searchId}] Search state reset`);
-        }
-      }, 300); // Reduced debounce delay for API calls only
-    } catch (error) {
-      console.error(`❌ [${searchId}] Error in performAutoSearch:`, error);
-      this.activeSearches.delete(email);
+    // Check if we're already searching this email
+    if (this.searchInProgress && this.activeSearches.has(email)) {
+      console.log(`⏳ Already searching for ${email}, skipping`);
+      return;
     }
+
+    // Check for cached/preloaded data first (immediate)
+    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+      const cachedOrders = this.emailCache.get(email);
+      if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
+        console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
+        this.allOrders = [...cachedOrders];
+        this.displayOrdersList();
+        return;
+      }
+    }
+
+    // Check preloaded data
+    if (this.isPreloadedDataValid(email)) {
+      const preloadedData = this.preloadedConversations.get(email);
+      if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
+        console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
+        this.allOrders = [...preloadedData.orders];
+        this.displayOrdersList();
+        return;
+      }
+    }
+
+    // Set search in progress
+    this.searchInProgress = true;
+    this.activeSearches.set(email, true);
+    
+    // Show email detection status
+    this.setStatus(`Found email: ${email}`);
+    
+    // Debounce API calls (but not cache checks)
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
+
+    this.searchDebounceTimer = setTimeout(async () => {
+      try {
+        // Show searching status
+        this.setStatus("Searching orders...");
+        
+        console.log(`🔍 Starting search for: ${email}`);
+        const orderResults = await this.searchWooCommerceOrders(email);
+        
+        if (Array.isArray(orderResults)) {
+          this.allOrders = [...orderResults];
+          this.displayOrdersList();
+        } else {
+          console.log("❌ Invalid order results:", orderResults);
+          this.setStatus("No orders found");
+        }
+        
+      } catch (error) {
+        console.error("❌ Search failed:", error);
+        this.setStatus("Search failed");
+      } finally {
+        this.searchInProgress = false;
+        this.activeSearches.delete(email);
+        this.lastSearchedEmail = email;
+      }
+    }, 300);
   }
 
   // Clear current email's data immediately
@@ -2472,7 +2448,7 @@ class MissWooApp {
     this.preloadingDebounceTimer = setTimeout(async () => {
       if (this.isMissiveEnvironment && !this.preloadingInProgress) {
         console.log("🔄 Triggering dynamic preloading...");
-        await this.preloadTeamInboxConversations();
+        await this.preloadVisibleConversations();
       }
     }, 2000); // Wait 2 seconds after last conversation change
   }
@@ -2483,7 +2459,7 @@ class MissWooApp {
       console.log("🚀 Initializing Team Inbox preloading...");
       // Wait a bit for Missive to be ready
       setTimeout(async () => {
-        await this.preloadTeamInboxConversations();
+        await this.preloadVisibleConversations();
         // Log preloading status after initialization
         this.logPreloadingStatus();
       }, 3000);
@@ -2510,7 +2486,7 @@ class MissWooApp {
   // Manual trigger for preloading (for testing)
   async triggerPreloading() {
     console.log("🔧 Manual preloading trigger...");
-    await this.preloadTeamInboxConversations();
+    await this.preloadVisibleConversations();
     this.logPreloadingStatus();
   }
 
@@ -2571,7 +2547,9 @@ class MissWooApp {
   isCacheValid(key, cacheType) {
     const expiryKey = `${cacheType}-${key}`;
     const expiryTime = this.cacheExpiry.get(expiryKey);
-    if (!expiryTime) return false;
+    
+    // If no expiry time is set, consider it valid (more lenient)
+    if (!expiryTime) return true;
     
     const now = Date.now();
     const isValid = now < expiryTime;
