@@ -407,7 +407,7 @@ class MissWooApp {
         }
     }
 
-    async searchOrdersByEmail(email) {
+  async searchOrdersByEmail(email) {
     const startTime = performance.now();
     console.log("Searching orders for email:", email);
     
@@ -417,10 +417,10 @@ class MissWooApp {
       this.lastSearchedEmail = email;
     }
     
-    // Check cache first with expiration
-    if (this.orderCache && this.orderCache.has(email) && this.isCacheValid(email, 'orderCache')) {
+    // Check emailCache first (unified caching)
+    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
       console.log("Using cached results for:", email);
-      const cachedOrders = this.orderCache.get(email);
+      const cachedOrders = this.emailCache.get(email);
       console.log("Cached orders:", cachedOrders);
       console.log("Cached orders type:", typeof cachedOrders);
       console.log("Cached orders is array:", Array.isArray(cachedOrders));
@@ -448,9 +448,12 @@ class MissWooApp {
       this.allOrders = orderResults;
       // Don't call displayOrdersList here - let the caller handle it
       
-      // Cache the results
-      this.orderCache.set(email, [...orderResults]);
-      this.setCacheExpiry(email, 'orderCache');
+      // Cache the results in emailCache (unified caching)
+      if (this.emailCache) {
+        this.emailCache.set(email, [...orderResults]);
+        this.setCacheExpiry(email, 'emailCache');
+        console.log(`Cached ${orderResults.length} orders for ${email} in emailCache`);
+      }
       
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       this.logPerformanceStats();
@@ -592,10 +595,11 @@ class MissWooApp {
     const processedOrders = await Promise.all(orderPromises);
     this.allOrders = processedOrders;
     
-    // Cache the results with expiration
-    if (this.orderCache) {
-      this.orderCache.set(email, processedOrders);
-      this.setCacheExpiry(email, 'orderCache');
+    // Cache the results with expiration (unified caching)
+    if (this.emailCache) {
+      this.emailCache.set(email, processedOrders);
+      this.setCacheExpiry(email, 'emailCache');
+      console.log(`Cached ${processedOrders.length} processed orders for ${email} in emailCache`);
     }
     
     await this.displayOrdersList();
@@ -1411,19 +1415,12 @@ class MissWooApp {
   }
 
   updateHeaderWithVersion() {
-    const header = document.querySelector('.app-header h1');
-    if (header) {
-      // Check if we're in development environment (localhost)
-      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const devIndicator = isDevelopment ? ' DEV' : '';
-      const versionBadge = header.querySelector('.version-badge');
-      
-      if (versionBadge) {
-        versionBadge.textContent = `v3.02${devIndicator}`;
-      } else {
-        // Fallback: update the entire header
-        header.innerHTML = `<span class="version-badge">v3.02${devIndicator}</span>`;
-      }
+    const versionBadge = document.querySelector('.version-badge');
+    if (versionBadge) {
+      // Use simple version numbering instead of Git SHA
+      const version = this.isMissiveEnvironment ? 'v3.03' : 'v3.03 DEV';
+      versionBadge.textContent = version;
+      console.log(`Version updated to: ${version}`);
     }
   }
 
@@ -2247,9 +2244,9 @@ class MissWooApp {
   async preloadEmailsData(emails) {
     const preloadPromises = emails.map(async (email) => {
       try {
-        // Check if already preloaded and still valid
-        if (this.isPreloadedDataValid(email)) {
-          console.log(`📧 Skipping ${email} - already preloaded and valid`);
+        // Check if already cached and still valid
+        if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+          console.log(`📧 Skipping ${email} - already cached and valid`);
           return;
         }
         
@@ -2258,16 +2255,16 @@ class MissWooApp {
         // Store current orders to restore after preloading
         const currentOrders = [...this.allOrders];
         
-        // Preload order data
+        // Preload order data (this will populate emailCache)
         await this.searchOrdersByEmail(email);
         
-        // Store preloaded data
+        // Also store in preloadedConversations for tracking
         if (this.allOrders.length > 0) {
           this.preloadedConversations.set(email, {
             orders: [...this.allOrders],
             timestamp: Date.now()
           });
-          console.log(`✅ Preloaded ${this.allOrders.length} orders for ${email}`);
+          console.log(`✅ Preloaded ${this.allOrders.length} orders for ${email} (cached in emailCache)`);
         }
         
         // Restore current orders
@@ -2282,6 +2279,12 @@ class MissWooApp {
   }
 
   isPreloadedDataValid(email) {
+    // Check unified emailCache instead of separate preloadedConversations
+    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+      return true;
+    }
+    
+    // Fallback to preloadedConversations for backward compatibility
     const preloadedData = this.preloadedConversations.get(email);
     if (!preloadedData) return false;
     
