@@ -1457,7 +1457,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.06' : 'v3.06 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.07' : 'v3.07 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1882,6 +1882,18 @@ class MissWooApp {
 
   extractEmailFromData(data) {
     console.log("🔍 Extracting email from data:", data);
+    
+    if (!data) {
+      console.log("❌ No data provided");
+      return null;
+    }
+
+    // Handle arrays - if we receive an array of IDs, we can't extract email directly
+    if (Array.isArray(data)) {
+      console.log("🔍 Received array of data, cannot extract email directly from array");
+      return null;
+    }
+
     console.log("🔍 Data keys:", Object.keys(data || {}));
     if (data && typeof data === 'object') {
       console.log("🔍 Data structure:", JSON.stringify(data, null, 2));
@@ -2143,40 +2155,22 @@ class MissWooApp {
 
   // Dynamic preloading system for Visible Conversations
   async preloadVisibleConversations() {
-    if (!this.isMissiveEnvironment || this.preloadingInProgress) return;
+    if (this.preloadingInProgress) {
+      console.log("⏳ Preloading already in progress, skipping...");
+      return;
+    }
     
     this.preloadingInProgress = true;
     
-    // Only set preloading status if no search is in progress
-    if (!this.searchInProgress) {
-      this.setStatus("Preloading visible emails...");
-    }
-    
     try {
-      console.log("📧 Starting visible conversation preloading...");
+      console.log("🔄 Starting visible conversation preloading...");
       
-      // Try to get conversations from various sources
-      let conversations = [];
-      
-      // First try to fetch conversations we've seen
-      if (this.seenConversationIds.size > 0 && Missive.fetchConversations) {
-        try {
-          const idsToFetch = Array.from(this.seenConversationIds).slice(0, this.maxPreloadedConversations);
-          console.log(`📧 Fetching ${idsToFetch.length} conversations from seen IDs...`);
-          const fetchedConversations = await Missive.fetchConversations(idsToFetch);
-          if (Array.isArray(fetchedConversations)) {
-            conversations = fetchedConversations;
-            console.log(`📧 Successfully fetched ${conversations.length} conversations`);
-          }
-        } catch (error) {
-          console.log("❌ Failed to fetch conversations from seen IDs:", error);
-        }
+      // Only set status if no search is in progress
+      if (!this.searchInProgress) {
+        this.setStatus("Preloading visible emails...");
       }
       
-      // If no conversations from seen IDs, try other methods
-      if (conversations.length === 0) {
-        conversations = await this.fetchVisibleConversations();
-      }
+      const conversations = await this.fetchVisibleConversations();
       
       if (!conversations || conversations.length === 0) {
         console.log("❌ No conversations found for preloading");
