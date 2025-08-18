@@ -845,15 +845,54 @@ class MissWooApp {
       
       if (customerEmail && !this.orderCache.has(customerEmail)) {
         console.log('Preloading related order data for:', customerEmail);
-        // Preload in background without blocking UI
+        // Preload in background without blocking UI or affecting status
         setTimeout(async () => {
           try {
-            await this.searchOrdersByEmail(customerEmail);
+            // Use a silent version that doesn't set status messages
+            await this.searchOrdersByEmailSilent(customerEmail);
           } catch (error) {
             console.log('Preload failed:', error);
           }
         }, 1000);
       }
+    }
+  }
+
+  // Silent version of searchOrdersByEmail that doesn't set status messages
+  async searchOrdersByEmailSilent(email) {
+    try {
+      console.log(`Silent search for: ${email}`);
+      
+      // Check cache first
+      if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+        const cachedOrders = this.emailCache.get(email);
+        if (Array.isArray(cachedOrders)) {
+          console.log(`Silent cache hit for ${email}: ${cachedOrders.length} orders`);
+          return cachedOrders;
+        }
+      }
+      
+      // Perform actual search without setting status
+      const orderResults = await this.searchWooCommerceOrders(email);
+      
+      if (Array.isArray(orderResults)) {
+        // Process and cache results silently
+        const processedOrders = await this.processOrdersWithDetails(orderResults, email);
+        
+        // Cache the results
+        if (this.emailCache) {
+          this.emailCache.set(email, processedOrders);
+          this.setCacheExpiry(email, 'emailCache');
+          console.log(`Silent cached ${processedOrders.length} processed orders for ${email} in emailCache`);
+        }
+        
+        return processedOrders;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error(`Silent search failed for ${email}:`, error);
+      return [];
     }
   }
 
@@ -1418,7 +1457,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.05' : 'v3.05 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.06' : 'v3.06 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
