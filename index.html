@@ -7,8 +7,8 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>WooCommerce, Missive Katana Integration</title>
-    <link rel="stylesheet" href="src/styles.css?v=264cd28&t=1755608631" />
+    <title>Miss Woo - Order Lookup</title>
+    <link rel="stylesheet" href="src/styles.css?v=73daa7d&t=1755615069" />
     <link rel="stylesheet" href="https://integrations.missiveapp.com/missive.css" />
     <script src="https://integrations.missiveapp.com/missive.js"></script>
   </head>
@@ -16,11 +16,10 @@
     <div id="app">
       <header class="app-header">
         <div class="header-content">
-          <h1><span class="version-badge">v3.31</span></h1>
-          <p class="subtitle">Click on emails to automatically search for orders</p>
+          <h1><span class="version-badge">vJS3.34</span></h1>
+          <p class="subtitle">WooCommerce Order Lookup for Missive</p>
         </div>
       </header>
-
       <main class="app-content">
         <div class="search-section">
           <div class="search-container">
@@ -28,18 +27,17 @@
             <button id="searchBtn" class="search-btn">Search</button>
           </div>
           <div class="search-hint">
-            <span class="hint-text">Auto-search enabled in Missive</span>
+            <span class="hint-text">Auto-search enabled for focused emails</span>
           </div>
         </div>
-
         <div class="results-section">
           <div id="error" class="error hidden"></div>
           <div id="results" class="results-container"></div>
         </div>
       </main>
     </div>
-
-    <script src="src/config.js?v=264cd28&t=1755608631"></script>
-    <script type="module" src="src/app.js?v=264cd28&t=1755608631"></script>
+    <script src="src/config.js?v=73daa7d&t=1755615069"></script>
+    <script type="module" src="src/app.js?v=73daa7d&t=1755615069"></script>
+    <script type="module" src="integrations/missive-js/app.js?v=73daa7d&t=1755615069"></script>
   </body>
 </html>

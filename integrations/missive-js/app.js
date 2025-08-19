@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.32)
+// Missive JS API variant (vJS3.34)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.33
-    this.setBadge('vJS3.33');
+    // Force version badge to vJS3.34
+    this.setBadge('vJS3.34');
 
     // Initialize the full MissWooApp
     this.initializeApp();
