@@ -602,7 +602,8 @@ class MissWooApp {
       console.log(`Cached ${processedOrders.length} processed orders for ${email} in emailCache`);
     }
     
-    // Do NOT update UI here; callers decide when to render to avoid race/override
+    // Return the processed orders
+    return processedOrders;
   }
 
   getAuthenticatedUrl(endpoint, params = {}) {
@@ -1474,7 +1475,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.20' : 'v3.20 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.21' : 'v3.21 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
