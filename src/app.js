@@ -690,9 +690,12 @@ class MissWooApp {
     // Prevent multiple simultaneous calls
     if (this._displayInProgress) {
       console.log("⏳ Display already in progress, skipping...");
+      console.log("DEBUG: displayOrdersList skipped due to _displayInProgress.");
       return;
     }
     this._displayInProgress = true;
+    
+    console.log(`DEBUG: displayOrdersList called. _displayInProgress: ${this._displayInProgress}, allOrders.length: ${this.allOrders.length}`);
     
     try {
       // Ensure allOrders is always an array
@@ -702,12 +705,14 @@ class MissWooApp {
       
       if (this.allOrders.length === 0) {
         this.hideLoading();
+        console.log("DEBUG: displayOrdersList - No orders in allOrders, setting 'No orders found'.");
         this.setStatus("No orders found");
         return;
       }
-
+  
       // Set correct status when orders are found
       this.setStatus(`Found ${this.allOrders.length} order(s)`);
+      console.log(`DEBUG: displayOrdersList - Setting status to 'Found ${this.allOrders.length} order(s)'.`);
 
     const resultsContainer = document.getElementById("results");
     if (!resultsContainer) {
@@ -812,6 +817,7 @@ class MissWooApp {
     this.startBackgroundProcessing();
     } finally {
       this._displayInProgress = false;
+      console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
     }
   }
 
@@ -1468,7 +1474,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.17' : 'v3.17 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.18' : 'v3.18 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2409,6 +2415,7 @@ class MissWooApp {
       if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
         console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
         this.allOrders = [...cachedOrders];
+        console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2422,6 +2429,7 @@ class MissWooApp {
       if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
         console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
         this.allOrders = [...preloadedData.orders];
+        console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2454,6 +2462,7 @@ class MissWooApp {
         
         if (Array.isArray(orderResults)) {
           this.allOrders = [...orderResults];
+          console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
           this.displayOrdersList();
           // Ensure correct status is set after displayOrdersList
           if (this.allOrders.length > 0) {
