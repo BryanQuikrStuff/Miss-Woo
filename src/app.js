@@ -1457,7 +1457,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.12' : 'v3.12 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.13' : 'v3.13 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2386,9 +2386,6 @@ class MissWooApp {
       return;
     }
 
-    // Clear current data immediately
-    this.clearCurrentEmailData();
-    
     // Check if we're already searching this email
     if (this.searchInProgress && this.activeSearches.has(email)) {
       console.log(`⏳ Already searching for ${email}, skipping`);
@@ -2416,6 +2413,9 @@ class MissWooApp {
         return;
       }
     }
+
+    // Only clear data if we don't have cached/preloaded data
+    this.clearCurrentEmailData();
 
     // Set search in progress
     this.searchInProgress = true;
