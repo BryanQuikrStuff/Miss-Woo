@@ -1457,7 +1457,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.13' : 'v3.13 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.14' : 'v3.14 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2399,6 +2399,8 @@ class MissWooApp {
         console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
         this.allOrders = [...cachedOrders];
         this.displayOrdersList();
+        // Ensure correct status is set after displayOrdersList
+        this.setStatus(`Found ${this.allOrders.length} order(s)`);
         return;
       }
     }
@@ -2410,6 +2412,8 @@ class MissWooApp {
         console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
         this.allOrders = [...preloadedData.orders];
         this.displayOrdersList();
+        // Ensure correct status is set after displayOrdersList
+        this.setStatus(`Found ${this.allOrders.length} order(s)`);
         return;
       }
     }
@@ -2440,6 +2444,12 @@ class MissWooApp {
         if (Array.isArray(orderResults)) {
           this.allOrders = [...orderResults];
           this.displayOrdersList();
+          // Ensure correct status is set after displayOrdersList
+          if (this.allOrders.length > 0) {
+            this.setStatus(`Found ${this.allOrders.length} order(s)`);
+          } else {
+            this.setStatus("No orders found");
+          }
         } else {
           console.log("❌ Invalid order results:", orderResults);
           this.setStatus("No orders found");
