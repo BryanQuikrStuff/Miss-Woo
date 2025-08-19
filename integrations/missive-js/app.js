@@ -1,14 +1,12 @@
-// Suggest optimized version for performance
-
 // Missive JS API variant (vJS3.32)
-// Minimal wrapper that relies on Missive JavaScript API events and forwards
-// context to the existing MissWooApp via window.app when possible.
+// Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
 
 class MissiveJSBridge {
   constructor() {
     this.isReady = false;
+    this.app = null;
     this.init();
   }
 
@@ -16,21 +14,21 @@ class MissiveJSBridge {
     // Force version badge to vJS3.32
     this.setBadge('vJS3.32');
 
+    // Initialize the full MissWooApp
+    this.initializeApp();
+
     if (!window.Missive) {
       // Wait for Missive script to be present
       const check = setInterval(() => {
         if (window.Missive) {
           clearInterval(check);
-          this.bind();
+          this.bindMissiveEvents();
         }
       }, 200);
-      // Also bootstrap app so the page works in web mode
-      this.bootstrapApp();
       return;
     }
 
-    this.bind();
-    this.bootstrapApp();
+    this.bindMissiveEvents();
   }
 
   setBadge(text) {
@@ -38,41 +36,41 @@ class MissiveJSBridge {
     if (el) el.textContent = text;
   }
 
-  bootstrapApp() {
+  initializeApp() {
     try {
-      if (!window.app && window.config) {
-        window.app = new MissWooApp(window.config);
+      if (window.config) {
+        this.app = new MissWooApp(window.config);
+        // Override version badge to vJS3.32 once app updates header
+        setTimeout(() => this.setBadge('vJS3.32'), 300);
       }
-      // Override version badge to vJS3.32 once app updates header
-      setTimeout(() => this.setBadge('vJS3.32'), 300);
     } catch (e) {
-      // no-op
+      console.error('Failed to initialize MissWooApp:', e);
     }
   }
 
-  bind() {
+  bindMissiveEvents() {
     if (this.isReady) return;
     this.isReady = true;
 
     // Core lifecycle
     Missive.on('ready', async () => {
       this.setBadge('vJS3.32');
-      if (window.app?.setStatus) window.app.setStatus('Ready');
+      if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
     });
 
     Missive.on('error', (err) => {
-      if (window.app?.setStatus) window.app.setStatus('Missive error', 'error');
+      if (this.app?.setStatus) this.app.setStatus('Missive error', 'error');
       console.error('Missive error:', err);
     });
 
-    // High-signal events
+    // High-signal events - forward to app
     const forward = async (data) => {
-      if (!window.app) return;
-      const email = window.app.extractEmailFromData?.(data);
-      if (email && window.app.isValidEmailForSearch?.(email)) {
-        await window.app.performAutoSearch(email);
+      if (!this.app) return;
+      const email = this.app.extractEmailFromData?.(data);
+      if (email && this.app.isValidEmailForSearch?.(email)) {
+        await this.app.performAutoSearch(email);
       }
     };
 
@@ -86,14 +84,14 @@ class MissiveJSBridge {
 
   async tryPrimeEmail() {
     try {
-      if (!window.app) return;
+      if (!this.app) return;
 
       // Prefer current conversation → participants → external email
       if (Missive.getCurrentConversation) {
         const conv = await Missive.getCurrentConversation();
-        const email = window.app.extractEmailFromData(conv);
-        if (email && window.app.isValidEmailForSearch(email)) {
-          await window.app.performAutoSearch(email);
+        const email = this.app.extractEmailFromData(conv);
+        if (email && this.app.isValidEmailForSearch(email)) {
+          await this.app.performAutoSearch(email);
           return;
         }
       }
@@ -103,9 +101,9 @@ class MissiveJSBridge {
         const conv = await Missive.getCurrentConversation();
         if (conv?.id) {
           const messages = await Missive.fetchMessages(conv.id, { limit: 10 });
-          const email = window.app.extractEmailFromData({ messages });
-          if (email && window.app.isValidEmailForSearch(email)) {
-            await window.app.performAutoSearch(email);
+          const email = this.app.extractEmailFromData({ messages });
+          if (email && this.app.isValidEmailForSearch(email)) {
+            await this.app.performAutoSearch(email);
           }
         }
       }
