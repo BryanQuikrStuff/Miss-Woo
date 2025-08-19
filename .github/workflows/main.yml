@@ -85,14 +85,18 @@ jobs:
       run: |
         mkdir -p dist
         cp index.html dist/
+        cp index-missive-js.html dist/
         cp -r src dist/
+        mkdir -p dist/integrations/missive-js
+        cp integrations/missive-js/app.js dist/integrations/missive-js/
         BUILD_VERSION=$(date +%Y%m%d%H%M%S)  # cache-busting only
         DISPLAY_VERSION=${GITHUB_SHA::7}     # human-readable version
         # Update cache-busting version in HTML references (keep timestamps here)
         sed -E -i "s/\?v=[0-9]+/\?v=${BUILD_VERSION}/g" dist/index.html
-        # Update displayed version in app header to short SHA with GH prefix
-        sed -E -i "s/return 'v[0-9]+';/return 'GH-${DISPLAY_VERSION}';/g" dist/src/app.js
-        # Write manifest with short SHA for all clients (POC, app) to read
+        sed -E -i "s/\?v=[0-9]+/\?v=${BUILD_VERSION}/g" dist/index-missive-js.html
+        # Update displayed version in app header to short SHA with GH prefix (legacy)
+        sed -E -i "s/return 'v[0-9]+';/return 'GH-${DISPLAY_VERSION}';/g" dist/src/app.js || true
+        # Write manifest with short SHA for all clients
         echo "{\"version\": \"${DISPLAY_VERSION}\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
 
     - name: Setup Pages
