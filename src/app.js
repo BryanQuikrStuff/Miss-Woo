@@ -687,19 +687,27 @@ class MissWooApp {
   }
 
   async displayOrdersList() {
-    // Ensure allOrders is always an array
-    if (!Array.isArray(this.allOrders)) {
-      this.allOrders = [];
-    }
-    
-    if (this.allOrders.length === 0) {
-      this.hideLoading();
-      this.setStatus("No orders found");
+    // Prevent multiple simultaneous calls
+    if (this._displayInProgress) {
+      console.log("⏳ Display already in progress, skipping...");
       return;
     }
+    this._displayInProgress = true;
+    
+    try {
+      // Ensure allOrders is always an array
+      if (!Array.isArray(this.allOrders)) {
+        this.allOrders = [];
+      }
+      
+      if (this.allOrders.length === 0) {
+        this.hideLoading();
+        this.setStatus("No orders found");
+        return;
+      }
 
-    // Set correct status when orders are found
-    this.setStatus(`Found ${this.allOrders.length} order(s)`);
+      // Set correct status when orders are found
+      this.setStatus(`Found ${this.allOrders.length} order(s)`);
 
     const resultsContainer = document.getElementById("results");
     if (!resultsContainer) {
@@ -802,6 +810,9 @@ class MissWooApp {
     
     // Start background processing for additional data
     this.startBackgroundProcessing();
+    } finally {
+      this._displayInProgress = false;
+    }
   }
 
   startBackgroundProcessing() {
@@ -1457,7 +1468,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.15' : 'v3.15 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.16' : 'v3.16 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
