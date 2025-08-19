@@ -1474,7 +1474,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.18' : 'v3.18 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.19' : 'v3.19 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2489,7 +2489,16 @@ class MissWooApp {
   // Clear current email's data immediately
   clearCurrentEmailData() {
     console.log("🧹 Clearing current email data...");
-    this.allOrders = [];
+    
+    // Only clear allOrders if we don't have cached data for the current email
+    // This prevents clearing data that was just found and cached
+    if (!this.lastSearchedEmail || !this.emailCache.has(this.lastSearchedEmail)) {
+      this.allOrders = [];
+      console.log("🧹 Cleared allOrders array (no cached data)");
+    } else {
+      console.log("🧹 Skipped clearing allOrders (cached data available)");
+    }
+    
     // Don't clear lastSearchedEmail here - it prevents multiple searches
     
     // Clear the results display
