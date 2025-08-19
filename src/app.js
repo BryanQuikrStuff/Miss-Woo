@@ -1474,7 +1474,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.19' : 'v3.19 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.20' : 'v3.20 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2461,7 +2461,9 @@ class MissWooApp {
         const orderResults = await this.searchWooCommerceOrders(email);
         
         if (Array.isArray(orderResults)) {
+          console.log(`DEBUG: performAutoSearch - Before allOrders assignment. Received orderResults.length: ${orderResults ? orderResults.length : 'null/undefined'}. Current allOrders.length: ${this.allOrders.length}`);
           this.allOrders = [...orderResults];
+          console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
           console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
           this.displayOrdersList();
           // Ensure correct status is set after displayOrdersList
