@@ -2393,6 +2393,9 @@ class MissWooApp {
       return;
     }
 
+    // Always clear the display first when switching emails
+    this.clearCurrentEmailData();
+
     // Check for cached/preloaded data first (immediate)
     if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
       const cachedOrders = this.emailCache.get(email);
@@ -2420,9 +2423,6 @@ class MissWooApp {
         return;
       }
     }
-
-    // Only clear data if we don't have cached/preloaded data
-    this.clearCurrentEmailData();
 
     // Set search in progress
     this.searchInProgress = true;
@@ -2476,17 +2476,7 @@ class MissWooApp {
   clearCurrentEmailData() {
     console.log("🧹 Clearing current email data...");
     
-    // Only clear allOrders if we don't have cached data for the current email
-    // This prevents clearing data that was just found and cached
-    if (!this.lastSearchedEmail || !this.emailCache.has(this.lastSearchedEmail)) {
-      this.allOrders = [];
-      console.log("🧹 Cleared allOrders array (no cached data)");
-    } else {
-      console.log("🧹 Skipped clearing allOrders (cached data available)");
-    }
-    
-    // Don't clear lastSearchedEmail here - it prevents multiple searches
-    
+    // Always clear the display when switching emails
     // Clear the results display
     const resultsContainer = document.getElementById("results");
     if (resultsContainer) {
@@ -2508,6 +2498,9 @@ class MissWooApp {
       element.remove();
       console.log("🧹 Removed no-orders element");
     });
+    
+    // Clear status message to show we're switching emails
+    this.setStatus("Switching emails...");
     
     console.log("✅ Current email data cleared");
   }

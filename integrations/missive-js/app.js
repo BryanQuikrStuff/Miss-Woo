@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.32
-    this.setBadge('vJS3.32');
+    // Force version badge to vJS3.33
+    this.setBadge('vJS3.33');
 
     // Initialize the full MissWooApp
     this.initializeApp();
