@@ -1475,7 +1475,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.21' : 'v3.21 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.30' : 'v3.30 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
