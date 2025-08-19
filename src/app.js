@@ -162,26 +162,9 @@ class MissWooApp {
   }
 
   async loadVersionFromManifest() {
-    try {
-      const cacheBust = Date.now();
-      const candidates = [
-        `version.json?_cb=${cacheBust}`,
-        `https://bryanquikrstuff.github.io/Miss-Woo/version.json?_cb=${cacheBust}`,
-      ];
-      for (const url of candidates) {
-        try {
-          const resp = await fetch(url, { cache: 'no-store', mode: 'cors', credentials: 'omit' });
-          if (!resp.ok) continue;
-          const data = await resp.json();
-          if (data && data.version) {
-            const prefix = this.isMissiveEnvironment ? 'MA' : (location.host.includes('github.io') ? 'MW' : 'GH');
-            this.version = `${prefix}-${data.version}`;
-            this.updateHeaderWithVersion();
-            return;
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
+    // Version is now handled directly in updateHeaderWithVersion()
+    // No need to fetch external version.json file
+    return;
   }
 
   detectMissiveEnvironment() {
@@ -195,14 +178,14 @@ class MissWooApp {
     // More permissive detection - if any Missive indicator is present
     const isMissive = hasMissiveAPI || hasMissiveScript || isInIframe || urlContainsMissive || hasMissiveUI;
     
-    console.log("🔍 === MISSIVE ENVIRONMENT DETECTION ===");
-    console.log("hasMissiveAPI:", hasMissiveAPI);
-    console.log("hasMissiveScript:", hasMissiveScript);
-    console.log("isInIframe:", isInIframe);
-    console.log("urlContainsMissive:", urlContainsMissive);
-    console.log("hasMissiveUI:", hasMissiveUI);
-    console.log("Final result:", isMissive);
-    console.log("🔍 === DETECTION END ===");
+    // console.log("🔍 === MISSIVE ENVIRONMENT DETECTION ===");
+    // console.log("hasMissiveAPI:", hasMissiveAPI);
+    // console.log("hasMissiveScript:", hasMissiveScript);
+    // console.log("isInIframe:", isInIframe);
+    // console.log("urlContainsMissive:", urlContainsMissive);
+    // console.log("hasMissiveUI:", hasMissiveUI);
+    // console.log("Final result:", isMissive);
+    // console.log("🔍 === DETECTION END ===");
     
     return isMissive;
   }
@@ -242,7 +225,7 @@ class MissWooApp {
         getSeenConversations: () => Array.from(this.seenConversationIds),
         clearPreloaded: () => { this.preloadedConversations.clear(); console.log("Cleared preloaded data"); }
       };
-      console.log("🔧 Debug methods available: window.MissWooDebug");
+      // console.log("🔧 Debug methods available: window.MissWooDebug");
       
     } catch (error) {
       console.error("Initialization failed:", error);
@@ -691,12 +674,12 @@ class MissWooApp {
     // Prevent multiple simultaneous calls
     if (this._displayInProgress) {
       console.log("⏳ Display already in progress, skipping...");
-      console.log("DEBUG: displayOrdersList skipped due to _displayInProgress.");
+      // console.log("DEBUG: displayOrdersList skipped due to _displayInProgress.");
       return;
     }
     this._displayInProgress = true;
     
-    console.log(`DEBUG: displayOrdersList called. _displayInProgress: ${this._displayInProgress}, allOrders.length: ${this.allOrders.length}`);
+    // console.log(`DEBUG: displayOrdersList called. _displayInProgress: ${this._displayInProgress}, allOrders.length: ${this.allOrders.length}`);
     
     try {
       // Ensure allOrders is always an array
@@ -706,14 +689,14 @@ class MissWooApp {
       
       if (this.allOrders.length === 0) {
         this.hideLoading();
-        console.log("DEBUG: displayOrdersList - No orders in allOrders, setting 'No orders found'.");
+        // console.log("DEBUG: displayOrdersList - No orders in allOrders, setting 'No orders found'.");
         this.setStatus("No orders found");
         return;
       }
   
       // Set correct status when orders are found
       this.setStatus(`Found ${this.allOrders.length} order(s)`);
-      console.log(`DEBUG: displayOrdersList - Setting status to 'Found ${this.allOrders.length} order(s)'.`);
+      // console.log(`DEBUG: displayOrdersList - Setting status to 'Found ${this.allOrders.length} order(s)'.`);
 
     const resultsContainer = document.getElementById("results");
     if (!resultsContainer) {
@@ -818,7 +801,7 @@ class MissWooApp {
     this.startBackgroundProcessing();
     } finally {
       this._displayInProgress = false;
-      console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
+      // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
     }
   }
 
@@ -1347,7 +1330,7 @@ class MissWooApp {
   }
 
   initializeMissive() {
-    console.log("🔧 === INITIALIZE MISSIVE DEBUG ===");
+    // console.log("🔧 === INITIALIZE MISSIVE DEBUG ===");
     console.log("window.Missive available:", !!window.Missive);
     console.log("isMissiveEnvironment:", this.isMissiveEnvironment);
     console.log("autoSearchEnabled:", this.autoSearchEnabled);
@@ -1379,7 +1362,7 @@ class MissWooApp {
       }, 2000);
     }
     
-    console.log("🔧 === INITIALIZE MISSIVE DEBUG END ===");
+    // console.log("🔧 === INITIALIZE MISSIVE DEBUG END ===");
   }
 
   recheckMissiveEnvironment() {
@@ -1400,7 +1383,7 @@ class MissWooApp {
   }
 
   updateUIForEnvironment() {
-    console.log("🔧 === UI UPDATE DEBUG ===");
+    // console.log("🔧 === UI UPDATE DEBUG ===");
     console.log("Environment detection:", this.isMissiveEnvironment);
     console.log("Auto-search enabled:", this.autoSearchEnabled);
     
@@ -1468,14 +1451,14 @@ class MissWooApp {
       }
     }
     
-    console.log("🔧 === UI UPDATE DEBUG END ===");
+    // console.log("🔧 === UI UPDATE DEBUG END ===");
   }
 
   updateHeaderWithVersion() {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use simple version numbering instead of Git SHA
-      const version = this.isMissiveEnvironment ? 'v3.30' : 'v3.30 DEV';
+      const version = this.isMissiveEnvironment ? 'v3.31' : 'v3.31 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1648,16 +1631,16 @@ class MissWooApp {
     console.log("📧 Fallback extracted email:", email);
     
     if (email && this.isValidEmailForSearch(email)) {
-      console.log("🔍 Fallback auto-searching:", email);
+      // console.log("🔍 Fallback auto-searching:", email);
       this.performAutoSearch(email);
     } else {
-      console.log("❌ Fallback: No valid email found");
+      // console.log("❌ Fallback: No valid email found");
     }
   }
 
   async tryGetCurrentEmail() {
     try {
-      console.log("🔍 === AUTO-SEARCH DEBUG ===");
+      // console.log("🔍 === AUTO-SEARCH DEBUG ===");
       console.log("Trying to get current email from Missive API...");
       console.log("Missive object available:", !!window.Missive);
       console.log("Available Missive methods:", Object.keys(window.Missive || {}));
@@ -1724,18 +1707,18 @@ class MissWooApp {
       
       if (email) {
         console.log("✅ Found current email:", email);
-        console.log("🔍 Email validation result:", this.isValidEmailForSearch(email));
+        // console.log("🔍 Email validation result:", this.isValidEmailForSearch(email));
         if (this.isValidEmailForSearch(email)) {
           await this.performAutoSearch(email);
         } else {
-          console.log("❌ Email failed validation, skipping auto-search");
+          // console.log("❌ Email failed validation, skipping auto-search");
         }
       } else {
-        console.log("❌ No current email found from any method");
+        // console.log("❌ No current email found from any method");
         console.log("💡 Auto-search will rely on Missive events only");
       }
       
-      console.log("🔍 === AUTO-SEARCH DEBUG END ===");
+      // console.log("🔍 === AUTO-SEARCH DEBUG END ===");
     } catch (error) {
       console.error("❌ Error getting current email:", error);
     }
@@ -1755,13 +1738,13 @@ class MissWooApp {
       const email = this.extractEmailFromData(data);
       console.log("📧 Extracted email from open event:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("🔍 Email opened, auto-searching:", email);
+        // console.log("🔍 Email opened, auto-searching:", email);
         await this.performAutoSearch(email);
       } else {
-        console.log("❌ Email open: No valid email or already searched");
+        // console.log("❌ Email open: No valid email or already searched");
       }
     } else {
-      console.log("❌ Auto-search disabled, ignoring email open");
+      // console.log("❌ Auto-search disabled, ignoring email open");
     }
   }
 
@@ -1777,20 +1760,20 @@ class MissWooApp {
       }
       console.log("📧 Extracted email from thread focus:", email);
       if (email && email !== this.lastSearchedEmail) {
-        console.log("🔍 Thread focused, auto-searching:", email);
+        // console.log("🔍 Thread focused, auto-searching:", email);
         await this.performAutoSearch(email);
       } else {
-        console.log("❌ Thread focus: No valid email or already searched");
+        // console.log("❌ Thread focus: No valid email or already searched");
       }
     } else {
-      console.log("❌ Auto-search disabled, ignoring thread focus");
+      // console.log("❌ Auto-search disabled, ignoring thread focus");
     }
   }
 
   async handleConversationChange(data) {
     console.log("📧 Conversation change event triggered:", data);
     if (!this.autoSearchEnabled) {
-      console.log("❌ Auto-search disabled, ignoring conversation change");
+      // console.log("❌ Auto-search disabled, ignoring conversation change");
             return;
         }
         
@@ -1899,26 +1882,26 @@ class MissWooApp {
   }
 
   extractEmailFromData(data) {
-    console.log("🔍 Extracting email from data:", data);
+    // console.log("🔍 Extracting email from data:", data);
     
     if (!data) {
-      console.log("❌ No data provided");
+      // console.log("❌ No data provided");
       return null;
     }
 
     // Handle arrays - if we receive an array of IDs, we can't extract email directly
     if (Array.isArray(data)) {
-      console.log("🔍 Received array of data, cannot extract email directly from array");
+      // console.log("🔍 Received array of data, cannot extract email directly from array");
       return null;
     }
 
-    console.log("🔍 Data keys:", Object.keys(data || {}));
+    // console.log("🔍 Data keys:", Object.keys(data || {}));
     if (data && typeof data === 'object') {
-      console.log("🔍 Data structure:", JSON.stringify(data, null, 2));
+      // console.log("🔍 Data structure:", JSON.stringify(data, null, 2));
     }
     
     if (!data) {
-      console.log("❌ No data provided");
+      // console.log("❌ No data provided");
       return null;
     }
 
@@ -2079,7 +2062,7 @@ class MissWooApp {
       }
     }
 
-    console.log("❌ No email found in data structure");
+    // console.log("❌ No email found in data structure");
     return null;
   }
 
@@ -2191,7 +2174,7 @@ class MissWooApp {
       const conversations = await this.fetchVisibleConversations();
       
       if (!conversations || conversations.length === 0) {
-        console.log("❌ No conversations found for preloading");
+        // console.log("❌ No conversations found for preloading");
         // Only set Ready status if no search is in progress
         if (!this.searchInProgress) {
           this.setStatus("Ready");
@@ -2207,7 +2190,7 @@ class MissWooApp {
       console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
       
       if (emailsToPreload.length === 0) {
-        console.log("❌ No valid emails found in conversations");
+        // console.log("❌ No valid emails found in conversations");
         // Only set Ready status if no search is in progress
         if (!this.searchInProgress) {
           this.setStatus("Ready");
@@ -2251,7 +2234,7 @@ class MissWooApp {
             console.log(`📧 Got current conversation: ${currentConv.id}`);
           }
         } catch (error) {
-          console.log("❌ Failed to get current conversation:", error);
+          // console.log("❌ Failed to get current conversation:", error);
         }
       }
       
@@ -2269,7 +2252,7 @@ class MissWooApp {
             console.log(`📧 Fetched ${conversations.length} conversations with options`);
           }
         } catch (error) {
-          console.log("❌ fetchConversations with options failed:", error);
+          // console.log("❌ fetchConversations with options failed:", error);
         }
       }
       
@@ -2400,7 +2383,7 @@ class MissWooApp {
   // Enhanced preloading that uses preloaded data when available
   async performAutoSearch(email) {
     if (!email || !this.isValidEmailForSearch(email)) {
-      console.log("❌ Invalid email for search:", email);
+      // console.log("❌ Invalid email for search:", email);
       return;
     }
 
@@ -2416,7 +2399,7 @@ class MissWooApp {
       if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
         console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
         this.allOrders = [...cachedOrders];
-        console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2430,7 +2413,7 @@ class MissWooApp {
       if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
         console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
         this.allOrders = [...preloadedData.orders];
-        console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2458,14 +2441,14 @@ class MissWooApp {
         // Show searching status
         this.setStatus("Searching orders...");
         
-        console.log(`🔍 Starting search for: ${email}`);
+        // console.log(`🔍 Starting search for: ${email}`);
         const orderResults = await this.searchWooCommerceOrders(email);
         
         if (Array.isArray(orderResults)) {
-          console.log(`DEBUG: performAutoSearch - Before allOrders assignment. Received orderResults.length: ${orderResults ? orderResults.length : 'null/undefined'}. Current allOrders.length: ${this.allOrders.length}`);
+          // console.log(`DEBUG: performAutoSearch - Before allOrders assignment. Received orderResults.length: ${orderResults ? orderResults.length : 'null/undefined'}. Current allOrders.length: ${this.allOrders.length}`);
           this.allOrders = [...orderResults];
-          console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
-          console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+          // console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
+          // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
           this.displayOrdersList();
           // Ensure correct status is set after displayOrdersList
           if (this.allOrders.length > 0) {
@@ -2474,7 +2457,7 @@ class MissWooApp {
             this.setStatus("No orders found");
           }
         } else {
-          console.log("❌ Invalid order results:", orderResults);
+          // console.log("❌ Invalid order results:", orderResults);
           this.setStatus("No orders found");
         }
         
@@ -2576,7 +2559,7 @@ class MissWooApp {
 
   // Manual trigger for preloading (for testing)
   async triggerPreloading() {
-    console.log("🔧 Manual preloading trigger...");
+          // console.log("🔧 Manual preloading trigger...");
     await this.preloadVisibleConversations();
     this.logPreloadingStatus();
   }
@@ -2739,34 +2722,6 @@ class MissWooApp {
     
     // Also log to console
     console.log(`�� ${message}`);
-  }
-
-  async searchContactFormSubmissions(email) {
-    try {
-      console.log(`🔍 Searching contact form submissions for: ${email}`);
-      
-      // Search for contact form submissions in WordPress
-      const submissionsUrl = this.getAuthenticatedUrl('/contact-form-submissions', {
-        search: email,
-        per_page: 50
-      });
-      
-      const response = await this.makeRequest(submissionsUrl);
-      
-      if (Array.isArray(response)) {
-        console.log(`Found ${response.length} contact form submissions for ${email}`);
-        return response.map(submission => ({
-          ...submission,
-          type: 'contact_form',
-          source: 'Contact Form'
-        }));
-      }
-      
-      return [];
-    } catch (error) {
-      console.log(`No contact form submissions found for ${email}:`, error.message);
-      return [];
-    }
   }
 }
 
