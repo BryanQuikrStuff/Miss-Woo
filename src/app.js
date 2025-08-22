@@ -95,7 +95,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'GH-local';
+    return 'vJS3.39';
   }
 
   async loadVersionFromManifest() {
@@ -1362,7 +1362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.38' : 'vJS3.38 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.39' : 'vJS3.39 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2244,6 +2244,9 @@ class MissWooApp {
     console.log(`�� ${message}`);
   }
 }
+
+// Make MissWooApp globally available for other modules
+window.MissWooApp = MissWooApp;
 
 // Initialize the app and handle any errors
 try {

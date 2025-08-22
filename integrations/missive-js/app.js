@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.38)
+// Missive JS API variant (vJS3.39)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.38
-    this.setBadge('vJS3.38');
+    // Force version badge to vJS3.39
+    this.setBadge('vJS3.39');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -50,8 +50,8 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.38 once app updates header
-        setTimeout(() => this.setBadge('vJS3.38'), 300);
+        // Override version badge to vJS3.39 once app updates header
+        setTimeout(() => this.setBadge('vJS3.39'), 300);
         
         // Bind manual search events
         this.bindManualSearchEvents();
