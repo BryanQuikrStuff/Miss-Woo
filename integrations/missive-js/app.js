@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.35)
+// Missive JS API variant (vJS3.36)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.35
-    this.setBadge('vJS3.35');
+    // Force version badge to vJS3.36
+    this.setBadge('vJS3.36');
 
     // Initialize the full MissWooApp
     this.initializeApp();
@@ -40,11 +40,40 @@ class MissiveJSBridge {
     try {
       if (window.config) {
         this.app = new MissWooApp(window.config);
-        // Override version badge to vJS3.35 once app updates header
-        setTimeout(() => this.setBadge('vJS3.35'), 300);
+        // Override version badge to vJS3.36 once app updates header
+        setTimeout(() => this.setBadge('vJS3.36'), 300);
+        
+        // Bind manual search events
+        this.bindManualSearchEvents();
       }
     } catch (e) {
       console.error('Failed to initialize MissWooApp:', e);
+    }
+  }
+
+  bindManualSearchEvents() {
+    // Bind search button click
+    const searchButton = document.getElementById('searchBtn');
+    if (searchButton) {
+      searchButton.onclick = () => {
+        console.log('🔍 Manual search button clicked');
+        if (this.app?.handleSearch) {
+          this.app.handleSearch();
+        }
+      };
+    }
+
+    // Bind search input enter key
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+          console.log('🔍 Manual search enter key pressed');
+          if (this.app?.handleSearch) {
+            this.app.handleSearch();
+          }
+        }
+      };
     }
   }
 
@@ -54,7 +83,7 @@ class MissiveJSBridge {
 
     // Core lifecycle
     Missive.on('ready', async () => {
-      this.setBadge('vJS3.35');
+      this.setBadge('vJS3.36');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -67,10 +96,18 @@ class MissiveJSBridge {
 
     // High-signal events - forward to app
     const forward = async (data) => {
-      if (!this.app) return;
+      console.log('📧 Missive event received:', data);
+      if (!this.app) {
+        console.log('❌ App not available for event');
+        return;
+      }
       const email = this.app.extractEmailFromData?.(data);
+      console.log('📧 Extracted email:', email);
       if (email && this.app.isValidEmailForSearch?.(email)) {
+        console.log('🔍 Triggering auto-search for:', email);
         await this.app.performAutoSearch(email);
+      } else {
+        console.log('❌ Invalid email or not valid for search:', email);
       }
     };
 
@@ -84,13 +121,21 @@ class MissiveJSBridge {
 
   async tryPrimeEmail() {
     try {
-      if (!this.app) return;
+      console.log('🔍 Trying to prime email on Missive ready...');
+      if (!this.app) {
+        console.log('❌ App not available for priming');
+        return;
+      }
 
       // Prefer current conversation → participants → external email
       if (Missive.getCurrentConversation) {
+        console.log('📧 Trying getCurrentConversation...');
         const conv = await Missive.getCurrentConversation();
+        console.log('📧 Current conversation:', conv);
         const email = this.app.extractEmailFromData(conv);
+        console.log('📧 Extracted email from conversation:', email);
         if (email && this.app.isValidEmailForSearch(email)) {
+          console.log('🔍 Priming auto-search for:', email);
           await this.app.performAutoSearch(email);
           return;
         }
@@ -98,17 +143,23 @@ class MissiveJSBridge {
 
       // Fallback: recent messages from focused conversation if available
       if (Missive.fetchMessages && Missive.getCurrentConversation) {
+        console.log('📧 Trying fetchMessages fallback...');
         const conv = await Missive.getCurrentConversation();
         if (conv?.id) {
           const messages = await Missive.fetchMessages(conv.id, { limit: 10 });
+          console.log('📧 Fetched messages:', messages);
           const email = this.app.extractEmailFromData({ messages });
+          console.log('📧 Extracted email from messages:', email);
           if (email && this.app.isValidEmailForSearch(email)) {
+            console.log('🔍 Priming auto-search for:', email);
             await this.app.performAutoSearch(email);
           }
         }
       }
+      
+      console.log('📧 No email found for priming');
     } catch (e) {
-      // ignore
+      console.error('❌ Error priming email:', e);
     }
   }
 }

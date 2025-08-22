@@ -1362,7 +1362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.35' : 'vJS3.35 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.36' : 'vJS3.36 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
