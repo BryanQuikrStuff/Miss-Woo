@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.37)
+// Missive JS API variant (vJS3.38)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.37
-    this.setBadge('vJS3.37');
+    // Force version badge to vJS3.38
+    this.setBadge('vJS3.38');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -41,16 +41,41 @@ class MissiveJSBridge {
 
   initializeApp() {
     try {
-      if (window.config) {
+      console.log('🔧 Initializing MissWooApp...');
+      console.log('🔧 window.config available:', !!window.config);
+      console.log('🔧 window.MissWooApp available:', !!window.MissWooApp);
+      
+      if (window.config && window.MissWooApp) {
+        console.log('🔧 Creating MissWooApp instance...');
         this.app = new MissWooApp(window.config);
-        // Override version badge to vJS3.37 once app updates header
-        setTimeout(() => this.setBadge('vJS3.37'), 300);
+        console.log('🔧 MissWooApp instance created:', !!this.app);
+        
+        // Override version badge to vJS3.38 once app updates header
+        setTimeout(() => this.setBadge('vJS3.38'), 300);
         
         // Bind manual search events
         this.bindManualSearchEvents();
+        
+        console.log('✅ MissWooApp initialization complete');
+      } else {
+        console.log('❌ Missing dependencies for MissWooApp initialization');
+        console.log('❌ window.config:', !!window.config);
+        console.log('❌ window.MissWooApp:', !!window.MissWooApp);
+        
+        // Retry initialization after a delay
+        setTimeout(() => {
+          console.log('🔄 Retrying MissWooApp initialization...');
+          this.initializeApp();
+        }, 1000);
       }
     } catch (e) {
-      console.error('Failed to initialize MissWooApp:', e);
+      console.error('❌ Failed to initialize MissWooApp:', e);
+      
+      // Retry initialization after a delay
+      setTimeout(() => {
+        console.log('🔄 Retrying MissWooApp initialization after error...');
+        this.initializeApp();
+      }, 1000);
     }
   }
 
@@ -86,7 +111,7 @@ class MissiveJSBridge {
 
     // Core lifecycle
     Missive.on('ready', async () => {
-      this.setBadge('vJS3.37');
+      this.setBadge('vJS3.38');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -100,6 +125,8 @@ class MissiveJSBridge {
     // High-signal events - forward to app
     const forward = async (data) => {
       console.log('📧 Missive event received:', data);
+      console.log('📧 Current app state:', !!this.app);
+      
       // Wait for app to be available if it's not ready yet
       if (!this.app) {
         console.log('⏳ App not available yet, waiting...');
@@ -110,16 +137,31 @@ class MissiveJSBridge {
             console.log('✅ App is now available');
             break;
           }
+          if (i % 10 === 0) { // Log every second
+            console.log(`⏳ Still waiting for app... (${i/10}s)`);
+          }
         }
         if (!this.app) {
           console.log('❌ App still not available after waiting');
+          console.log('❌ Trying to reinitialize app...');
+          this.initializeApp();
           return;
         }
       }
       
-      const email = this.app.extractEmailFromData?.(data);
+      // Double-check that app methods are available
+      if (!this.app.extractEmailFromData || !this.app.isValidEmailForSearch || !this.app.performAutoSearch) {
+        console.log('❌ App methods not available:', {
+          extractEmailFromData: !!this.app.extractEmailFromData,
+          isValidEmailForSearch: !!this.app.isValidEmailForSearch,
+          performAutoSearch: !!this.app.performAutoSearch
+        });
+        return;
+      }
+      
+      const email = this.app.extractEmailFromData(data);
       console.log('📧 Extracted email:', email);
-      if (email && this.app.isValidEmailForSearch?.(email)) {
+      if (email && this.app.isValidEmailForSearch(email)) {
         console.log('🔍 Triggering auto-search for:', email);
         await this.app.performAutoSearch(email);
       } else {
