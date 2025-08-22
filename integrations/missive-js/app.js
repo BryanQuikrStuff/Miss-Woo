@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.36)
+// Missive JS API variant (vJS3.37)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,24 +11,27 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.36
-    this.setBadge('vJS3.36');
+    // Force version badge to vJS3.37
+    this.setBadge('vJS3.37');
 
-    // Initialize the full MissWooApp
+    // Initialize the full MissWooApp first
     this.initializeApp();
 
-    if (!window.Missive) {
-      // Wait for Missive script to be present
-      const check = setInterval(() => {
-        if (window.Missive) {
-          clearInterval(check);
-          this.bindMissiveEvents();
-        }
-      }, 200);
-      return;
-    }
+    // Wait a bit for the app to be fully initialized before binding events
+    setTimeout(() => {
+      if (!window.Missive) {
+        // Wait for Missive script to be present
+        const check = setInterval(() => {
+          if (window.Missive) {
+            clearInterval(check);
+            this.bindMissiveEvents();
+          }
+        }, 200);
+        return;
+      }
 
-    this.bindMissiveEvents();
+      this.bindMissiveEvents();
+    }, 500); // Wait 500ms for app initialization
   }
 
   setBadge(text) {
@@ -40,8 +43,8 @@ class MissiveJSBridge {
     try {
       if (window.config) {
         this.app = new MissWooApp(window.config);
-        // Override version badge to vJS3.36 once app updates header
-        setTimeout(() => this.setBadge('vJS3.36'), 300);
+        // Override version badge to vJS3.37 once app updates header
+        setTimeout(() => this.setBadge('vJS3.37'), 300);
         
         // Bind manual search events
         this.bindManualSearchEvents();
@@ -83,7 +86,7 @@ class MissiveJSBridge {
 
     // Core lifecycle
     Missive.on('ready', async () => {
-      this.setBadge('vJS3.36');
+      this.setBadge('vJS3.37');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -97,10 +100,23 @@ class MissiveJSBridge {
     // High-signal events - forward to app
     const forward = async (data) => {
       console.log('📧 Missive event received:', data);
+      // Wait for app to be available if it's not ready yet
       if (!this.app) {
-        console.log('❌ App not available for event');
-        return;
+        console.log('⏳ App not available yet, waiting...');
+        // Wait up to 5 seconds for app to be ready
+        for (let i = 0; i < 50; i++) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          if (this.app) {
+            console.log('✅ App is now available');
+            break;
+          }
+        }
+        if (!this.app) {
+          console.log('❌ App still not available after waiting');
+          return;
+        }
       }
+      
       const email = this.app.extractEmailFromData?.(data);
       console.log('📧 Extracted email:', email);
       if (email && this.app.isValidEmailForSearch?.(email)) {
