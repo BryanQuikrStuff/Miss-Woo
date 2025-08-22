@@ -1667,52 +1667,63 @@ class MissWooApp {
     
     this.preloadingInProgress = true;
     
+    // Add timeout to prevent getting stuck
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Preloading timeout")), 10000); // 10 second timeout
+    });
+    
     try {
-      console.log("🔄 Starting visible conversation preloading...");
-      
-      // Only set status if no search is in progress
-      if (!this.searchInProgress) {
-        this.setStatus("Preloading visible emails...");
-      }
-      
-      const conversations = await this.fetchVisibleConversations();
-      
-      if (!conversations || conversations.length === 0) {
-        // console.log("❌ No conversations found for preloading");
-        // Only set Ready status if no search is in progress
-        if (!this.searchInProgress) {
-          this.setStatus("Ready");
-        }
-        return;
-      }
-      
-      // Update visible conversation tracking
-      this.updateVisibleConversations(conversations);
-      
-      // Extract and preload emails
-      const emailsToPreload = this.extractEmailsFromConversations(conversations);
-      console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
-      
-      if (emailsToPreload.length === 0) {
-        // console.log("❌ No valid emails found in conversations");
-        // Only set Ready status if no search is in progress
-        if (!this.searchInProgress) {
-          this.setStatus("Ready");
-        }
-        return;
-      }
-      
-      // Preload data for each email
-      await this.preloadEmailsData(emailsToPreload);
-      
-      // Clean up archived conversations
-      this.cleanupArchivedConversations();
-      
-      console.log(`✅ Visible conversation preloading complete: ${emailsToPreload.length} emails preloaded`);
-      // Only set Ready status if no search is in progress
-      if (!this.searchInProgress) {
-        this.setStatus("Ready");
-      }
+      // Race between preloading and timeout
+      await Promise.race([
+        (async () => {
+          console.log("🔄 Starting visible conversation preloading...");
+          
+          // Only set status if no search is in progress
+          if (!this.searchInProgress) {
+            this.setStatus("Preloading visible emails...");
+          }
+          
+          const conversations = await this.fetchVisibleConversations();
+          
+          if (!conversations || conversations.length === 0) {
+            // console.log("❌ No conversations found for preloading");
+            // Only set Ready status if no search is in progress
+            if (!this.searchInProgress) {
+              this.setStatus("Ready");
+            }
+            return;
+          }
+          
+          // Update visible conversation tracking
+          this.updateVisibleConversations(conversations);
+          
+          // Extract and preload emails
+          const emailsToPreload = this.extractEmailsFromConversations(conversations);
+          console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
+          
+          if (emailsToPreload.length === 0) {
+            // console.log("❌ No valid emails found in conversations");
+            // Only set Ready status if no search is in progress
+            if (!this.searchInProgress) {
+              this.setStatus("Ready");
+            }
+            return;
+          }
+          
+          // Preload data for each email
+          await this.preloadEmailsData(emailsToPreload);
+          
+          // Clean up archived conversations
+          this.cleanupArchivedConversations();
+          
+          console.log(`✅ Visible conversation preloading complete: ${emailsToPreload.length} emails preloaded`);
+          // Only set Ready status if no search is in progress
+          if (!this.searchInProgress) {
+            this.setStatus("Ready");
+          }
+        })(),
+        timeoutPromise
+      ]);
       
     } catch (error) {
       console.error("❌ Visible conversation preloading failed:", error);
@@ -2028,12 +2039,23 @@ class MissWooApp {
   async initializePreloading() {
     if (this.isMissiveEnvironment) {
       console.log("🚀 Initializing Team Inbox preloading...");
-      // Wait a bit for Missive to be ready
+      // Set status to Ready immediately to prevent getting stuck
+      this.setStatus("Ready");
+      
+      // Wait a bit for Missive to be ready, then try preloading
       setTimeout(async () => {
-        await this.preloadVisibleConversations();
-        // Log preloading status after initialization
-        this.logPreloadingStatus();
+        try {
+          await this.preloadVisibleConversations();
+          // Log preloading status after initialization
+          this.logPreloadingStatus();
+        } catch (error) {
+          console.error("❌ Preloading failed, but app is ready:", error);
+          this.setStatus("Ready");
+        }
       }, 3000);
+    } else {
+      // Not in Missive environment, just set ready
+      this.setStatus("Ready");
     }
   }
 
