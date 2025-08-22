@@ -1263,6 +1263,12 @@ class MissWooApp {
       if (statusElement.className) {
         statusElement.className = `status ${type}`;
       }
+      
+      // Show the status message container if it exists
+      const statusMessageContainer = document.getElementById('statusMessage');
+      if (statusMessageContainer) {
+        statusMessageContainer.style.display = 'block';
+      }
     }
     console.log(`Status: ${message}`);
   }
@@ -1362,7 +1368,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.39' : 'vJS3.39 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.40' : 'vJS3.40 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
