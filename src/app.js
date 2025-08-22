@@ -1368,7 +1368,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.40' : 'vJS3.40 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.41' : 'vJS3.41 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2264,7 +2264,17 @@ try {
     throw new Error('Configuration not found. Make sure config.js is loaded before app.js');
   }
   
-  window.app = new MissWooApp(config);
+  // Check if we're in Missive environment and if Missive JS integration is present
+  const isMissiveEnvironment = window.Missive !== undefined;
+  const missiveJSIntegrationPresent = document.querySelector('script[src*="integrations/missive-js/app.js"]') !== null;
+  
+  if (isMissiveEnvironment && missiveJSIntegrationPresent) {
+    console.log("Missive environment detected with JS integration - skipping direct initialization");
+    console.log("MissiveJSBridge will handle app initialization");
+  } else {
+    console.log("Initializing MissWooApp directly (web mode or no JS integration)");
+    window.app = new MissWooApp(config);
+  }
   
   // Ensure loading state is cleared after initialization
   setTimeout(() => {
