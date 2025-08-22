@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.34)
+// Missive JS API variant (vJS3.35)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -11,8 +11,8 @@ class MissiveJSBridge {
   }
 
   init() {
-    // Force version badge to vJS3.34
-    this.setBadge('vJS3.34');
+    // Force version badge to vJS3.35
+    this.setBadge('vJS3.35');
 
     // Initialize the full MissWooApp
     this.initializeApp();
@@ -40,8 +40,8 @@ class MissiveJSBridge {
     try {
       if (window.config) {
         this.app = new MissWooApp(window.config);
-        // Override version badge to vJS3.32 once app updates header
-        setTimeout(() => this.setBadge('vJS3.32'), 300);
+        // Override version badge to vJS3.35 once app updates header
+        setTimeout(() => this.setBadge('vJS3.35'), 300);
       }
     } catch (e) {
       console.error('Failed to initialize MissWooApp:', e);
@@ -54,7 +54,7 @@ class MissiveJSBridge {
 
     // Core lifecycle
     Missive.on('ready', async () => {
-      this.setBadge('vJS3.32');
+      this.setBadge('vJS3.35');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();

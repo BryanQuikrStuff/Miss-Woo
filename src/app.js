@@ -143,8 +143,9 @@ class MissWooApp {
       // Always attempt URL-driven auto-search (works in web and Missive)
       this.maybeAutoSearchFromUrl();
       this.setupCleanup(); // Setup proper cleanup
-      // Initialize dynamic preloading for Team Inboxes
-      await this.initializePreloading();
+      // Initialize dynamic preloading for Team Inboxes - DISABLED in vJS3.35
+      // await this.initializePreloading();
+      this.setStatus("Ready"); // Set Ready immediately
       // Only test connection if not in Missive environment
       if (!this.isMissiveEnvironment) {
         await this.testConnection();
@@ -1361,7 +1362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.34' : 'vJS3.34 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.35' : 'vJS3.35 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
