@@ -11,27 +11,53 @@ class MissiveJSBridge {
   }
 
   init() {
+    console.log('🚀 Initializing MissiveJSBridge...');
+    
     // Force version badge to vJS3.43
     this.setBadge('vJS3.43');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
 
-    // Wait a bit for the app to be fully initialized before binding events
-    setTimeout(() => {
+    // Enhanced initialization with better error handling
+    const initializeMissive = () => {
+      console.log('🔧 Checking for Missive API...');
+      console.log('🔧 window.Missive available:', !!window.Missive);
+      
       if (!window.Missive) {
-        // Wait for Missive script to be present
-        const check = setInterval(() => {
-          if (window.Missive) {
-            clearInterval(check);
-            this.bindMissiveEvents();
-          }
-        }, 200);
-        return;
+        console.log('⏳ Missive API not available yet, waiting...');
+        return false;
       }
 
+      console.log('✅ Missive API detected, binding events...');
       this.bindMissiveEvents();
-    }, 500); // Wait 500ms for app initialization
+      return true;
+    };
+
+    // Try immediate initialization
+    if (!initializeMissive()) {
+      // Wait for Missive script to be present with timeout
+      let attempts = 0;
+      const maxAttempts = 25; // 5 seconds total
+      
+      const checkInterval = setInterval(() => {
+        attempts++;
+        console.log(`🔧 Attempt ${attempts}/${maxAttempts} to find Missive API...`);
+        
+        if (initializeMissive()) {
+          clearInterval(checkInterval);
+        } else if (attempts >= maxAttempts) {
+          console.error('❌ Missive API not found after 5 seconds');
+          clearInterval(checkInterval);
+          
+          // Fallback: try to bind events anyway in case Missive loads later
+          setTimeout(() => {
+            console.log('🔄 Fallback: Attempting to bind events...');
+            this.bindMissiveEvents();
+          }, 2000);
+        }
+      }, 200);
+    }
   }
 
   setBadge(text) {
@@ -103,29 +129,71 @@ class MissiveJSBridge {
         }
       };
     }
+
+    // Add debug methods to window for testing
+    window.MissWooDebug = {
+      triggerTestSearch: (email) => {
+        console.log('🧪 Debug: Triggering test search for:', email);
+        if (this.app && this.app.performAutoSearch) {
+          this.app.performAutoSearch(email);
+        } else {
+          console.error('❌ App not available for test search');
+        }
+      },
+      checkMissiveAPI: () => {
+        console.log('🧪 Debug: Missive API status:', {
+          available: !!window.Missive,
+          ready: this.isReady,
+          app: !!this.app
+        });
+        return {
+          missiveAvailable: !!window.Missive,
+          bridgeReady: this.isReady,
+          appAvailable: !!this.app
+        };
+      },
+      forceEventTest: () => {
+        console.log('🧪 Debug: Testing event handling...');
+        if (this.app && this.app.performAutoSearch) {
+          // Simulate an email event
+          const testData = {
+            email: 'test@example.com',
+            from: { email: 'test@example.com', name: 'Test User' }
+          };
+          console.log('🧪 Simulating email event with:', testData);
+          this.app.performAutoSearch('test@example.com');
+        }
+      }
+    };
+
+    console.log('🧪 Debug methods available: window.MissWooDebug');
   }
 
   bindMissiveEvents() {
     if (this.isReady) return;
     this.isReady = true;
 
+    console.log('🔧 Setting up Missive event listeners...');
+
     // Core lifecycle
     Missive.on('ready', async () => {
-      this.setBadge('vJS3.38');
+      console.log('✅ Missive ready event received');
+      this.setBadge('vJS3.43');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
     });
 
     Missive.on('error', (err) => {
+      console.error('❌ Missive error event:', err);
       if (this.app?.setStatus) this.app.setStatus('Missive error', 'error');
-      console.error('Missive error:', err);
     });
 
-    // High-signal events - forward to app
-    const forward = async (data) => {
-      console.log('📧 Missive event received:', data);
+    // Enhanced event forwarding with better debugging
+    const forward = async (eventType, data) => {
+      console.log(`📧 Missive ${eventType} event received:`, data);
       console.log('📧 Current app state:', !!this.app);
+      console.log('📧 Window.Missive available:', !!window.Missive);
       
       // Wait for app to be available if it's not ready yet
       if (!this.app) {
@@ -163,18 +231,35 @@ class MissiveJSBridge {
       console.log('📧 Extracted email:', email);
       if (email && this.app.isValidEmailForSearch(email)) {
         console.log('🔍 Triggering auto-search for:', email);
-        await this.app.performAutoSearch(email);
+        try {
+          await this.app.performAutoSearch(email);
+          console.log('✅ Auto-search completed for:', email);
+        } catch (error) {
+          console.error('❌ Auto-search failed:', error);
+          if (this.app?.setStatus) this.app.setStatus('Auto-search failed', 'error');
+        }
       } else {
         console.log('❌ Invalid email or not valid for search:', email);
+        if (this.app?.setStatus) this.app.setStatus('No valid email found', 'error');
       }
     };
 
-    Missive.on('email:focus', forward);
-    Missive.on('email:open', forward);
-    Missive.on('thread:focus', forward);
-    Missive.on('conversation:focus', forward);
-    Missive.on('conversation:open', forward);
-    Missive.on('change:conversations', forward);
+    // Bind events with enhanced debugging
+    const events = [
+      'email:focus',
+      'email:open', 
+      'thread:focus',
+      'conversation:focus',
+      'conversation:open',
+      'change:conversations'
+    ];
+
+    events.forEach(eventType => {
+      console.log(`🔧 Binding ${eventType} event listener`);
+      Missive.on(eventType, (data) => forward(eventType, data));
+    });
+
+    console.log('✅ All Missive event listeners bound');
   }
 
   async tryPrimeEmail() {
