@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.46)
+// Missive JS API variant (vJS3.47)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.46 immediately
-    this.setBadge('vJS3.46');
-    console.log('🔧 Set initial version badge to vJS3.46');
+    // Force version badge to vJS3.47 immediately
+    this.setBadge('vJS3.47');
+    console.log('🔧 Set initial version badge to vJS3.47');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -82,12 +82,12 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.46 once app updates header
-        setTimeout(() => this.setBadge('vJS3.46'), 300);
+        // Override version badge to vJS3.47 once app updates header
+        setTimeout(() => this.setBadge('vJS3.47'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.46'), 1000);
-        setTimeout(() => this.setBadge('vJS3.46'), 2000);
+        setTimeout(() => this.setBadge('vJS3.47'), 1000);
+        setTimeout(() => this.setBadge('vJS3.47'), 2000);
         
         // Bind manual search events
         this.bindManualSearchEvents();
@@ -197,6 +197,37 @@ class MissiveJSBridge {
         } else {
           console.error('❌ Missive.getCurrentConversation not available');
         }
+      },
+      testCurrentEmail: async () => {
+        console.log('🧪 Debug: Testing email extraction with current conversation...');
+        try {
+          const conv = await this.getCurrentConversation();
+          if (conv) {
+            const email = this.testEmailExtraction(conv);
+            console.log('🧪 Final extracted email:', email);
+            return email;
+          }
+        } catch (error) {
+          console.error('❌ Error in testCurrentEmail:', error);
+        }
+        return null;
+      },
+      testAllEvents: () => {
+        console.log('🧪 Debug: Testing all Missive events...');
+        const events = ['email:focus', 'email:open', 'thread:focus', 'conversation:focus', 'conversation:open', 'change:conversations'];
+        events.forEach(event => {
+          console.log(`🧪 ${event} handler registered:`, typeof window.Missive?.on === 'function');
+        });
+        return events;
+      },
+      simulateEmailEvent: (email) => {
+        console.log('🧪 Debug: Simulating email event with:', email);
+        if (this.app && this.app.performAutoSearch) {
+          this.app.performAutoSearch(email);
+          console.log('🧪 Simulated search triggered for:', email);
+        } else {
+          console.error('❌ App not available for simulation');
+        }
       }
     };
 
@@ -212,7 +243,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.46');
+      this.setBadge('vJS3.47');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
