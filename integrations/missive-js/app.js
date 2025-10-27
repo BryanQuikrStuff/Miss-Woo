@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.49)
+// Missive JS API variant (vJS3.50)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.49 immediately
-    this.setBadge('vJS3.49');
-    console.log('🔧 Set initial version badge to vJS3.49');
+    // Force version badge to vJS3.50 immediately
+    this.setBadge('vJS3.50');
+    console.log('🔧 Set initial version badge to vJS3.50');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -66,8 +66,12 @@ class MissiveJSBridge {
     if (el) {
       el.textContent = text;
       console.log(`🔧 Version badge set to: ${text}`);
+      console.log(`🔧 Version badge element found:`, el);
+      console.log(`🔧 Version badge current text:`, el.textContent);
     } else {
       console.log('❌ Version badge element not found');
+      console.log('❌ Available elements with "version":', document.querySelectorAll('[class*="version"]'));
+      console.log('❌ Available elements with "badge":', document.querySelectorAll('[class*="badge"]'));
     }
   }
 
@@ -82,12 +86,24 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.49 once app updates header
-        setTimeout(() => this.setBadge('vJS3.49'), 300);
+        // Override version badge to vJS3.50 once app updates header
+        setTimeout(() => this.setBadge('vJS3.50'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.49'), 1000);
-        setTimeout(() => this.setBadge('vJS3.49'), 2000);
+        setTimeout(() => this.setBadge('vJS3.50'), 1000);
+        setTimeout(() => this.setBadge('vJS3.50'), 2000);
+        setTimeout(() => this.setBadge('vJS3.50'), 3000);
+        setTimeout(() => this.setBadge('vJS3.50'), 5000);
+        
+        // Override MissWooApp's version setting by patching the method
+        if (this.app && this.app.updateHeaderWithVersion) {
+          const originalUpdateHeader = this.app.updateHeaderWithVersion.bind(this.app);
+          this.app.updateHeaderWithVersion = () => {
+            originalUpdateHeader();
+            // Force our version after the app updates it
+            setTimeout(() => this.setBadge('vJS3.50'), 100);
+          };
+        }
         
         // Bind manual search events
         this.bindManualSearchEvents();
@@ -260,6 +276,27 @@ class MissiveJSBridge {
           getCurrentConversation: typeof window.Missive?.getCurrentConversation,
           fetchMessages: typeof window.Missive?.fetchMessages
         };
+      },
+      checkVersionBadge: () => {
+        console.log('🧪 Debug: Checking version badge status...');
+        const el = document.querySelector('.version-badge');
+        console.log('🧪 Version badge element:', el);
+        console.log('🧪 Version badge text:', el?.textContent);
+        console.log('🧪 Version badge classes:', el?.className);
+        console.log('🧪 All version elements:', document.querySelectorAll('[class*="version"]'));
+        console.log('🧪 All badge elements:', document.querySelectorAll('[class*="badge"]'));
+        
+        // Try to force set the version
+        if (el) {
+          el.textContent = 'vJS3.50';
+          console.log('🧪 Forced version badge to vJS3.50');
+        }
+        
+        return {
+          element: el,
+          text: el?.textContent,
+          found: !!el
+        };
       }
     };
 
@@ -275,7 +312,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.49');
+      this.setBadge('vJS3.50');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
