@@ -217,7 +217,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS3.52';
+    return 'vJS3.53';
   }
 
   async loadVersionFromManifest() {
@@ -1498,7 +1498,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.52' : 'vJS3.52 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.53' : 'vJS3.53 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1709,17 +1709,20 @@ class MissWooApp {
       }
     }
 
-    // Final fallback: search through all string properties for email patterns
-    console.log("🔍 Final fallback: searching all string properties for emails...");
-    for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'string' && value.includes('@')) {
-        console.log(`🔍 Found string with @ in data.${key}:`, value);
-        const email = this.extractEmailFromString(value);
-        if (email && this.isValidEmailForSearch(email)) {
-          console.log(`✅ Found valid email in data.${key}:`, email);
+    // Enhanced final fallback: search through ALL properties recursively for email patterns
+    console.log("🔍 Enhanced final fallback: searching ALL properties recursively for emails...");
+    const foundEmails = this.searchForEmailsRecursively(data, 'data');
+    
+    if (foundEmails.length > 0) {
+      console.log("🔍 Found emails in data:", foundEmails);
+      // Return the first valid email
+      for (const email of foundEmails) {
+        if (this.isValidEmailForSearch(email)) {
+          console.log(`✅ Found valid email:`, email);
           return email;
         }
       }
+      console.log("❌ Found emails but none are valid for search:", foundEmails);
     }
     
     console.log("❌ No email found in data structure");
@@ -1766,6 +1769,62 @@ class MissWooApp {
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  }
+
+  searchForEmailsRecursively(obj, path = 'root', maxDepth = 5, currentDepth = 0) {
+    const emails = [];
+    
+    if (currentDepth >= maxDepth) {
+      console.log(`🔍 Max depth reached at ${path}`);
+      return emails;
+    }
+    
+    if (!obj || typeof obj !== 'object') {
+      return emails;
+    }
+    
+    try {
+      for (const [key, value] of Object.entries(obj)) {
+        const currentPath = `${path}.${key}`;
+        
+        if (typeof value === 'string') {
+          // Check if string contains @ symbol
+          if (value.includes('@')) {
+            console.log(`🔍 Found string with @ in ${currentPath}:`, value);
+            const extractedEmails = this.extractAllEmailsFromString(value);
+            emails.push(...extractedEmails);
+            console.log(`🔍 Extracted emails from ${currentPath}:`, extractedEmails);
+          }
+        } else if (Array.isArray(value)) {
+          // Recursively search array items
+          for (let i = 0; i < value.length; i++) {
+            const arrayEmails = this.searchForEmailsRecursively(value[i], `${currentPath}[${i}]`, maxDepth, currentDepth + 1);
+            emails.push(...arrayEmails);
+          }
+        } else if (value && typeof value === 'object') {
+          // Recursively search object properties
+          const objectEmails = this.searchForEmailsRecursively(value, currentPath, maxDepth, currentDepth + 1);
+          emails.push(...objectEmails);
+        }
+      }
+    } catch (error) {
+      console.log(`🔍 Error searching ${path}:`, error.message);
+    }
+    
+    return emails;
+  }
+
+  extractAllEmailsFromString(text) {
+    if (!text) return [];
+    
+    // More comprehensive email regex that handles various formats
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+    const matches = text.match(emailRegex);
+    
+    if (!matches || matches.length === 0) return [];
+    
+    // Return all found emails
+    return matches;
   }
 
   extractEmailFromString(text) {
