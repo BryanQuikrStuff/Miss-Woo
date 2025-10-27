@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.47)
+// Missive JS API variant (vJS3.48)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.47 immediately
-    this.setBadge('vJS3.47');
-    console.log('🔧 Set initial version badge to vJS3.47');
+    // Force version badge to vJS3.48 immediately
+    this.setBadge('vJS3.48');
+    console.log('🔧 Set initial version badge to vJS3.48');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -82,12 +82,12 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.47 once app updates header
-        setTimeout(() => this.setBadge('vJS3.47'), 300);
+        // Override version badge to vJS3.48 once app updates header
+        setTimeout(() => this.setBadge('vJS3.48'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.47'), 1000);
-        setTimeout(() => this.setBadge('vJS3.47'), 2000);
+        setTimeout(() => this.setBadge('vJS3.48'), 1000);
+        setTimeout(() => this.setBadge('vJS3.48'), 2000);
         
         // Bind manual search events
         this.bindManualSearchEvents();
@@ -243,7 +243,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.47');
+      this.setBadge('vJS3.48');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -294,20 +294,53 @@ class MissiveJSBridge {
         return;
       }
       
-      const email = this.app.extractEmailFromData(data);
-      console.log('📧 Extracted email:', email);
-      if (email && this.app.isValidEmailForSearch(email)) {
-        console.log('🔍 Triggering auto-search for:', email);
+      // Handle conversation IDs array - fetch actual conversation data
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
+        console.log('📧 Received conversation IDs array, fetching conversation data...');
         try {
-          await this.app.performAutoSearch(email);
-          console.log('✅ Auto-search completed for:', email);
+          const conversationId = data[0];
+          console.log('📧 Fetching conversation:', conversationId);
+          
+          if (window.Missive && window.Missive.getCurrentConversation) {
+            const conversation = await window.Missive.getCurrentConversation();
+            console.log('📧 Fetched conversation data:', conversation);
+            
+            const email = this.app.extractEmailFromData(conversation);
+            console.log('📧 Extracted email from conversation:', email);
+            
+            if (email && this.app.isValidEmailForSearch(email)) {
+              console.log('🔍 Triggering auto-search for:', email);
+              await this.app.performAutoSearch(email);
+              console.log('✅ Auto-search completed for:', email);
+            } else {
+              console.log('❌ No valid email found in conversation data');
+              if (this.app?.setStatus) this.app.setStatus('No valid email found');
+            }
+          } else {
+            console.log('❌ Missive.getCurrentConversation not available');
+            if (this.app?.setStatus) this.app.setStatus('Missive API not available');
+          }
         } catch (error) {
-          console.error('❌ Auto-search failed:', error);
-          if (this.app?.setStatus) this.app.setStatus('Auto-search failed', 'error');
+          console.error('❌ Error fetching conversation data:', error);
+          if (this.app?.setStatus) this.app.setStatus('Error fetching conversation', 'error');
         }
       } else {
-        console.log('❌ Invalid email or not valid for search:', email);
-        if (this.app?.setStatus) this.app.setStatus('No valid email found', 'error');
+        // Handle direct conversation data
+        const email = this.app.extractEmailFromData(data);
+        console.log('📧 Extracted email:', email);
+        if (email && this.app.isValidEmailForSearch(email)) {
+          console.log('🔍 Triggering auto-search for:', email);
+          try {
+            await this.app.performAutoSearch(email);
+            console.log('✅ Auto-search completed for:', email);
+          } catch (error) {
+            console.error('❌ Auto-search failed:', error);
+            if (this.app?.setStatus) this.app.setStatus('Auto-search failed', 'error');
+          }
+        } else {
+          console.log('❌ Invalid email or not valid for search:', email);
+          if (this.app?.setStatus) this.app.setStatus('No valid email found', 'error');
+        }
       }
     };
 
