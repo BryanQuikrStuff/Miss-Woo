@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.54)
+// Missive JS API variant (vJS3.56)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -387,6 +387,59 @@ class MissiveJSBridge {
           console.error('❌ App not available for email extraction test');
           return { error: 'App not available' };
         }
+      },
+      captureMissiveData: async () => {
+        console.log('🧪 Debug: Capturing ALL Missive data structures...');
+        const results = {};
+        
+        if (!window.Missive) {
+          console.log('❌ window.Missive not available');
+          return { error: 'window.Missive not available' };
+        }
+        
+        try {
+          // Get current conversation
+          if (window.Missive.getCurrentConversation) {
+            console.log('📧 Getting current conversation...');
+            results.currentConversation = await window.Missive.getCurrentConversation();
+            console.log('📧 Current conversation structure:', JSON.stringify(results.currentConversation, null, 2));
+          }
+          
+          // Get current user
+          if (window.Missive.getCurrentUser) {
+            console.log('👤 Getting current user...');
+            results.currentUser = await window.Missive.getCurrentUser();
+            console.log('👤 Current user structure:', JSON.stringify(results.currentUser, null, 2));
+          }
+          
+          // Get users
+          if (window.Missive.getUsers) {
+            console.log('👥 Getting users...');
+            results.users = await window.Missive.getUsers();
+            console.log('👥 Users structure:', JSON.stringify(results.users, null, 2));
+          }
+          
+          // Get teams
+          if (window.Missive.getTeams) {
+            console.log('🏢 Getting teams...');
+            results.teams = await window.Missive.getTeams();
+            console.log('🏢 Teams structure:', JSON.stringify(results.teams, null, 2));
+          }
+          
+          // Get channels
+          if (window.Missive.getChannels) {
+            console.log('📺 Getting channels...');
+            results.channels = await window.Missive.getChannels();
+            console.log('📺 Channels structure:', JSON.stringify(results.channels, null, 2));
+          }
+          
+          console.log('🧪 Complete Missive data capture:', results);
+          return results;
+          
+        } catch (error) {
+          console.error('❌ Error capturing Missive data:', error);
+          return { error: error.message };
+        }
       }
     };
 
@@ -500,6 +553,7 @@ class MissiveJSBridge {
                   // Fix: fetchMessages expects an array, not a single ID
                   const messages = await window.Missive.fetchMessages([conversationId]);
                   console.log('📧 Fetched messages data:', messages);
+                  console.log('📧 Messages structure:', JSON.stringify(messages, null, 2));
                   
                   const email = this.app.extractEmailFromData(messages);
                   console.log('📧 Extracted email from messages:', email);
@@ -535,6 +589,7 @@ class MissiveJSBridge {
                 // Fix: fetchMessages expects an array, not a single ID
                 const messages = await window.Missive.fetchMessages([conversationId]);
                 console.log('📧 Fetched messages via fetchMessages:', messages);
+                console.log('📧 Messages structure:', JSON.stringify(messages, null, 2));
                 
                 const email = this.app.extractEmailFromData(messages);
                 console.log('📧 Extracted email from messages:', email);

@@ -217,7 +217,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS3.54';
+    return 'vJS3.56';
   }
 
   async loadVersionFromManifest() {
@@ -1498,7 +1498,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.54' : 'vJS3.54 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.56' : 'vJS3.56 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1534,7 +1534,8 @@ class MissWooApp {
 
     // Handle arrays - if we receive an array of IDs, we can't extract email directly
     if (Array.isArray(data)) {
-      // console.log("🔍 Received array of data, cannot extract email directly from array");
+      console.log("🔍 Received array of data, cannot extract email directly from array");
+      console.log("🔍 Array contents:", data);
       return null;
     }
 
