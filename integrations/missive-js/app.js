@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.50)
+// Missive JS API variant (vJS3.51)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.50 immediately
-    this.setBadge('vJS3.50');
-    console.log('🔧 Set initial version badge to vJS3.50');
+    // Force version badge to vJS3.51 immediately
+    this.setBadge('vJS3.51');
+    console.log('🔧 Set initial version badge to vJS3.51');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -86,14 +86,14 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.50 once app updates header
-        setTimeout(() => this.setBadge('vJS3.50'), 300);
+        // Override version badge to vJS3.51 once app updates header
+        setTimeout(() => this.setBadge('vJS3.51'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.50'), 1000);
-        setTimeout(() => this.setBadge('vJS3.50'), 2000);
-        setTimeout(() => this.setBadge('vJS3.50'), 3000);
-        setTimeout(() => this.setBadge('vJS3.50'), 5000);
+        setTimeout(() => this.setBadge('vJS3.51'), 1000);
+        setTimeout(() => this.setBadge('vJS3.51'), 2000);
+        setTimeout(() => this.setBadge('vJS3.51'), 3000);
+        setTimeout(() => this.setBadge('vJS3.51'), 5000);
         
         // Override MissWooApp's version setting by patching the method
         if (this.app && this.app.updateHeaderWithVersion) {
@@ -101,7 +101,7 @@ class MissiveJSBridge {
           this.app.updateHeaderWithVersion = () => {
             originalUpdateHeader();
             // Force our version after the app updates it
-            setTimeout(() => this.setBadge('vJS3.50'), 100);
+            setTimeout(() => this.setBadge('vJS3.51'), 100);
           };
         }
         
@@ -288,8 +288,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS3.50';
-          console.log('🧪 Forced version badge to vJS3.50');
+          el.textContent = 'vJS3.51';
+          console.log('🧪 Forced version badge to vJS3.51');
         }
         
         return {
@@ -297,6 +297,56 @@ class MissiveJSBridge {
           text: el?.textContent,
           found: !!el
         };
+      },
+      testAllMissiveMethods: async () => {
+        console.log('🧪 Debug: Testing all available Missive API methods...');
+        const results = {};
+        
+        if (!window.Missive) {
+          console.log('❌ window.Missive not available');
+          return { error: 'window.Missive not available' };
+        }
+        
+        const methods = [
+          'getCurrentConversation',
+          'fetchMessages', 
+          'on',
+          'off',
+          'ready',
+          'getConversation',
+          'getConversations',
+          'getCurrentUser',
+          'getUsers',
+          'getTeams',
+          'getChannels'
+        ];
+        
+        for (const method of methods) {
+          try {
+            console.log(`🧪 Testing ${method}...`);
+            const methodExists = typeof window.Missive[method] === 'function';
+            results[method] = { exists: methodExists, type: typeof window.Missive[method] };
+            
+            if (methodExists) {
+              // Try to call the method (for methods that don't require parameters)
+              if (['getCurrentConversation', 'getCurrentUser', 'getUsers', 'getTeams', 'getChannels'].includes(method)) {
+                try {
+                  const result = await window.Missive[method]();
+                  results[method].result = result;
+                  console.log(`✅ ${method} result:`, result);
+                } catch (err) {
+                  results[method].error = err.message;
+                  console.log(`❌ ${method} error:`, err.message);
+                }
+              }
+            }
+          } catch (err) {
+            results[method] = { exists: false, error: err.message };
+          }
+        }
+        
+        console.log('🧪 All method test results:', results);
+        return results;
       }
     };
 
@@ -312,7 +362,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.50');
+      this.setBadge('vJS3.51');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -423,7 +473,36 @@ class MissiveJSBridge {
           } else {
             console.log('❌ Missive.getCurrentConversation not available');
             console.log('❌ Available Missive methods:', Object.keys(window.Missive || {}));
-            if (this.app?.setStatus) this.app.setStatus('Missive API not available');
+            
+            // Try alternative approaches to get conversation data
+            console.log('🔄 Trying alternative approaches...');
+            
+            // Try to get conversation data from the conversation ID directly
+            if (window.Missive && window.Missive.fetchMessages) {
+              console.log('🔄 Trying fetchMessages with conversation ID...');
+              try {
+                const messages = await window.Missive.fetchMessages(conversationId);
+                console.log('📧 Fetched messages via fetchMessages:', messages);
+                
+                const email = this.app.extractEmailFromData(messages);
+                console.log('📧 Extracted email from messages:', email);
+                
+                if (email && this.app.isValidEmailForSearch(email)) {
+                  console.log('🔍 Triggering auto-search for:', email);
+                  await this.app.performAutoSearch(email);
+                  console.log('✅ Auto-search completed for:', email);
+                } else {
+                  console.log('❌ No valid email found in messages data');
+                  if (this.app?.setStatus) this.app.setStatus('No valid email found');
+                }
+              } catch (fetchError) {
+                console.error('❌ Error with fetchMessages:', fetchError);
+                if (this.app?.setStatus) this.app.setStatus('Error fetching messages', 'error');
+              }
+            } else {
+              console.log('❌ No alternative methods available');
+              if (this.app?.setStatus) this.app.setStatus('Missive API methods not available');
+            }
           }
         } catch (error) {
           console.error('❌ Error fetching conversation data:', error);
