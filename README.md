@@ -1,4 +1,9 @@
 
+# Miss-Woo Integration
+
+**Version**: vJS3.56  
+**Status**: Active Development  
+**Last Updated**: January 2025
 
 Use this as the Integration URL in Missive to validate dynamic email access before wiring into the main app.
 
@@ -125,7 +130,26 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### v2.0 (Current)
+### vJS3.56 (Current)
+- ✅ Enhanced debugging for Missive API data structures
+- ✅ Added comprehensive JSON logging for fetchMessages responses
+- ✅ Improved array handling for conversation IDs
+- ✅ Added captureMissiveData() debug method
+- ✅ Fixed version badge display in Missive integration
+
+### vJS3.55
+- ✅ Added Missive-specific email extraction based on official API documentation
+- ✅ Implemented from_field.address and to_fields[].address handling
+- ✅ Enhanced recursive email search with comprehensive debugging
+- ✅ Added testEmailExtractionWithData() debug method
+
+### vJS3.54
+- ✅ Enhanced email extraction with recursive search
+- ✅ Added searchForEmailsRecursively() method
+- ✅ Improved email detection in nested objects and arrays
+- ✅ Added extractAllEmailsFromString() method
+
+### v2.0
 - ✅ Fixed GitHub Pages deployment paths
 - ✅ Improved Missive environment detection
 - ✅ Added aggressive loading state clearing
