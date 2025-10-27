@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS3.56  
+**Version**: vJS3.58  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,12 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS3.56 (Current)
-- ✅ Enhanced debugging for Missive API data structures
-- ✅ Added comprehensive JSON logging for fetchMessages responses
-- ✅ Improved array handling for conversation IDs
-- ✅ Added captureMissiveData() debug method
-- ✅ Fixed version badge display in Missive integration
+### vJS3.58 (Current)
+- ✅ Updated to use correct Missive JavaScript API methods
+- ✅ Changed primary method from fetchMessages to fetchConversations
+- ✅ Enhanced conversation data extraction with proper API structure
+- ✅ Improved error handling and fallback mechanisms
+- ✅ Updated version numbers across all files and locations
 
 ### vJS3.55
 - ✅ Added Missive-specific email extraction based on official API documentation
