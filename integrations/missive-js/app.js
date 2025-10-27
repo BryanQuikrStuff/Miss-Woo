@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.56)
+// Missive JS API variant (vJS3.57)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -444,6 +444,11 @@ class MissiveJSBridge {
     };
 
     console.log('🧪 Debug methods available: window.MissWooDebug');
+    
+    // Ensure debug methods are available globally
+    if (!window.MissWooDebug) {
+      window.MissWooDebug = this.debugMethods;
+    }
   }
 
   bindMissiveEvents() {
@@ -590,6 +595,49 @@ class MissiveJSBridge {
                 const messages = await window.Missive.fetchMessages([conversationId]);
                 console.log('📧 Fetched messages via fetchMessages:', messages);
                 console.log('📧 Messages structure:', JSON.stringify(messages, null, 2));
+                
+                // Check if messages is null or empty
+                if (!messages || messages.length === 0 || messages[0] === null) {
+                  console.log('❌ fetchMessages returned null or empty data');
+                  console.log('🔍 Trying alternative API methods...');
+                  
+                  // Try other available methods
+                  const availableMethods = Object.keys(window.Missive || {});
+                  console.log('🔍 Available methods:', availableMethods);
+                  
+                  // Try getCurrentUser to see if we can get user context
+                  if (window.Missive.getCurrentUser) {
+                    try {
+                      const currentUser = await window.Missive.getCurrentUser();
+                      console.log('👤 Current user:', currentUser);
+                    } catch (err) {
+                      console.log('❌ getCurrentUser failed:', err);
+                    }
+                  }
+                  
+                  // Try other methods that might give us conversation data
+                  if (window.Missive.getConversations) {
+                    try {
+                      console.log('🔄 Trying getConversations...');
+                      const conversations = await window.Missive.getConversations();
+                      console.log('📧 getConversations result:', conversations);
+                    } catch (err) {
+                      console.log('❌ getConversations failed:', err);
+                    }
+                  }
+                  
+                  if (window.Missive.getChannels) {
+                    try {
+                      console.log('🔄 Trying getChannels...');
+                      const channels = await window.Missive.getChannels();
+                      console.log('📧 getChannels result:', channels);
+                    } catch (err) {
+                      console.log('❌ getChannels failed:', err);
+                    }
+                  }
+                  
+                  return;
+                }
                 
                 const email = this.app.extractEmailFromData(messages);
                 console.log('📧 Extracted email from messages:', email);
