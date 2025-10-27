@@ -217,7 +217,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS3.44';
+    return 'vJS3.45';
   }
 
   async loadVersionFromManifest() {
@@ -398,6 +398,9 @@ class MissWooApp {
             } else {
                 await this.searchOrdersByEmail(searchTerm);
             }
+            
+            // Display the results after search completes
+            await this.displayOrdersList();
         } catch (error) {
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
@@ -1495,7 +1498,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.44' : 'vJS3.44 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.45' : 'vJS3.45 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
