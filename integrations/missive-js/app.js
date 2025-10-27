@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.51)
+// Missive JS API variant (vJS3.52)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.51 immediately
-    this.setBadge('vJS3.51');
-    console.log('🔧 Set initial version badge to vJS3.51');
+    // Force version badge to vJS3.52 immediately
+    this.setBadge('vJS3.52');
+    console.log('🔧 Set initial version badge to vJS3.52');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -86,14 +86,14 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.51 once app updates header
-        setTimeout(() => this.setBadge('vJS3.51'), 300);
+        // Override version badge to vJS3.52 once app updates header
+        setTimeout(() => this.setBadge('vJS3.52'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.51'), 1000);
-        setTimeout(() => this.setBadge('vJS3.51'), 2000);
-        setTimeout(() => this.setBadge('vJS3.51'), 3000);
-        setTimeout(() => this.setBadge('vJS3.51'), 5000);
+        setTimeout(() => this.setBadge('vJS3.52'), 1000);
+        setTimeout(() => this.setBadge('vJS3.52'), 2000);
+        setTimeout(() => this.setBadge('vJS3.52'), 3000);
+        setTimeout(() => this.setBadge('vJS3.52'), 5000);
         
         // Override MissWooApp's version setting by patching the method
         if (this.app && this.app.updateHeaderWithVersion) {
@@ -101,7 +101,7 @@ class MissiveJSBridge {
           this.app.updateHeaderWithVersion = () => {
             originalUpdateHeader();
             // Force our version after the app updates it
-            setTimeout(() => this.setBadge('vJS3.51'), 100);
+            setTimeout(() => this.setBadge('vJS3.52'), 100);
           };
         }
         
@@ -288,8 +288,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS3.51';
-          console.log('🧪 Forced version badge to vJS3.51');
+          el.textContent = 'vJS3.52';
+          console.log('🧪 Forced version badge to vJS3.52');
         }
         
         return {
@@ -338,6 +338,26 @@ class MissiveJSBridge {
                   results[method].error = err.message;
                   console.log(`❌ ${method} error:`, err.message);
                 }
+              } else if (method === 'fetchConversations') {
+                // Test fetchConversations with correct array parameter
+                try {
+                  const result = await window.Missive.fetchConversations(['test-id']);
+                  results[method].result = result;
+                  console.log(`✅ ${method} result:`, result);
+                } catch (err) {
+                  results[method].error = err.message;
+                  console.log(`❌ ${method} error:`, err.message);
+                }
+              } else if (method === 'fetchMessages') {
+                // Test fetchMessages with correct array parameter
+                try {
+                  const result = await window.Missive.fetchMessages(['test-conversation-id']);
+                  results[method].result = result;
+                  console.log(`✅ ${method} result:`, result);
+                } catch (err) {
+                  results[method].error = err.message;
+                  console.log(`❌ ${method} error:`, err.message);
+                }
               }
             }
           } catch (err) {
@@ -362,11 +382,21 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.51');
+      this.setBadge('vJS3.52');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
     });
+
+    // Fallback: If ready event doesn't fire (as mentioned in documentation), try after a delay
+    setTimeout(async () => {
+      if (!this.isReady) {
+        console.log('🔄 Missive ready event not received, trying fallback initialization...');
+        this.setBadge('vJS3.52');
+        if (this.app?.setStatus) this.app.setStatus('Ready (fallback)');
+        await this.tryPrimeEmail();
+      }
+    }, 2000);
 
     Missive.on('error', (err) => {
       console.error('❌ Missive error event:', err);
@@ -447,7 +477,8 @@ class MissiveJSBridge {
               if (window.Missive && window.Missive.fetchMessages) {
                 console.log('🔄 Trying fetchMessages as fallback...');
                 try {
-                  const messages = await window.Missive.fetchMessages(conversationId);
+                  // Fix: fetchMessages expects an array, not a single ID
+                  const messages = await window.Missive.fetchMessages([conversationId]);
                   console.log('📧 Fetched messages data:', messages);
                   
                   const email = this.app.extractEmailFromData(messages);
@@ -481,7 +512,8 @@ class MissiveJSBridge {
             if (window.Missive && window.Missive.fetchMessages) {
               console.log('🔄 Trying fetchMessages with conversation ID...');
               try {
-                const messages = await window.Missive.fetchMessages(conversationId);
+                // Fix: fetchMessages expects an array, not a single ID
+                const messages = await window.Missive.fetchMessages([conversationId]);
                 console.log('📧 Fetched messages via fetchMessages:', messages);
                 
                 const email = this.app.extractEmailFromData(messages);
@@ -498,6 +530,28 @@ class MissiveJSBridge {
               } catch (fetchError) {
                 console.error('❌ Error with fetchMessages:', fetchError);
                 if (this.app?.setStatus) this.app.setStatus('Error fetching messages', 'error');
+              }
+            } else if (window.Missive && window.Missive.fetchConversations) {
+              console.log('🔄 Trying fetchConversations with conversation ID...');
+              try {
+                // Fix: fetchConversations expects an array, not a single ID
+                const conversations = await window.Missive.fetchConversations([conversationId]);
+                console.log('📧 Fetched conversations via fetchConversations:', conversations);
+                
+                const email = this.app.extractEmailFromData(conversations);
+                console.log('📧 Extracted email from conversations:', email);
+                
+                if (email && this.app.isValidEmailForSearch(email)) {
+                  console.log('🔍 Triggering auto-search for:', email);
+                  await this.app.performAutoSearch(email);
+                  console.log('✅ Auto-search completed for:', email);
+                } else {
+                  console.log('❌ No valid email found in conversations data');
+                  if (this.app?.setStatus) this.app.setStatus('No valid email found');
+                }
+              } catch (fetchError) {
+                console.error('❌ Error with fetchConversations:', fetchError);
+                if (this.app?.setStatus) this.app.setStatus('Error fetching conversations', 'error');
               }
             } else {
               console.log('❌ No alternative methods available');
