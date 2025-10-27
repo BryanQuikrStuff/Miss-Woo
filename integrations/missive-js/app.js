@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.53)
+// Missive JS API variant (vJS3.54)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.53 immediately
-    this.setBadge('vJS3.53');
-    console.log('🔧 Set initial version badge to vJS3.53');
+    // Force version badge to vJS3.54 immediately
+    this.setBadge('vJS3.54');
+    console.log('🔧 Set initial version badge to vJS3.54');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -288,8 +288,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS3.53';
-          console.log('🧪 Forced version badge to vJS3.53');
+          el.textContent = 'vJS3.54';
+          console.log('🧪 Forced version badge to vJS3.54');
         }
         
         return {
@@ -402,7 +402,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.53');
+      this.setBadge('vJS3.54');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -412,7 +412,7 @@ class MissiveJSBridge {
     setTimeout(async () => {
       if (!this.isReady) {
         console.log('🔄 Missive ready event not received, trying fallback initialization...');
-        this.setBadge('vJS3.53');
+        this.setBadge('vJS3.54');
         if (this.app?.setStatus) this.app.setStatus('Ready (fallback)');
         await this.tryPrimeEmail();
       }

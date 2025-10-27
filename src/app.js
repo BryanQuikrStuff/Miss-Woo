@@ -217,7 +217,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS3.53';
+    return 'vJS3.54';
   }
 
   async loadVersionFromManifest() {
@@ -1498,7 +1498,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.53' : 'vJS3.53 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.54' : 'vJS3.54 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1546,6 +1546,24 @@ class MissWooApp {
     if (!data) {
       // console.log("❌ No data provided");
       return null;
+    }
+
+    // Missive-specific message structure (from documentation)
+    if (data.from_field && data.from_field.address) {
+      console.log("✅ Found email in data.from_field.address:", data.from_field.address);
+      if (this.isValidEmailForSearch(data.from_field.address)) {
+        return data.from_field.address;
+      }
+    }
+    
+    if (data.to_fields && Array.isArray(data.to_fields)) {
+      console.log("✅ Found to_fields array:", data.to_fields);
+      for (const recipient of data.to_fields) {
+        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
+          console.log("✅ Found valid email in to_fields:", recipient.address);
+          return recipient.address;
+        }
+      }
     }
 
     // Contact-centric shapes
@@ -1674,9 +1692,27 @@ class MissWooApp {
       }
     }
     
-    // Check messages array for body content
+    // Check messages array for Missive message structure and body content
     if (Array.isArray(data.messages)) {
       for (const msg of data.messages) {
+        // Check Missive-specific message structure first
+        if (msg.from_field && msg.from_field.address) {
+          console.log("✅ Found email in message.from_field.address:", msg.from_field.address);
+          if (this.isValidEmailForSearch(msg.from_field.address)) {
+            return msg.from_field.address;
+          }
+        }
+        
+        if (msg.to_fields && Array.isArray(msg.to_fields)) {
+          console.log("✅ Found message.to_fields array:", msg.to_fields);
+          for (const recipient of msg.to_fields) {
+            if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
+              console.log("✅ Found valid email in message.to_fields:", recipient.address);
+              return recipient.address;
+            }
+          }
+        }
+        
         // Check message body content
         if (msg.text) {
           const email = this.extractEmailFromString(msg.text);
