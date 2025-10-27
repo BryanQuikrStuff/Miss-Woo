@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS3.48)
+// Missive JS API variant (vJS3.49)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS3.48 immediately
-    this.setBadge('vJS3.48');
-    console.log('🔧 Set initial version badge to vJS3.48');
+    // Force version badge to vJS3.49 immediately
+    this.setBadge('vJS3.49');
+    console.log('🔧 Set initial version badge to vJS3.49');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -82,12 +82,12 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS3.48 once app updates header
-        setTimeout(() => this.setBadge('vJS3.48'), 300);
+        // Override version badge to vJS3.49 once app updates header
+        setTimeout(() => this.setBadge('vJS3.49'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS3.48'), 1000);
-        setTimeout(() => this.setBadge('vJS3.48'), 2000);
+        setTimeout(() => this.setBadge('vJS3.49'), 1000);
+        setTimeout(() => this.setBadge('vJS3.49'), 2000);
         
         // Bind manual search events
         this.bindManualSearchEvents();
@@ -228,6 +228,38 @@ class MissiveJSBridge {
         } else {
           console.error('❌ App not available for simulation');
         }
+      },
+      debugMissiveAPI: () => {
+        console.log('🧪 Debug: Comprehensive Missive API analysis...');
+        console.log('🧪 window.Missive exists:', !!window.Missive);
+        console.log('🧪 window.Missive type:', typeof window.Missive);
+        console.log('🧪 Available methods:', Object.keys(window.Missive || {}));
+        
+        if (window.Missive) {
+          console.log('🧪 getCurrentConversation:', typeof window.Missive.getCurrentConversation);
+          console.log('🧪 fetchMessages:', typeof window.Missive.fetchMessages);
+          console.log('🧪 on method:', typeof window.Missive.on);
+          console.log('🧪 off method:', typeof window.Missive.off);
+          
+          // Try to call getCurrentConversation to see what happens
+          if (typeof window.Missive.getCurrentConversation === 'function') {
+            console.log('🧪 Testing getCurrentConversation...');
+            window.Missive.getCurrentConversation()
+              .then(conv => {
+                console.log('🧪 getCurrentConversation result:', conv);
+              })
+              .catch(err => {
+                console.log('🧪 getCurrentConversation error:', err);
+              });
+          }
+        }
+        
+        return {
+          exists: !!window.Missive,
+          methods: Object.keys(window.Missive || {}),
+          getCurrentConversation: typeof window.Missive?.getCurrentConversation,
+          fetchMessages: typeof window.Missive?.fetchMessages
+        };
       }
     };
 
@@ -243,7 +275,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS3.48');
+      this.setBadge('vJS3.49');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -301,23 +333,59 @@ class MissiveJSBridge {
           const conversationId = data[0];
           console.log('📧 Fetching conversation:', conversationId);
           
+          // Debug: Check what Missive API methods are available
+          console.log('🔍 Available Missive API methods:', Object.keys(window.Missive || {}));
+          console.log('🔍 getCurrentConversation available:', !!(window.Missive && window.Missive.getCurrentConversation));
+          console.log('🔍 fetchMessages available:', !!(window.Missive && window.Missive.fetchMessages));
+          
           if (window.Missive && window.Missive.getCurrentConversation) {
-            const conversation = await window.Missive.getCurrentConversation();
-            console.log('📧 Fetched conversation data:', conversation);
-            
-            const email = this.app.extractEmailFromData(conversation);
-            console.log('📧 Extracted email from conversation:', email);
-            
-            if (email && this.app.isValidEmailForSearch(email)) {
-              console.log('🔍 Triggering auto-search for:', email);
-              await this.app.performAutoSearch(email);
-              console.log('✅ Auto-search completed for:', email);
-            } else {
-              console.log('❌ No valid email found in conversation data');
-              if (this.app?.setStatus) this.app.setStatus('No valid email found');
+            try {
+              const conversation = await window.Missive.getCurrentConversation();
+              console.log('📧 Fetched conversation data:', conversation);
+              
+              const email = this.app.extractEmailFromData(conversation);
+              console.log('📧 Extracted email from conversation:', email);
+              
+              if (email && this.app.isValidEmailForSearch(email)) {
+                console.log('🔍 Triggering auto-search for:', email);
+                await this.app.performAutoSearch(email);
+                console.log('✅ Auto-search completed for:', email);
+              } else {
+                console.log('❌ No valid email found in conversation data');
+                if (this.app?.setStatus) this.app.setStatus('No valid email found');
+              }
+            } catch (apiError) {
+              console.error('❌ Error calling getCurrentConversation:', apiError);
+              // Try alternative method: fetchMessages
+              if (window.Missive && window.Missive.fetchMessages) {
+                console.log('🔄 Trying fetchMessages as fallback...');
+                try {
+                  const messages = await window.Missive.fetchMessages(conversationId);
+                  console.log('📧 Fetched messages data:', messages);
+                  
+                  const email = this.app.extractEmailFromData(messages);
+                  console.log('📧 Extracted email from messages:', email);
+                  
+                  if (email && this.app.isValidEmailForSearch(email)) {
+                    console.log('🔍 Triggering auto-search for:', email);
+                    await this.app.performAutoSearch(email);
+                    console.log('✅ Auto-search completed for:', email);
+                  } else {
+                    console.log('❌ No valid email found in messages data');
+                    if (this.app?.setStatus) this.app.setStatus('No valid email found');
+                  }
+                } catch (messagesError) {
+                  console.error('❌ Error calling fetchMessages:', messagesError);
+                  if (this.app?.setStatus) this.app.setStatus('Error fetching conversation data', 'error');
+                }
+              } else {
+                console.log('❌ No alternative methods available');
+                if (this.app?.setStatus) this.app.setStatus('Missive API methods not available', 'error');
+              }
             }
           } else {
             console.log('❌ Missive.getCurrentConversation not available');
+            console.log('❌ Available Missive methods:', Object.keys(window.Missive || {}));
             if (this.app?.setStatus) this.app.setStatus('Missive API not available');
           }
         } catch (error) {
