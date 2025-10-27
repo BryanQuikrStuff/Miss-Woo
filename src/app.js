@@ -217,7 +217,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS3.45';
+    return 'vJS3.46';
   }
 
   async loadVersionFromManifest() {
@@ -1498,7 +1498,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS3.45' : 'vJS3.45 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS3.46' : 'vJS3.46 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -1523,10 +1523,12 @@ class MissWooApp {
   }
 
   extractEmailFromData(data) {
-    // console.log("🔍 Extracting email from data:", data);
+    console.log("🔍 Extracting email from data:", data);
+    console.log("🔍 Data type:", typeof data);
+    console.log("🔍 Data keys:", data ? Object.keys(data) : 'null/undefined');
     
     if (!data) {
-      // console.log("❌ No data provided");
+      console.log("❌ No data provided");
       return null;
     }
 
@@ -1560,7 +1562,11 @@ class MissWooApp {
     // Try different data structures
     if (data.email) {
       console.log("✅ Found email in data.email:", data.email);
-      return data.email;
+      if (this.isValidEmailForSearch(data.email)) {
+        return data.email;
+      } else {
+        console.log("❌ Email in data.email is not valid for search:", data.email);
+      }
     }
     
     if (data.recipient && (data.recipient.email || data.recipient.handle || data.recipient.address)) {
@@ -1703,7 +1709,20 @@ class MissWooApp {
       }
     }
 
-    // console.log("❌ No email found in data structure");
+    // Final fallback: search through all string properties for email patterns
+    console.log("🔍 Final fallback: searching all string properties for emails...");
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'string' && value.includes('@')) {
+        console.log(`🔍 Found string with @ in data.${key}:`, value);
+        const email = this.extractEmailFromString(value);
+        if (email && this.isValidEmailForSearch(email)) {
+          console.log(`✅ Found valid email in data.${key}:`, email);
+          return email;
+        }
+      }
+    }
+    
+    console.log("❌ No email found in data structure");
     return null;
   }
 
