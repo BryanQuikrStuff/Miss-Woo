@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.01  
+**Version**: vJS4.02  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.01 (Current)
+### vJS4.02 (Current)
+- ✅ Enhanced preloading: Preloads all customer details (orders, notes, Katana data, serial numbers) for all visible emails
+
+### vJS4.01
 - ✅ Restored all four performance optimizations:
   - OPTIMIZATION 1: Parallelize Katana API calls (batch fetching)
   - OPTIMIZATION 2: Parallelize WooCommerce page fetching with early termination

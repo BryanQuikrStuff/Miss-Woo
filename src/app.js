@@ -218,7 +218,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.01';
+    return 'vJS4.02';
   }
 
   async loadVersionFromManifest() {
@@ -1767,7 +1767,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.01' : 'vJS4.01 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.02' : 'vJS4.02 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2259,14 +2259,16 @@ class MissWooApp {
 
   async fetchVisibleConversations() {
     try {
-      // Try to get current conversation first
       let conversations = [];
+      const conversationIds = new Set(); // Track unique conversation IDs
       
+      // Try to get current conversation first
       if (Missive.getCurrentConversation) {
         try {
           const currentConv = await Missive.getCurrentConversation();
           if (currentConv && currentConv.id) {
             conversations.push(currentConv);
+            conversationIds.add(currentConv.id);
             console.log(`📧 Got current conversation: ${currentConv.id}`);
           }
         } catch (error) {
@@ -2274,21 +2276,27 @@ class MissWooApp {
         }
       }
       
-      // Try to fetch conversations using the options approach
-      if (Missive.fetchConversations && conversations.length === 0) {
+      // Always try to fetch more conversations (not just when conversations.length === 0)
+      if (Missive.fetchConversations) {
         try {
-          console.log("📧 Trying fetchConversations with options...");
+          console.log(`📧 Fetching up to ${this.maxPreloadedConversations} conversations...`);
           const fetchedConversations = await Missive.fetchConversations([
             this.maxPreloadedConversations,
             'oldest'
           ]);
           
           if (Array.isArray(fetchedConversations)) {
-            conversations = fetchedConversations;
-            console.log(`📧 Fetched ${conversations.length} conversations with options`);
+            // Add conversations that aren't already in the list
+            for (const conv of fetchedConversations) {
+              if (conv && conv.id && !conversationIds.has(conv.id)) {
+                conversations.push(conv);
+                conversationIds.add(conv.id);
+              }
+            }
+            console.log(`📧 Fetched ${fetchedConversations.length} conversations, total: ${conversations.length}`);
           }
         } catch (error) {
-          // console.log("❌ fetchConversations with options failed:", error);
+          console.log("❌ fetchConversations failed:", error);
         }
       }
       
@@ -2340,21 +2348,31 @@ class MissWooApp {
           return;
         }
         
-        console.log(`📧 Preloading data for: ${email}`);
+        console.log(`📧 Preloading all customer details for: ${email}`);
         
         // Store current orders to restore after preloading
         const currentOrders = [...this.allOrders];
         
-        // Preload order data (this will populate emailCache)
+        // Step 1: Preload WooCommerce order data (this will populate emailCache)
         await this.searchOrdersByEmail(email);
         
-        // Also store in preloadedConversations for tracking
+        // Step 2: Preload all customer details if we have orders
         if (this.allOrders.length > 0) {
+          await this.preloadOrderDetails(this.allOrders);
+          
+          // Update emailCache with enhanced orders (now includes notes)
+          if (this.emailCache) {
+            this.emailCache.set(email, [...this.allOrders]);
+            this.setCacheExpiry(email, 'emailCache');
+            console.log(`📦 Updated emailCache for ${email} with enhanced orders (includes notes)`);
+          }
+          
+          // Store enhanced orders in preloadedConversations for tracking
           this.preloadedConversations.set(email, {
             orders: [...this.allOrders],
             timestamp: Date.now()
           });
-          console.log(`✅ Preloaded ${this.allOrders.length} orders for ${email} (cached in emailCache)`);
+          console.log(`✅ Preloaded all details for ${email}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
         }
         
         // Restore current orders
@@ -2366,6 +2384,48 @@ class MissWooApp {
     });
     
     await Promise.all(preloadPromises);
+  }
+
+  // Preload all customer details: order notes, Katana orders, and serial numbers
+  async preloadOrderDetails(orders) {
+    if (!orders || orders.length === 0) {
+      return;
+    }
+
+    try {
+      console.log(`📦 Preloading details for ${orders.length} orders...`);
+      
+      // Step 1: Fetch order notes in parallel for all orders
+      const notesPromises = orders.map(async (order) => {
+        try {
+          // Only fetch if notes are not already present
+          if (!order.notes || order.notes.length === 0) {
+            const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
+            order.notes = await this.makeRequest(notesUrl);
+            console.log(`✅ Preloaded ${order.notes?.length || 0} notes for order #${order.number}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to preload notes for order ${order.id}:`, error);
+          order.notes = [];
+        }
+      });
+      
+      await Promise.all(notesPromises);
+      
+      // Step 2: Batch fetch Katana orders for all WooCommerce orders
+      const wooOrderNumbers = orders.map(o => o.number);
+      await this.batchGetKatanaOrders(wooOrderNumbers);
+      console.log(`✅ Preloaded Katana orders for ${orders.length} WooCommerce orders`);
+      
+      // Step 3: Batch fetch serial numbers for all orders
+      await this.batchGetSerialNumbers(orders);
+      console.log(`✅ Preloaded serial numbers for ${orders.length} orders`);
+      
+      console.log(`✅ Completed preloading all details for ${orders.length} orders`);
+    } catch (error) {
+      console.error(`❌ Error preloading order details:`, error);
+      // Don't throw - allow partial preloading to complete
+    }
   }
 
   isPreloadedDataValid(email) {
