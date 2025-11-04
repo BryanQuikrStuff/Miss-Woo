@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.03  
+**Version**: vJS4.04  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.03 (Current)
+### vJS4.04 (Current)
+- ✅ Automatic preloading of all visible emails: Enhanced Missive integration to automatically detect and preload customer details for all visible conversations via `change:conversations` event
+
+### vJS4.03
 - ✅ Improved cache persistence: Cache now persists throughout user session until navigation away
 
 ### vJS4.02

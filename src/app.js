@@ -184,10 +184,20 @@ class MissWooApp {
     }
   }
 
-  handleConversationChange(data) {
+  async handleConversationChange(data) {
     console.log("📧 Handling conversation change:", data);
     
     try {
+      // Check if data is an array of conversation IDs (from change:conversations event)
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
+        console.log(`📧 Received ${data.length} conversation IDs, fetching all conversations for preloading...`);
+        
+        // Fetch all conversations and preload their emails in the background
+        await this.fetchAndPreloadConversations(data);
+        return;
+      }
+      
+      // Handle single conversation object (backward compatibility)
       const email = this.extractEmailFromData(data);
       if (email && this.isValidEmailForSearch(email)) {
         console.log("✅ Extracted email from conversation:", email);
@@ -218,7 +228,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.03';
+    return 'vJS4.04';
   }
 
   async loadVersionFromManifest() {
@@ -1767,7 +1777,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.03' : 'vJS4.03 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.04' : 'vJS4.04 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2250,6 +2260,104 @@ class MissWooApp {
     } finally {
       this.preloadingInProgress = false;
     }
+  }
+
+  // Fetch conversations by their IDs and preload all emails in background
+  async fetchAndPreloadConversations(conversationIds) {
+    if (!conversationIds || conversationIds.length === 0) {
+      console.log("❌ No conversation IDs provided");
+      return;
+    }
+
+    // Limit the number of conversations to fetch to prevent overwhelming the system
+    const idsToFetch = conversationIds.slice(0, this.maxPreloadedConversations || 20);
+    console.log(`📧 Fetching ${idsToFetch.length} conversations (from ${conversationIds.length} total) for preloading...`);
+
+    try {
+      let conversations = [];
+      
+      if (Missive.fetchConversations && typeof Missive.fetchConversations === 'function') {
+        try {
+          // Try 1: Pass array of conversation IDs directly (most efficient)
+          console.log(`📧 Attempting to fetch conversations by IDs: ${idsToFetch.slice(0, 3).join(', ')}...`);
+          const fetchedConversations = await Missive.fetchConversations(idsToFetch);
+          
+          if (Array.isArray(fetchedConversations) && fetchedConversations.length > 0) {
+            conversations = fetchedConversations;
+            console.log(`✅ Successfully fetched ${conversations.length} conversations by IDs`);
+          } else {
+            console.log("⚠️ fetchConversations returned empty or invalid result, trying fallback...");
+            conversations = await this.fetchConversationsOneByOne(idsToFetch);
+          }
+        } catch (error) {
+          console.log(`⚠️ Error fetching conversations by IDs (${error.message}), trying fallback...`);
+          // Fallback: try fetching one by one (slower but more reliable)
+          conversations = await this.fetchConversationsOneByOne(idsToFetch);
+        }
+      } else {
+        console.log("❌ fetchConversations method not available, trying fallback...");
+        // Fallback: try fetching one by one
+        conversations = await this.fetchConversationsOneByOne(idsToFetch);
+      }
+
+      if (conversations.length === 0) {
+        console.log("❌ No conversations fetched, preloading will be triggered on email focus");
+        return;
+      }
+
+      // Update visible conversation tracking
+      this.updateVisibleConversations(conversations);
+
+      // Extract emails from all conversations
+      const emailsToPreload = this.extractEmailsFromConversations(conversations);
+      console.log(`📧 Extracted ${emailsToPreload.length} unique emails from ${conversations.length} conversations`);
+
+      if (emailsToPreload.length === 0) {
+        console.log("❌ No valid emails found in conversations");
+        return;
+      }
+
+      // Preload customer details for all emails in the background (non-blocking)
+      // Don't await this - let it run in background so the UI stays responsive
+      this.preloadEmailsData(emailsToPreload).catch(error => {
+        console.error("❌ Error preloading emails data:", error);
+      });
+
+      // Also trigger auto-search for the first conversation (current one) immediately
+      if (conversations.length > 0) {
+        const firstConversation = conversations[0];
+        const firstEmail = this.extractEmailFromData(firstConversation);
+        if (firstEmail && this.isValidEmailForSearch(firstEmail)) {
+          console.log(`🔍 Triggering auto-search for current email: ${firstEmail}`);
+          this.performAutoSearch(firstEmail);
+        }
+      }
+
+      console.log(`✅ Started preloading data for ${emailsToPreload.length} emails in background`);
+    } catch (error) {
+      console.error("❌ Error in fetchAndPreloadConversations:", error);
+    }
+  }
+
+  // Fallback method: fetch conversations one by one if batch fetch fails
+  async fetchConversationsOneByOne(conversationIds) {
+    const conversations = [];
+    
+    for (const convId of conversationIds.slice(0, this.maxPreloadedConversations)) {
+      try {
+        // Try to get conversation by ID - if fetchConversations supports single ID
+        if (Missive.fetchConversations) {
+          const result = await Missive.fetchConversations([convId]);
+          if (Array.isArray(result) && result.length > 0) {
+            conversations.push(result[0]);
+          }
+        }
+      } catch (error) {
+        console.log(`❌ Failed to fetch conversation ${convId}:`, error);
+      }
+    }
+    
+    return conversations;
   }
 
   async fetchVisibleConversations() {
