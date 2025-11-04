@@ -289,7 +289,7 @@ We've created **4 comprehensive guides** for you:
 - **APIs Integrated**: 3 (WooCommerce, Katana, Missive)
 - **Deployment**: Automated via GitHub Actions
 - **Test Coverage**: Basic (needs expansion)
-- **Version**: vJS4.00
+- **Version**: vJS4.01
 
 ---
 
@@ -328,7 +328,7 @@ https://bryanquikrstuff.github.io/Miss-Woo/
 ---
 
 **Project**: Miss-Woo  
-**Version**: vJS4.00  
+**Version**: vJS4.01  
 **Last Updated**: October 21, 2025  
 **Maintainer**: Bryan (QuikrStuff)  
 **Repository**: https://github.com/BryanQuikrStuff/Miss-Woo  

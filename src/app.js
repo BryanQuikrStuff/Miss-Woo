@@ -82,6 +82,7 @@ class MissWooApp {
       this.minSearchInterval = 500; // Minimum 500ms between searches for same email
       this.searchInProgress = false; // Prevent multiple searches from running simultaneously
       this.activeSearches = new Map(); // Track active searches by email
+      this.activeSearchAbortController = null; // OPTIMIZATION 4: Request cancellation
       
       this.hideLoading();
       this.initialize();
@@ -217,7 +218,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.00';
+    return 'vJS4.01';
   }
 
   async loadVersionFromManifest() {
@@ -383,6 +384,14 @@ class MissWooApp {
             return;
         }
 
+    // OPTIMIZATION 4: Cancel any previous search requests
+    if (this.activeSearchAbortController) {
+      console.log("Cancelling previous search requests");
+      this.activeSearchAbortController.abort();
+    }
+    // Create new AbortController for this search
+    this.activeSearchAbortController = new AbortController();
+
     // Clear previous results and errors
     this.clearPreviousResults();
 
@@ -402,6 +411,11 @@ class MissWooApp {
             // Display the results after search completes
             await this.displayOrdersList();
         } catch (error) {
+      // Don't log abort errors as errors
+      if (error.name === 'AbortError' || error.message === 'Search cancelled') {
+        console.log("Search cancelled");
+        return;
+      }
       console.error("Search error:", error);
       this.showError(`Search failed: ${error.message}`);
     } finally {
@@ -438,21 +452,25 @@ class MissWooApp {
     console.log("Fetching order by ID:", orderId);
     try {
       const url = this.getAuthenticatedUrl(`/orders/${orderId}`);
-      const order = await this.makeRequest(url);
+      const order = await this.makeRequest(url, {
+        signal: this.activeSearchAbortController?.signal
+      });
       
       if (!order || !order.id) {
         this.showError(`Order ${orderId} not found`);
         return;
       }
 
-      // Get order notes
-      const notesUrl = this.getAuthenticatedUrl(`/orders/${orderId}/notes`);
-      const notes = await this.makeRequest(notesUrl);
-      order.notes = notes;
+      // OPTIMIZATION 3: Initialize notes as empty array - notes will be fetched in displayOrdersList when needed
+      order.notes = [];
 
       this.allOrders = [order];
       await this.displayOrdersList();
         } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Get order cancelled");
+        return;
+      }
       console.error("Get order error:", error);
             this.showError(`Failed to fetch order ${orderId}: ${error.message}`);
         }
@@ -488,6 +506,12 @@ class MissWooApp {
       // Search WooCommerce orders only
       const orderResults = await this.searchWooCommerceOrders(email);
       
+      // OPTIMIZATION 4: Check if search was cancelled
+      if (this.activeSearchAbortController?.signal.aborted) {
+        console.log("Search was cancelled");
+        throw new Error('Search cancelled');
+      }
+      
       // Ensure orderResults is an array
       if (!Array.isArray(orderResults)) {
         console.error("searchWooCommerceOrders returned non-array:", orderResults);
@@ -501,7 +525,7 @@ class MissWooApp {
       
       // Cache the results in emailCache (unified caching)
       if (this.emailCache) {
-        this.emailCache.set(email, [...orderResults]);
+        this.emailCache.set(email, orderResults); // No need to clone for cache
         this.setCacheExpiry(email, 'emailCache');
         console.log(`Cached ${orderResults.length} orders for ${email} in emailCache`);
       }
@@ -509,6 +533,10 @@ class MissWooApp {
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
       this.logPerformanceStats();
     } catch (error) {
+      if (error.name === 'AbortError' || error.message === 'Search cancelled') {
+        console.log("Search cancelled");
+        throw error;
+      }
       console.error("Search error:", error);
       this.showError(`Failed to search: ${error.message}`);
     } finally {
@@ -519,19 +547,23 @@ class MissWooApp {
 
   async searchWooCommerceOrders(email) {
     let allOrders = [];
-    let page = 1;
     const maxPages = 3; // Reduced from 5 to 3 pages for faster search
+    const maxMatchingOrders = 5; // Stop when we have enough matches
 
     try {
-      // Fetch first page immediately to show results faster
-      console.log(`Searching WooCommerce orders page ${page}...`);
+      // OPTIMIZATION 2: Fetch first page immediately to show results faster
+      console.log(`Searching WooCommerce orders page 1...`);
       const firstPageUrl = this.getAuthenticatedUrl('/orders', {
         search: email,
         per_page: 100,
-        page: page
+        page: 1,
+        orderby: 'date',
+        order: 'desc'
       });
       
-      const firstPageData = await this.makeRequest(firstPageUrl);
+      const firstPageData = await this.makeRequest(firstPageUrl, {
+        signal: this.activeSearchAbortController?.signal
+      });
       
       // Ensure firstPageData is an array
       if (!Array.isArray(firstPageData)) {
@@ -539,37 +571,72 @@ class MissWooApp {
         return [];
       }
       
-      console.log(`Found ${firstPageData.length} orders on page ${page}`);
+      console.log(`Found ${firstPageData.length} orders on page 1`);
       
       if (firstPageData.length > 0) {
         allOrders = allOrders.concat(firstPageData);
         
-        // Continue searching if needed
-        page++;
-        while (page <= maxPages) {
-          console.log(`Searching WooCommerce orders page ${page}...`);
-          const url = this.getAuthenticatedUrl('/orders', {
-            search: email,
-            per_page: 100,
-            page: page
-          });
+        // OPTIMIZATION 2: Check if we have enough exact matches after first page
+        const matchingAfterFirstPage = this.filterOrdersByEmail(allOrders, email);
+        if (matchingAfterFirstPage.length >= maxMatchingOrders) {
+          console.log(`Found ${matchingAfterFirstPage.length} matching orders on first page, stopping search`);
+          const processedOrders = await this.processOrdersWithDetails(matchingAfterFirstPage.slice(0, maxMatchingOrders), email);
+          return Array.isArray(processedOrders) ? processedOrders : [];
+        }
+        
+        // OPTIMIZATION 2: Fetch pages 2 and 3 in parallel for faster results
+        const page2Url = this.getAuthenticatedUrl('/orders', {
+          search: email,
+          per_page: 100,
+          page: 2,
+          orderby: 'date',
+          order: 'desc'
+        });
+        
+        const page3Url = this.getAuthenticatedUrl('/orders', {
+          search: email,
+          per_page: 100,
+          page: 3,
+          orderby: 'date',
+          order: 'desc'
+        });
+        
+        // Fetch pages 2 and 3 in parallel
+        const [page2Data, page3Data] = await Promise.all([
+          this.makeRequest(page2Url, {
+            signal: this.activeSearchAbortController?.signal
+          }).catch(err => {
+            if (err.name === 'AbortError') throw err;
+            console.error("Error fetching page 2:", err);
+            return [];
+          }),
+          this.makeRequest(page3Url, {
+            signal: this.activeSearchAbortController?.signal
+          }).catch(err => {
+            if (err.name === 'AbortError') throw err;
+            console.error("Error fetching page 3:", err);
+            return [];
+          })
+        ]);
+        
+        // Add page 2 results if valid
+        if (Array.isArray(page2Data) && page2Data.length > 0) {
+          allOrders = allOrders.concat(page2Data);
+          console.log(`Found ${page2Data.length} orders on page 2`);
           
-          const data = await this.makeRequest(url);
-          
-          // Ensure data is an array
-          if (!Array.isArray(data)) {
-            console.error("API returned non-array data on page", page, ":", data);
-            break;
+          // OPTIMIZATION 2: Check if we have enough matches after page 2
+          const matchingAfterPage2 = this.filterOrdersByEmail(allOrders, email);
+          if (matchingAfterPage2.length >= maxMatchingOrders) {
+            console.log(`Found ${matchingAfterPage2.length} matching orders after page 2, skipping page 3`);
+            const processedOrders = await this.processOrdersWithDetails(matchingAfterPage2.slice(0, maxMatchingOrders), email);
+            return Array.isArray(processedOrders) ? processedOrders : [];
           }
-          
-          console.log(`Found ${data.length} orders on page ${page}`);
-          
-          if (data.length === 0) {
-            break; // No more orders to fetch
-          }
-          
-          allOrders = allOrders.concat(data);
-          page++;
+        }
+        
+        // Add page 3 results if valid
+        if (Array.isArray(page3Data) && page3Data.length > 0) {
+          allOrders = allOrders.concat(page3Data);
+          console.log(`Found ${page3Data.length} orders on page 3`);
         }
       }
 
@@ -579,11 +646,16 @@ class MissWooApp {
       const matchingOrders = this.filterOrdersByEmail(allOrders, email);
       console.log(`Total matching WooCommerce orders (latest 5): ${matchingOrders.length}`);
 
-      // Process order details
+      // OPTIMIZATION 3: Process order details (without notes - notes fetched later)
       const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
       return Array.isArray(processedOrders) ? processedOrders : [];
       
     } catch (error) {
+      // Don't log abort errors as errors
+      if (error.name === 'AbortError') {
+        console.log("Search cancelled");
+        throw error;
+      }
       console.error("Error in searchWooCommerceOrders:", error);
       return [];
     }
@@ -629,32 +701,26 @@ class MissWooApp {
   }
 
   async processOrdersWithDetails(orders, email) {
-    // Get notes for all orders in parallel
-    const orderPromises = orders.map(async (order) => {
-      try {
-        const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
-        const notes = await this.makeRequest(notesUrl);
-        order.notes = notes;
-        return order;
-      } catch (error) {
-        console.error(`Failed to get notes for order ${order.id}:`, error);
+    // OPTIMIZATION 3: Notes are now fetched lazily when needed for tracking extraction
+    // This allows faster initial display of orders
+    // Initialize notes as empty array - notes will be fetched in displayOrdersList when needed
+    for (const order of orders) {
+      if (!order.notes) {
         order.notes = [];
-        return order;
       }
-    });
-
-    const processedOrders = await Promise.all(orderPromises);
-    this.allOrders = processedOrders;
+    }
+    
+    this.allOrders = orders;
     
     // Cache the results with expiration (unified caching)
     if (this.emailCache) {
-      this.emailCache.set(email, processedOrders);
+      this.emailCache.set(email, orders);
       this.setCacheExpiry(email, 'emailCache');
-      console.log(`Cached ${processedOrders.length} processed orders for ${email} in emailCache`);
+      console.log(`Cached ${orders.length} processed orders for ${email} in emailCache`);
     }
     
-    // Return the processed orders
-    return processedOrders;
+    // Return the orders
+    return orders;
   }
 
   getAuthenticatedUrl(endpoint, params = {}) {
@@ -711,6 +777,7 @@ class MissWooApp {
             ...this.corsHeaders,
             ...options.headers
           },
+          signal: options.signal, // OPTIMIZATION 4: Support request cancellation
           ...options
         });
 
@@ -722,6 +789,11 @@ class MissWooApp {
         console.log("API Response:", data);
         return data;
         } catch (error) {
+        // Don't log abort errors as errors - they're intentional cancellations
+        if (error.name === 'AbortError') {
+          console.log("Request cancelled:", url);
+          throw error;
+        }
         console.error("API Request failed:", error);
         throw error;
       } finally {
@@ -839,31 +911,70 @@ class MissWooApp {
     // Hide loading after basic info is displayed
     this.hideLoading();
     
-    // Then enhance with serial numbers and tracking info in parallel
-    const enhancementPromises = this.allOrders.map(async (order) => {
-      // Get serial number
-      const serialNumber = await this.getSerialNumber(order);
-      const serialCell = document.getElementById(`serial-${order.id}`);
-      if (serialCell) serialCell.textContent = serialNumber;
-      
-      // Get tracking info
-      const trackingInfo = this.getTrackingInfo(order);
-      const trackingCell = document.getElementById(`tracking-${order.id}`);
-      if (trackingCell) {
-        if (trackingInfo) {
-          const trackingLink = document.createElement("a");
-          trackingLink.href = trackingInfo.url;
-          trackingLink.target = "_blank";
-          trackingLink.textContent = trackingInfo.number;
-          trackingCell.innerHTML = "";
-          trackingCell.appendChild(trackingLink);
-        } else {
-          trackingCell.textContent = "N/A";
+    // OPTIMIZATION 1: Batch fetch all serial numbers at once in parallel
+    const serialNumbersMap = await this.batchGetSerialNumbers(this.allOrders);
+    
+    // OPTIMIZATION 3: Fetch notes lazily only when needed for tracking
+    const notesAndTrackingPromises = this.allOrders.map(async (order) => {
+      try {
+        // Fetch notes only if not already present
+        if (!order.notes || order.notes.length === 0) {
+          const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
+          try {
+            order.notes = await this.makeRequest(notesUrl, {
+              signal: this.activeSearchAbortController?.signal
+            });
+          } catch (error) {
+            if (error.name === 'AbortError') throw error;
+            console.error(`Failed to get notes for order ${order.id}:`, error);
+            order.notes = [];
+          }
         }
+        
+        // Get tracking info from notes
+        const trackingInfo = this.getTrackingInfo(order);
+        
+        // Update serial number from batch results
+        const serialNumber = serialNumbersMap.get(order.number) || "Loading...";
+        const serialCell = document.getElementById(`serial-${order.id}`);
+        if (serialCell) serialCell.textContent = serialNumber;
+        
+        // Update tracking info
+        const trackingCell = document.getElementById(`tracking-${order.id}`);
+        if (trackingCell) {
+          if (trackingInfo) {
+            const trackingLink = document.createElement("a");
+            trackingLink.href = trackingInfo.url;
+            trackingLink.target = "_blank";
+            trackingLink.textContent = trackingInfo.number;
+            trackingCell.innerHTML = "";
+            trackingCell.appendChild(trackingLink);
+          } else {
+            trackingCell.textContent = "N/A";
+          }
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          // Request was cancelled, stop processing
+          throw error;
+        }
+        console.error(`Error enhancing order ${order.id}:`, error);
+        // Still update UI elements even on error
+        const serialCell = document.getElementById(`serial-${order.id}`);
+        const trackingCell = document.getElementById(`tracking-${order.id}`);
+        if (serialCell) serialCell.textContent = serialNumbersMap.get(order.number) || "N/A";
+        if (trackingCell) trackingCell.textContent = "N/A";
       }
     });
     
-    await Promise.all(enhancementPromises);
+    try {
+      await Promise.all(notesAndTrackingPromises);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Display enhancement cancelled");
+        // Don't throw - allow partial results to show
+      }
+    }
     
     // Start background processing for additional data
     this.startBackgroundProcessing();
@@ -1127,7 +1238,8 @@ class MissWooApp {
         headers: {
           'Authorization': `Bearer ${this.katanaApiKey}`,
           'Accept': 'application/json'
-        }
+        },
+        signal: this.activeSearchAbortController?.signal
       });
 
       if (!response.ok) {
@@ -1149,6 +1261,10 @@ class MissWooApp {
       
       return [];
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Serial numbers fetch cancelled");
+        throw error;
+      }
       console.error(`Error fetching serial numbers for row ID ${rowId}:`, error);
       return [];
     }
@@ -1170,7 +1286,8 @@ class MissWooApp {
         headers: {
           'Authorization': `Bearer ${this.katanaApiKey}`,
           'Accept': 'application/json'
-        }
+        },
+        signal: this.activeSearchAbortController?.signal
       });
       console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
 
@@ -1204,6 +1321,10 @@ class MissWooApp {
         return null;
       }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Katana order fetch cancelled");
+        throw error;
+      }
       console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
       this.katanaOrderCache.set(wooOrderNumber, null);
       return null;
@@ -1219,7 +1340,8 @@ class MissWooApp {
         headers: {
           'Authorization': `Bearer ${this.katanaApiKey}`,
           'Accept': 'application/json'
-        }
+        },
+        signal: this.activeSearchAbortController?.signal
       });
 
       if (!response.ok) {
@@ -1231,8 +1353,155 @@ class MissWooApp {
       console.log(`Full Katana order details for ID ${katanaOrderId}:`, data);
       return data;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Katana order details fetch cancelled");
+        throw error;
+      }
       console.error(`Error fetching full Katana order details for ${katanaOrderId}:`, error);
       return null;
+    }
+  }
+
+  // OPTIMIZATION 1: Batch fetch all Katana orders in parallel for multiple WooCommerce orders
+  async batchGetKatanaOrders(wooOrderNumbers) {
+    try {
+      // Separate cached and uncached orders
+      const uncachedOrders = [];
+      const cachedResults = new Map();
+      
+      for (const orderNumber of wooOrderNumbers) {
+        if (this.katanaOrderCache && this.katanaOrderCache.has(orderNumber) && this.isCacheValid(orderNumber, 'katanaCache')) {
+          cachedResults.set(orderNumber, this.katanaOrderCache.get(orderNumber));
+        } else {
+          uncachedOrders.push(orderNumber);
+        }
+      }
+      
+      if (uncachedOrders.length === 0) {
+        return cachedResults;
+      }
+      
+      // Fetch all uncached orders in parallel
+      const fetchPromises = uncachedOrders.map(async (orderNumber) => {
+        try {
+          const katanaOrder = await this.getKatanaOrder(orderNumber);
+          return { orderNumber, katanaOrder };
+        } catch (error) {
+          if (error.name === 'AbortError') throw error;
+          console.error(`Error in batch fetch for order ${orderNumber}:`, error);
+          return { orderNumber, katanaOrder: null };
+        }
+      });
+      
+      const results = await Promise.all(fetchPromises);
+      
+      // Merge cached and fetched results
+      for (const { orderNumber, katanaOrder } of results) {
+        cachedResults.set(orderNumber, katanaOrder);
+      }
+      
+      return cachedResults;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      console.error("Error in batchGetKatanaOrders:", error);
+      return new Map();
+    }
+  }
+
+  // OPTIMIZATION 1: Batch fetch serial numbers for multiple rows in parallel
+  async batchGetSerialNumbersForRows(rowIds) {
+    try {
+      const fetchPromises = rowIds.map(async (rowId) => {
+        try {
+          const serialNumbers = await this.getSerialNumbersForRow(rowId);
+          return { rowId, serialNumbers };
+        } catch (error) {
+          if (error.name === 'AbortError') throw error;
+          console.error(`Error fetching serial numbers for row ${rowId}:`, error);
+          return { rowId, serialNumbers: [] };
+        }
+      });
+      
+      const results = await Promise.all(fetchPromises);
+      const serialNumberMap = new Map();
+      
+      for (const { rowId, serialNumbers } of results) {
+        serialNumberMap.set(rowId, serialNumbers);
+      }
+      
+      return serialNumberMap;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      console.error("Error in batchGetSerialNumbersForRows:", error);
+      return new Map();
+    }
+  }
+
+  // OPTIMIZATION 1: Batch version that fetches all serial numbers in parallel for multiple orders
+  async batchGetSerialNumbers(orders) {
+    try {
+      // Separate cached and uncached orders
+      const uncachedOrders = [];
+      const cachedResults = new Map();
+      
+      for (const order of orders) {
+        if (this.serialNumberCache && this.serialNumberCache.has(order.number) && this.isCacheValid(order.number, 'serialCache')) {
+          cachedResults.set(order.number, this.serialNumberCache.get(order.number));
+        } else {
+          uncachedOrders.push(order);
+        }
+      }
+      
+      if (uncachedOrders.length === 0) {
+        return cachedResults;
+      }
+      
+      // Step 1: Batch fetch all Katana orders in parallel
+      const wooOrderNumbers = uncachedOrders.map(o => o.number);
+      const katanaOrdersMap = await this.batchGetKatanaOrders(wooOrderNumbers);
+      
+      // Step 2: Collect all row IDs from all orders
+      const rowIdsByOrder = new Map();
+      for (const order of uncachedOrders) {
+        const katanaOrder = katanaOrdersMap.get(order.number);
+        if (katanaOrder && katanaOrder.sales_order_rows && Array.isArray(katanaOrder.sales_order_rows)) {
+          const rowIds = katanaOrder.sales_order_rows
+            .filter(row => row.id)
+            .map(row => row.id);
+          rowIdsByOrder.set(order.number, rowIds);
+        }
+      }
+      
+      // Step 3: Batch fetch all serial numbers for all rows in parallel
+      const allRowIds = Array.from(rowIdsByOrder.values()).flat();
+      const serialNumberMap = await this.batchGetSerialNumbersForRows(allRowIds);
+      
+      // Step 4: Group serial numbers by order
+      for (const order of uncachedOrders) {
+        const rowIds = rowIdsByOrder.get(order.number) || [];
+        const orderSerialNumbers = [];
+        
+        for (const rowId of rowIds) {
+          const serials = serialNumberMap.get(rowId) || [];
+          orderSerialNumbers.push(...serials);
+        }
+        
+        const result = orderSerialNumbers.length > 0 
+          ? orderSerialNumbers.join(', ')
+          : "N/A";
+        
+        // Cache the result
+        this.serialNumberCache.set(order.number, result);
+        this.setCacheExpiry(order.number, 'serialCache');
+        cachedResults.set(order.number, result);
+      }
+      
+      return cachedResults;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      console.error('Error in batchGetSerialNumbers:', error);
+      // Return cached results even if batch fetch failed
+      return cachedResults;
     }
   }
 
@@ -1498,7 +1767,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.00' : 'vJS4.00 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.01' : 'vJS4.01 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2154,6 +2423,14 @@ class MissWooApp {
       return;
     }
 
+    // OPTIMIZATION 4: Cancel any previous search requests
+    if (this.activeSearchAbortController) {
+      console.log("Cancelling previous search requests");
+      this.activeSearchAbortController.abort();
+    }
+    // Create new AbortController for this search
+    this.activeSearchAbortController = new AbortController();
+
     // Check if we're already searching this email
     if (this.searchInProgress && this.activeSearches.has(email)) {
       console.log(`⏳ Already searching for ${email}, skipping`);
@@ -2168,7 +2445,7 @@ class MissWooApp {
       const cachedOrders = this.emailCache.get(email);
       if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
         console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
-        this.allOrders = [...cachedOrders];
+        this.allOrders = cachedOrders; // No need to clone for cache
         // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
@@ -2182,7 +2459,7 @@ class MissWooApp {
       const preloadedData = this.preloadedConversations.get(email);
       if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
         console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
-        this.allOrders = [...preloadedData.orders];
+        this.allOrders = preloadedData.orders; // No need to clone for preloaded
         // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
@@ -2211,9 +2488,15 @@ class MissWooApp {
         // console.log(`🔍 Starting search for: ${email}`);
         const orderResults = await this.searchWooCommerceOrders(email);
         
+        // OPTIMIZATION 4: Check if search was cancelled
+        if (this.activeSearchAbortController?.signal.aborted) {
+          console.log("Search was cancelled, ignoring results");
+          return;
+        }
+        
         if (Array.isArray(orderResults)) {
           // console.log(`DEBUG: performAutoSearch - Before allOrders assignment. Received orderResults.length: ${orderResults ? orderResults.length : 'null/undefined'}. Current allOrders.length: ${this.allOrders.length}`);
-          this.allOrders = [...orderResults];
+          this.allOrders = orderResults; // No need to clone
           // console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
           // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
           this.displayOrdersList();
@@ -2229,6 +2512,11 @@ class MissWooApp {
         }
         
       } catch (error) {
+        // Don't log abort errors as errors
+        if (error.name === 'AbortError' || error.message === 'Search cancelled') {
+          console.log("Search cancelled");
+          return;
+        }
         console.error("❌ Search failed:", error);
         this.setStatus("Search failed");
       } finally {

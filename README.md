@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.00  
+**Version**: vJS4.01  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,7 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.00 (Current)
+### vJS4.01 (Current)
 - ✅ Updated to use correct Missive JavaScript API methods
 - ✅ Changed primary method from fetchMessages to fetchConversations
 - ✅ Enhanced conversation data extraction with proper API structure
