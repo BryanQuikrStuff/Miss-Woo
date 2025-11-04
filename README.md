@@ -131,11 +131,17 @@ Open browser console to see detailed logs:
 ## 📝 Changelog
 
 ### vJS4.01 (Current)
+- ✅ Restored all four performance optimizations:
+  - OPTIMIZATION 1: Parallelize Katana API calls (batch fetching)
+  - OPTIMIZATION 2: Parallelize WooCommerce page fetching with early termination
+  - OPTIMIZATION 3: Defer order notes fetching (lazy loading)
+  - OPTIMIZATION 4: Add request cancellation (AbortController support)
+
+### vJS4.00
 - ✅ Updated to use correct Missive JavaScript API methods
 - ✅ Changed primary method from fetchMessages to fetchConversations
 - ✅ Enhanced conversation data extraction with proper API structure
 - ✅ Improved error handling and fallback mechanisms
-- ✅ Updated version numbers across all files and locations
 
 ### vJS3.55
 - ✅ Added Missive-specific email extraction based on official API documentation
