@@ -218,7 +218,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.02';
+    return 'vJS4.03';
   }
 
   async loadVersionFromManifest() {
@@ -1767,7 +1767,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.02' : 'vJS4.02 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.03' : 'vJS4.03 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2167,16 +2167,11 @@ class MissWooApp {
 
 
   cleanupCache() {
-    // Keep only the last 10 cached emails to prevent memory issues
-    const maxCacheSize = 10;
-    if (this.emailCache.size > maxCacheSize) {
-      const entries = Array.from(this.emailCache.entries());
-      const toRemove = entries.slice(0, entries.length - maxCacheSize);
-      toRemove.forEach(([email]) => {
-        this.emailCache.delete(email);
-      });
-      console.log(`Cleaned up cache, removed ${toRemove.length} old entries`);
-    }
+    // DISABLED: Cache should persist until user navigates away
+    // Previous behavior: Limited cache to 10 entries to prevent memory issues
+    // New behavior: Keep all cached data during session, only clear on navigation
+    // Memory is managed by cache expiration times instead
+    console.log(`Cache size: ${this.emailCache.size} entries (persisting until navigation)`);
   }
 
   // Dynamic preloading system for Visible Conversations
@@ -2446,27 +2441,11 @@ class MissWooApp {
   }
 
   cleanupArchivedConversations() {
-    const emailsToRemove = [];
-    
-    for (const [email, data] of this.preloadedConversations) {
-      // Check if email is still from a visible conversation
-      const isStillVisible = this.isEmailFromVisibleConversation(email);
-      
-      if (!isStillVisible) {
-        emailsToRemove.push(email);
-        console.log(`🗑️ Marking ${email} for cleanup - no longer visible`);
-      }
-    }
-    
-    // Remove archived conversation data
-    for (const email of emailsToRemove) {
-      this.preloadedConversations.delete(email);
-      this.emailCache.delete(email);
-    }
-    
-    if (emailsToRemove.length > 0) {
-      console.log(`🧹 Cleaned up ${emailsToRemove.length} archived conversations`);
-    }
+    // DISABLED: Cache should persist until user navigates away
+    // Previous behavior: Removed cached data when conversations were archived/no longer visible
+    // New behavior: Keep all cached data during session, only clear on navigation away
+    // This ensures positive search results remain available throughout the session
+    console.log(`Preloaded conversations: ${this.preloadedConversations.size}, Email cache: ${this.emailCache.size} (persisting until navigation)`);
   }
 
   isEmailFromVisibleConversation(email) {
@@ -2684,6 +2663,10 @@ class MissWooApp {
   }
 
   cleanup() {
+    // This method is called ONLY when user navigates away (via beforeunload event)
+    // All caches are cleared at this point to free memory
+    // During the session, cache persists to ensure positive search results remain available
+    
     // Clear timers
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
@@ -2695,7 +2678,7 @@ class MissWooApp {
       this.preloadingDebounceTimer = null;
     }
     
-    // Clear cache
+    // Clear cache (only on navigation away)
     this.emailCache.clear();
     this.visibleEmails.clear();
     
@@ -2728,10 +2711,14 @@ class MissWooApp {
   }
 
   clearCaches() {
+    // NOTE: This method should ONLY be called when user navigates away
+    // Cache persists during the session to ensure positive search results remain available
+    // Called automatically by cleanup() on beforeunload event
     console.log('Clearing all performance caches...');
     this.orderCache = {};
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
+    this.emailCache.clear();
     this.cacheExpiry.clear();
     this.preloadedConversations.clear();
     console.log('Performance caches and preloaded data cleared');

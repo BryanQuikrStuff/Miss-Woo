@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.02  
+**Version**: vJS4.03  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.02 (Current)
+### vJS4.03 (Current)
+- ✅ Improved cache persistence: Cache now persists throughout user session until navigation away
+
+### vJS4.02
 - ✅ Enhanced preloading: Preloads all customer details (orders, notes, Katana data, serial numbers) for all visible emails
 
 ### vJS4.01
