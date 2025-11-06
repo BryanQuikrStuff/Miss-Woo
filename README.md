@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.05  
+**Version**: vJS4.06  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.05 (Current)
+### vJS4.06 (Current)
+- ✅ Version bump to force cache refresh in Missive
+
+### vJS4.05
 - ✅ Performance optimizations for preloading system:
   - Added debouncing (500ms) to conversation change events to prevent rapid-fire API calls
   - Implemented cache size limits with LRU eviction (100 emailCache, 50 preloadedConversations)
