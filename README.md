@@ -145,14 +145,6 @@ Open browser console to see detailed logs:
 - ✅ Improved cache hit rate with normalized email matching
 
 ### vJS4.07
-- ✅ JavaScript performance optimizations for faster search:
-  - Early termination in filterOrdersByEmail (stops at 5 matches)
-  - Reduced excessive logging in hot paths (cache hits, API responses)
-  - Cached base URL construction to avoid repeated string operations
-  - Streamlined cache hit path for minimal processing overhead
-  - Removed unnecessary array operations and logging statements
-
-### vJS4.07
 - ✅ Enhanced preloading to fetch ALL visible inbox conversations
 - ✅ Improved fetchConversations API handling with Promise-based pattern
 - ✅ Increased maxPreloadedConversations limit to 50
