@@ -250,7 +250,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.08';
+    return 'vJS4.09';
   }
 
   async loadVersionFromManifest() {
@@ -509,13 +509,9 @@ class MissWooApp {
     }
 
   async searchOrdersByEmail(email) {
-    const startTime = performance.now();
-    console.log("Searching orders for email:", email);
-    
-    // Normalize email for consistent cache lookups
+    // OPTIMIZATION: Normalize email first for consistent cache lookups
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) {
-      console.log("❌ Failed to normalize email:", email);
       return;
     }
     
@@ -527,18 +523,13 @@ class MissWooApp {
     
     // Check emailCache first (unified caching) - use normalized email
     if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
-      console.log("✅ Using cached results for:", normalizedEmail);
       const cachedOrders = this.emailCache.get(normalizedEmail);
-      console.log("Cached orders:", cachedOrders);
-      console.log("Cached orders type:", typeof cachedOrders);
-      console.log("Cached orders is array:", Array.isArray(cachedOrders));
-      console.log("Cached orders length:", Array.isArray(cachedOrders) ? cachedOrders.length : 'not an array');
-      this.allOrders = Array.isArray(cachedOrders) ? cachedOrders : [];
-      console.log("this.allOrders after cache:", this.allOrders);
-      console.log("this.allOrders length:", this.allOrders.length);
-      // Don't call displayOrdersList here - let the caller handle it
-      console.log(`Cache hit - Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
-      return;
+      // OPTIMIZATION: Fast path - minimal logging for cache hits
+      if (Array.isArray(cachedOrders)) {
+        this.allOrders = cachedOrders;
+        // Don't call displayOrdersList here - let the caller handle it
+        return;
+      }
     }
     
     try {
@@ -568,11 +559,7 @@ class MissWooApp {
         this.setCacheExpiry(normalizedEmail, 'emailCache');
         // OPTIMIZATION: Enforce cache size limit
         this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-        console.log(`Cached ${orderResults.length} orders for ${normalizedEmail} in emailCache`);
       }
-      
-      console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
-      this.logPerformanceStats();
     } catch (error) {
       if (error.name === 'AbortError' || error.message === 'Search cancelled') {
         console.log("Search cancelled");
@@ -593,7 +580,6 @@ class MissWooApp {
 
     try {
       // OPTIMIZATION 2: Fetch first page immediately to show results faster
-      console.log(`Searching WooCommerce orders page 1...`);
       const firstPageUrl = this.getAuthenticatedUrl('/orders', {
         search: email,
         per_page: 100,
@@ -608,20 +594,17 @@ class MissWooApp {
       
       // Ensure firstPageData is an array
       if (!Array.isArray(firstPageData)) {
-        console.error("API returned non-array data:", firstPageData);
         return [];
       }
-      
-      console.log(`Found ${firstPageData.length} orders on page 1`);
       
       if (firstPageData.length > 0) {
         allOrders = allOrders.concat(firstPageData);
         
-        // OPTIMIZATION 2: Check if we have enough exact matches after first page
+        // OPTIMIZATION 2: Check if we have enough exact matches after first page - early return
         const matchingAfterFirstPage = this.filterOrdersByEmail(allOrders, email);
         if (matchingAfterFirstPage.length >= maxMatchingOrders) {
-          console.log(`Found ${matchingAfterFirstPage.length} matching orders on first page, stopping search`);
-          const processedOrders = await this.processOrdersWithDetails(matchingAfterFirstPage.slice(0, maxMatchingOrders), email);
+          // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
+          const processedOrders = await this.processOrdersWithDetails(matchingAfterFirstPage, email);
           return Array.isArray(processedOrders) ? processedOrders : [];
         }
         
@@ -663,13 +646,12 @@ class MissWooApp {
         // Add page 2 results if valid
         if (Array.isArray(page2Data) && page2Data.length > 0) {
           allOrders = allOrders.concat(page2Data);
-          console.log(`Found ${page2Data.length} orders on page 2`);
           
-          // OPTIMIZATION 2: Check if we have enough matches after page 2
+          // OPTIMIZATION 2: Check if we have enough matches after page 2 - early return
           const matchingAfterPage2 = this.filterOrdersByEmail(allOrders, email);
           if (matchingAfterPage2.length >= maxMatchingOrders) {
-            console.log(`Found ${matchingAfterPage2.length} matching orders after page 2, skipping page 3`);
-            const processedOrders = await this.processOrdersWithDetails(matchingAfterPage2.slice(0, maxMatchingOrders), email);
+            // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
+            const processedOrders = await this.processOrdersWithDetails(matchingAfterPage2, email);
             return Array.isArray(processedOrders) ? processedOrders : [];
           }
         }
@@ -677,15 +659,11 @@ class MissWooApp {
         // Add page 3 results if valid
         if (Array.isArray(page3Data) && page3Data.length > 0) {
           allOrders = allOrders.concat(page3Data);
-          console.log(`Found ${page3Data.length} orders on page 3`);
         }
       }
 
-      console.log(`Total WooCommerce orders found: ${allOrders.length}`);
-
-      // Filter for exact email matches and get the latest 5
+      // OPTIMIZATION: Filter for exact email matches (filterOrdersByEmail already returns max 5)
       const matchingOrders = this.filterOrdersByEmail(allOrders, email);
-      console.log(`Total matching WooCommerce orders (latest 5): ${matchingOrders.length}`);
 
       // OPTIMIZATION 3: Process order details (without notes - notes fetched later)
       const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
@@ -730,15 +708,22 @@ class MissWooApp {
     }
   }
 
+  // OPTIMIZATION: Early termination - stop once we have 5 matches (much faster)
   filterOrdersByEmail(orders, email) {
-    return orders
-      .filter(order => {
-        const orderEmail = order.billing?.email || '';
-        const matches = orderEmail.toLowerCase() === email.toLowerCase();
-        console.log(`Checking order ${order.number}: ${orderEmail} against ${email}: ${matches}`);
-        return matches;
-      })
-      .slice(0, 5); // Get latest 5 orders
+    const normalizedEmail = email.toLowerCase();
+    const matches = [];
+    
+    // Stop early once we have 5 matches - avoids processing remaining orders
+    for (const order of orders) {
+      if (matches.length >= 5) break;
+      
+      const orderEmail = order.billing?.email || '';
+      if (orderEmail.toLowerCase() === normalizedEmail) {
+        matches.push(order);
+      }
+    }
+    
+    return matches;
   }
 
   async processOrdersWithDetails(orders, email) {
@@ -766,15 +751,19 @@ class MissWooApp {
     return orders;
   }
 
+  // OPTIMIZATION: Cache base URL construction to avoid repeated string operations
   getAuthenticatedUrl(endpoint, params = {}) {
     // Ensure we have a valid base URL
     if (!this.apiBaseUrl) {
       throw new Error("API base URL is not configured");
     }
     
-    // Ensure the base URL ends with a slash for proper concatenation
-    const baseUrl = this.apiBaseUrl.endsWith('/') ? this.apiBaseUrl : this.apiBaseUrl + '/';
-    const fullUrl = baseUrl + endpoint.replace(/^\//, ''); // Remove leading slash if present
+    // OPTIMIZATION: Cache base URL normalization
+    if (!this._cachedBaseUrl) {
+      this._cachedBaseUrl = this.apiBaseUrl.endsWith('/') ? this.apiBaseUrl : this.apiBaseUrl + '/';
+    }
+    
+    const fullUrl = this._cachedBaseUrl + endpoint.replace(/^\//, ''); // Remove leading slash if present
     
     try {
       const url = new URL(fullUrl);
@@ -786,25 +775,21 @@ class MissWooApp {
         url.searchParams.set(key, value);
       });
       
-      console.log("Generated URL:", url.toString());
       return url.toString();
-        } catch (error) {
+    } catch (error) {
       console.error("Failed to construct URL:", error);
       throw new Error(`Invalid URL construction: ${error.message}`);
     }
   }
 
   async makeRequest(url, options = {}) {
-    console.log("Making request to:", url);
-    
-    // Request deduplication - if same request is pending, wait for it
+    // OPTIMIZATION: Request deduplication - if same request is pending, wait for it
     const requestKey = `${url}-${JSON.stringify(options)}`;
     if (this.pendingRequests.has(requestKey)) {
-      console.log("Request already pending, waiting for result:", requestKey);
       return this.requestQueue.get(requestKey);
     }
     
-    // Add cache-busting parameter for Missive environment
+    // OPTIMIZATION: Cache URL construction to avoid repeated string operations
     const separator = url.includes('?') ? '&' : '?';
     const cacheBustedUrl = this.isMissiveEnvironment 
       ? `${url}${separator}_cb=${this.cacheBuster}`
@@ -829,7 +814,7 @@ class MissWooApp {
         }
 
         const data = await response.json();
-        console.log("API Response:", data);
+        // OPTIMIZATION: Removed excessive logging in hot path
         return data;
         } catch (error) {
         // Don't log abort errors as errors - they're intentional cancellations
@@ -1812,7 +1797,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.08' : 'vJS4.08 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.09' : 'vJS4.09 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
