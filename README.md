@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.06  
+**Version**: vJS4.07  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.06 (Current)
+### vJS4.07 (Current)
+- ✅ Enhanced preloading to fetch ALL visible inbox conversations
+- ✅ Improved fetchConversations API handling with Promise-based pattern
+- ✅ Increased maxPreloadedConversations limit to 50
+- ✅ Better error handling and batch processing for conversation fetching
+
+### vJS4.06
 - ✅ Version bump to force cache refresh in Missive
 
 ### vJS4.05

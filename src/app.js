@@ -63,7 +63,7 @@ class MissWooApp {
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
-      this.maxPreloadedConversations = 20;
+      this.maxPreloadedConversations = 50; // Increased to preload more conversations
       this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.pendingConversationIds = null; // Track pending conversation IDs for debouncing
@@ -250,7 +250,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.06';
+    return 'vJS4.07';
   }
 
   async loadVersionFromManifest() {
@@ -1805,7 +1805,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.06' : 'vJS4.06 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.07' : 'vJS4.07 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2303,33 +2303,43 @@ class MissWooApp {
       return;
     }
 
-    // Limit the number of conversations to fetch to prevent overwhelming the system
-    const idsToFetch = conversationIds.slice(0, this.maxPreloadedConversations || 20);
-    console.log(`📧 Fetching ${idsToFetch.length} conversations (from ${conversationIds.length} total) for preloading...`);
+    // Process ALL conversation IDs - don't limit to ensure all visible emails are preloaded
+    // Use maxPreloadedConversations only as a safety limit for very large inboxes
+    const idsToFetch = conversationIds.slice(0, Math.min(conversationIds.length, this.maxPreloadedConversations || 50));
+    console.log(`📧 Fetching ALL ${idsToFetch.length} conversations (from ${conversationIds.length} total visible) for preloading...`);
 
     try {
       let conversations = [];
       
       if (Missive.fetchConversations && typeof Missive.fetchConversations === 'function') {
         try {
-          // Try 1: Pass array of conversation IDs directly (most efficient)
-          console.log(`📧 Attempting to fetch conversations by IDs: ${idsToFetch.slice(0, 3).join(', ')}...`);
+          // Based on Missive API: fetchConversations accepts conversation IDs and returns Promise(Array)
+          // Try passing array of conversation IDs directly (most efficient)
+          console.log(`📧 Attempting to fetch ${idsToFetch.length} conversations by IDs: ${idsToFetch.slice(0, 5).join(', ')}${idsToFetch.length > 5 ? '...' : ''}`);
+          
+          // Call fetchConversations with array of IDs - API returns Promise(Array<Conversation>)
           const fetchedConversations = await Missive.fetchConversations(idsToFetch);
           
-          if (Array.isArray(fetchedConversations) && fetchedConversations.length > 0) {
-            conversations = fetchedConversations;
-            console.log(`✅ Successfully fetched ${conversations.length} conversations by IDs`);
+          if (Array.isArray(fetchedConversations)) {
+            if (fetchedConversations.length > 0) {
+              conversations = fetchedConversations;
+              console.log(`✅ Successfully fetched ${conversations.length} conversations by IDs`);
+            } else {
+              console.log("⚠️ fetchConversations returned empty array, trying fallback method...");
+              conversations = await this.fetchConversationsOneByOne(idsToFetch);
+            }
           } else {
-            console.log("⚠️ fetchConversations returned empty or invalid result, trying fallback...");
+            console.log("⚠️ fetchConversations returned non-array result:", typeof fetchedConversations, "trying fallback...");
             conversations = await this.fetchConversationsOneByOne(idsToFetch);
           }
         } catch (error) {
-          console.log(`⚠️ Error fetching conversations by IDs (${error.message}), trying fallback...`);
+          console.log(`⚠️ Error fetching conversations by IDs (${error.message}), trying fallback method...`);
+          console.log(`⚠️ Error details:`, error);
           // Fallback: try fetching one by one (slower but more reliable)
           conversations = await this.fetchConversationsOneByOne(idsToFetch);
         }
       } else {
-        console.log("❌ fetchConversations method not available, trying fallback...");
+        console.log("❌ fetchConversations method not available, trying fallback method...");
         // Fallback: try fetching one by one
         conversations = await this.fetchConversationsOneByOne(idsToFetch);
       }
@@ -2365,19 +2375,25 @@ class MissWooApp {
         }
       }
 
-      // Preload customer details for all emails in the background (non-blocking)
-      // Pass prioritized email to ensure it's preloaded first
-      // Don't await this - let it run in background so the UI stays responsive
-      this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(error => {
-        console.error("❌ Error preloading emails data:", error);
-        // OPTIMIZATION: Retry failed preloads after a delay
-        setTimeout(() => {
-          console.log(`🔄 Retrying preload for ${emailsToPreload.length} emails after error...`);
-          this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(retryError => {
-            console.error("❌ Retry preload also failed:", retryError);
-          });
-        }, 5000); // Retry after 5 seconds
-      });
+      // Preload customer details for all emails
+      // IMPORTANT: Process ALL visible emails to ensure inbox is fully preloaded
+      console.log(`🔄 Starting preload for ${emailsToPreload.length} emails from visible inbox...`);
+      
+      // Preload in background but track progress
+      this.preloadEmailsData(emailsToPreload, prioritizedEmail)
+        .then(() => {
+          console.log(`✅ Completed preloading ${emailsToPreload.length} emails from visible inbox`);
+        })
+        .catch(error => {
+          console.error("❌ Error preloading emails data:", error);
+          // OPTIMIZATION: Retry failed preloads after a delay
+          setTimeout(() => {
+            console.log(`🔄 Retrying preload for ${emailsToPreload.length} emails after error...`);
+            this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(retryError => {
+              console.error("❌ Retry preload also failed:", retryError);
+            });
+          }, 5000); // Retry after 5 seconds
+        });
 
       console.log(`✅ Started preloading data for ${emailsToPreload.length} emails in background`);
     } catch (error) {
@@ -2388,21 +2404,39 @@ class MissWooApp {
   // Fallback method: fetch conversations one by one if batch fetch fails
   async fetchConversationsOneByOne(conversationIds) {
     const conversations = [];
+    const maxToFetch = Math.min(conversationIds.length, this.maxPreloadedConversations || 50);
+    console.log(`📧 Fetching ${maxToFetch} conversations one by one (fallback method)...`);
     
-    for (const convId of conversationIds.slice(0, this.maxPreloadedConversations)) {
-      try {
-        // Try to get conversation by ID - if fetchConversations supports single ID
-        if (Missive.fetchConversations) {
-          const result = await Missive.fetchConversations([convId]);
-          if (Array.isArray(result) && result.length > 0) {
-            conversations.push(result[0]);
+    // Process in batches to avoid overwhelming the API
+    const batchSize = 5;
+    for (let i = 0; i < maxToFetch; i += batchSize) {
+      const batch = conversationIds.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (convId) => {
+        try {
+          // Try fetching single conversation by ID
+          // API returns Promise(Array) so we get an array even for single ID
+          if (Missive.fetchConversations) {
+            const result = await Missive.fetchConversations([convId]);
+            if (Array.isArray(result) && result.length > 0) {
+              return result[0];
+            }
           }
+        } catch (error) {
+          console.log(`❌ Failed to fetch conversation ${convId}:`, error.message);
+          return null;
         }
-      } catch (error) {
-        console.log(`❌ Failed to fetch conversation ${convId}:`, error);
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      conversations.push(...batchResults.filter(conv => conv !== null));
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < maxToFetch) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
     
+    console.log(`✅ Fetched ${conversations.length} conversations using fallback method`);
     return conversations;
   }
 
@@ -2428,11 +2462,30 @@ class MissWooApp {
       // Always try to fetch more conversations (not just when conversations.length === 0)
       if (Missive.fetchConversations) {
         try {
-          console.log(`📧 Fetching up to ${this.maxPreloadedConversations} conversations...`);
-          const fetchedConversations = await Missive.fetchConversations([
-            this.maxPreloadedConversations,
-            'oldest'
-          ]);
+          console.log(`📧 Fetching up to ${this.maxPreloadedConversations} visible conversations...`);
+          // Use proper API format: { limit: number, sort: 'oldest' | 'newest' }
+          // Try fetching with limit first, fallback to array format if needed
+          let fetchedConversations = null;
+          
+          // Try object format first (correct API format)
+          if (typeof Missive.fetchConversations === 'function') {
+            try {
+              fetchedConversations = await Missive.fetchConversations({
+                limit: this.maxPreloadedConversations,
+                sort: 'oldest'
+              });
+            } catch (objError) {
+              // Fallback to array format if object format doesn't work
+              console.log(`⚠️ Object format failed (${objError.message}), trying array format...`);
+              try {
+                fetchedConversations = await Missive.fetchConversations([this.maxPreloadedConversations, 'oldest']);
+              } catch (arrayError) {
+                console.log(`⚠️ Array format also failed (${arrayError.message}), trying direct call...`);
+                // Last resort: try calling without parameters or with just limit
+                fetchedConversations = await Missive.fetchConversations(this.maxPreloadedConversations);
+              }
+            }
+          }
           
           if (Array.isArray(fetchedConversations)) {
             // Add conversations that aren't already in the list
