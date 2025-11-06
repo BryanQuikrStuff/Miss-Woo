@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS4.07)
+// Missive JS API variant (vJS4.08)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-    // Force version badge to vJS4.07 immediately
-        this.setBadge('vJS4.07');
-    console.log('🔧 Set initial version badge to vJS4.07');
+    // Force version badge to vJS4.08 immediately
+        this.setBadge('vJS4.08');
+    console.log('🔧 Set initial version badge to vJS4.08');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -86,14 +86,14 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS4.07 once app updates header
-        setTimeout(() => this.setBadge('vJS4.07'), 300);
+        // Override version badge to vJS4.08 once app updates header
+        setTimeout(() => this.setBadge('vJS4.08'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS4.07'), 1000);
-        setTimeout(() => this.setBadge('vJS4.07'), 2000);
-        setTimeout(() => this.setBadge('vJS4.07'), 3000);
-        setTimeout(() => this.setBadge('vJS4.07'), 5000);
+        setTimeout(() => this.setBadge('vJS4.08'), 1000);
+        setTimeout(() => this.setBadge('vJS4.08'), 2000);
+        setTimeout(() => this.setBadge('vJS4.08'), 3000);
+        setTimeout(() => this.setBadge('vJS4.08'), 5000);
         
         // Override MissWooApp's version setting by patching the method
         if (this.app && this.app.updateHeaderWithVersion) {
@@ -101,7 +101,7 @@ class MissiveJSBridge {
           this.app.updateHeaderWithVersion = () => {
             originalUpdateHeader();
             // Force our version after the app updates it
-            setTimeout(() => this.setBadge('vJS4.07'), 100);
+            setTimeout(() => this.setBadge('vJS4.08'), 100);
           };
         }
         
@@ -288,8 +288,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS4.07';
-          console.log('🧪 Forced version badge to vJS4.07');
+          el.textContent = 'vJS4.08';
+          console.log('🧪 Forced version badge to vJS4.08');
         }
         
         return {
@@ -460,7 +460,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS4.07');
+      this.setBadge('vJS4.08');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -470,7 +470,7 @@ class MissiveJSBridge {
     setTimeout(async () => {
       if (!this.isReady) {
         console.log('🔄 Missive ready event not received, trying fallback initialization...');
-        this.setBadge('vJS4.07');
+        this.setBadge('vJS4.08');
         if (this.app?.setStatus) this.app.setStatus('Ready (fallback)');
         await this.tryPrimeEmail();
       }

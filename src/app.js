@@ -250,7 +250,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.07';
+    return 'vJS4.08';
   }
 
   async loadVersionFromManifest() {
@@ -512,16 +512,23 @@ class MissWooApp {
     const startTime = performance.now();
     console.log("Searching orders for email:", email);
     
-    // Clear previous data if this is a new email search
-    if (this.lastSearchedEmail !== email) {
-      this.clearCurrentEmailData();
-      this.lastSearchedEmail = email;
+    // Normalize email for consistent cache lookups
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) {
+      console.log("❌ Failed to normalize email:", email);
+      return;
     }
     
-    // Check emailCache first (unified caching)
-    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-      console.log("Using cached results for:", email);
-      const cachedOrders = this.emailCache.get(email);
+    // Clear previous data if this is a new email search
+    if (this.lastSearchedEmail !== normalizedEmail) {
+      this.clearCurrentEmailData();
+      this.lastSearchedEmail = normalizedEmail;
+    }
+    
+    // Check emailCache first (unified caching) - use normalized email
+    if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+      console.log("✅ Using cached results for:", normalizedEmail);
+      const cachedOrders = this.emailCache.get(normalizedEmail);
       console.log("Cached orders:", cachedOrders);
       console.log("Cached orders type:", typeof cachedOrders);
       console.log("Cached orders is array:", Array.isArray(cachedOrders));
@@ -555,13 +562,13 @@ class MissWooApp {
       this.allOrders = orderResults;
       // Don't call displayOrdersList here - let the caller handle it
       
-      // Cache the results in emailCache (unified caching)
+      // Cache the results in emailCache (unified caching) - use normalized email
       if (this.emailCache) {
-        this.emailCache.set(email, orderResults); // No need to clone for cache
-        this.setCacheExpiry(email, 'emailCache');
+        this.emailCache.set(normalizedEmail, orderResults); // No need to clone for cache
+        this.setCacheExpiry(normalizedEmail, 'emailCache');
         // OPTIMIZATION: Enforce cache size limit
         this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-        console.log(`Cached ${orderResults.length} orders for ${email} in emailCache`);
+        console.log(`Cached ${orderResults.length} orders for ${normalizedEmail} in emailCache`);
       }
       
       console.log(`Search completed in ${(performance.now() - startTime).toFixed(2)}ms`);
@@ -1805,7 +1812,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.07' : 'vJS4.07 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.08' : 'vJS4.08 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2267,7 +2274,9 @@ class MissWooApp {
           // OPTIMIZATION: Prioritize first conversation (current one) for preloading
           let prioritizedEmail = null;
           if (conversations.length > 0) {
-            prioritizedEmail = this.extractEmailFromData(conversations[0]);
+            const firstEmail = this.extractEmailFromData(conversations[0]);
+            // Normalize prioritized email for consistent caching
+            prioritizedEmail = firstEmail ? this.normalizeEmail(firstEmail) : null;
           }
 
           // Preload data for each email (prioritizing current conversation)
@@ -2366,12 +2375,15 @@ class MissWooApp {
       let prioritizedEmail = null;
       if (conversations.length > 0) {
         const firstConversation = conversations[0];
-        prioritizedEmail = this.extractEmailFromData(firstConversation);
+        const firstEmail = this.extractEmailFromData(firstConversation);
+        // Normalize prioritized email for consistent caching
+        prioritizedEmail = firstEmail ? this.normalizeEmail(firstEmail) : null;
         
         // Also trigger auto-search for the first conversation (current one) immediately
-        if (prioritizedEmail && this.isValidEmailForSearch(prioritizedEmail)) {
-          console.log(`🔍 Triggering auto-search for current email: ${prioritizedEmail}`);
-          this.performAutoSearch(prioritizedEmail);
+        // Use original email for auto-search (performAutoSearch will normalize internally)
+        if (firstEmail && this.isValidEmailForSearch(firstEmail)) {
+          console.log(`🔍 Triggering auto-search for current email: ${firstEmail} (normalized: ${prioritizedEmail})`);
+          this.performAutoSearch(firstEmail);
         }
       }
 
@@ -2379,7 +2391,7 @@ class MissWooApp {
       // IMPORTANT: Process ALL visible emails to ensure inbox is fully preloaded
       console.log(`🔄 Starting preload for ${emailsToPreload.length} emails from visible inbox...`);
       
-      // Preload in background but track progress
+      // Preload in background but track progress (use normalized prioritized email)
       this.preloadEmailsData(emailsToPreload, prioritizedEmail)
         .then(() => {
           console.log(`✅ Completed preloading ${emailsToPreload.length} emails from visible inbox`);
@@ -2528,13 +2540,23 @@ class MissWooApp {
     console.log(`📧 Updated visible conversations: ${this.visibleConversationIds.size} conversations`);
   }
 
+  // Normalize email for consistent cache lookups (lowercase, trimmed)
+  normalizeEmail(email) {
+    if (!email || typeof email !== 'string') return null;
+    return email.trim().toLowerCase();
+  }
+
   extractEmailsFromConversations(conversations) {
     const emails = new Set();
     
     for (const conversation of conversations) {
       const email = this.extractEmailFromData(conversation);
       if (email && this.isValidEmailForSearch(email)) {
-        emails.add(email);
+        // Normalize email for consistent caching
+        const normalizedEmail = this.normalizeEmail(email);
+        if (normalizedEmail) {
+          emails.add(normalizedEmail);
+        }
       }
     }
     
@@ -2543,68 +2565,85 @@ class MissWooApp {
 
   // OPTIMIZATION: Added prioritizedEmail parameter to ensure current conversation loads first
   async preloadEmailsData(emails, prioritizedEmail = null) {
+    // Normalize prioritized email if provided
+    const normalizedPrioritizedEmail = prioritizedEmail ? this.normalizeEmail(prioritizedEmail) : null;
+    
     // Sort emails to prioritize the current conversation
     const sortedEmails = [...emails];
-    if (prioritizedEmail && sortedEmails.includes(prioritizedEmail)) {
+    if (normalizedPrioritizedEmail && sortedEmails.includes(normalizedPrioritizedEmail)) {
       // Move prioritized email to the front
-      sortedEmails.splice(sortedEmails.indexOf(prioritizedEmail), 1);
-      sortedEmails.unshift(prioritizedEmail);
-      console.log(`⭐ Prioritizing preload for current conversation: ${prioritizedEmail}`);
+      sortedEmails.splice(sortedEmails.indexOf(normalizedPrioritizedEmail), 1);
+      sortedEmails.unshift(normalizedPrioritizedEmail);
+      console.log(`⭐ Prioritizing preload for current conversation: ${normalizedPrioritizedEmail}`);
     }
 
     const preloadPromises = sortedEmails.map(async (email) => {
-      // Skip if already being preloaded
-      if (this.preloadingEmails.has(email)) {
-        console.log(`📧 ${email} is already being preloaded, skipping duplicate`);
-        return this.preloadingEmails.get(email);
+      // Normalize email for consistent tracking
+      const normalizedEmail = this.normalizeEmail(email);
+      if (!normalizedEmail) {
+        console.log(`❌ Failed to normalize email for preloading check: ${email}`);
+        return Promise.resolve();
+      }
+
+      // Skip if already being preloaded (use normalized email)
+      if (this.preloadingEmails.has(normalizedEmail)) {
+        console.log(`📧 ${normalizedEmail} is already being preloaded, skipping duplicate`);
+        return this.preloadingEmails.get(normalizedEmail);
       }
       
       // Create preload promise and track it
       const preloadPromise = (async () => {
         try {
-          // Check if already cached and still valid
-          if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-            console.log(`📧 Skipping ${email} - already cached and valid`);
+          // Normalize email for consistent cache lookups
+          const normalizedEmail = this.normalizeEmail(email);
+          if (!normalizedEmail) {
+            console.log(`❌ Failed to normalize email for preloading: ${email}`);
+            return;
+          }
+
+          // Check if already cached and still valid (use normalized email)
+          if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+            console.log(`📧 Skipping ${normalizedEmail} - already cached and valid`);
             return;
           }
           
-          console.log(`📧 Preloading all customer details for: ${email}`);
+          console.log(`📧 Preloading all customer details for: ${normalizedEmail} (original: ${email})`);
           
           // Store current orders to restore after preloading
           const currentOrders = [...this.allOrders];
           
-          // Step 1: Preload WooCommerce order data (this will populate emailCache)
+          // Step 1: Preload WooCommerce order data (use original email for API, but store with normalized)
           await this.searchOrdersByEmail(email);
           
           // Step 2: Preload all customer details if we have orders
           if (this.allOrders.length > 0) {
             await this.preloadOrderDetails(this.allOrders);
             
-            // Update emailCache with enhanced orders (now includes notes)
+            // Update emailCache with enhanced orders (now includes notes) - use normalized email
             if (this.emailCache) {
-              this.emailCache.set(email, [...this.allOrders]);
-              this.setCacheExpiry(email, 'emailCache');
+              this.emailCache.set(normalizedEmail, [...this.allOrders]);
+              this.setCacheExpiry(normalizedEmail, 'emailCache');
               // OPTIMIZATION: Enforce cache size limit
               this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-              console.log(`📦 Updated emailCache for ${email} with enhanced orders (includes notes)`);
+              console.log(`📦 Updated emailCache for ${normalizedEmail} with enhanced orders (includes notes)`);
             }
             
-            // Store enhanced orders in preloadedConversations for tracking
-            this.preloadedConversations.set(email, {
+            // Store enhanced orders in preloadedConversations for tracking (use normalized email)
+            this.preloadedConversations.set(normalizedEmail, {
               orders: [...this.allOrders],
               timestamp: Date.now()
             });
             // OPTIMIZATION: Enforce preloadedConversations size limit
             this.enforceCacheSizeLimit(this.preloadedConversations, 'preloadedCache', this.cacheConfig.maxPreloadedSize);
-            console.log(`✅ Preloaded all details for ${email}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
+            console.log(`✅ Preloaded all details for ${normalizedEmail}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
           } else {
-            // No orders found, but still cache this result to avoid re-searching
+            // No orders found, but still cache this result to avoid re-searching (use normalized email)
             if (this.emailCache) {
-              this.emailCache.set(email, []);
-              this.setCacheExpiry(email, 'emailCache');
+              this.emailCache.set(normalizedEmail, []);
+              this.setCacheExpiry(normalizedEmail, 'emailCache');
               // OPTIMIZATION: Enforce cache size limit
               this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-              console.log(`📦 Cached empty result for ${email} to avoid re-searching`);
+              console.log(`📦 Cached empty result for ${normalizedEmail} to avoid re-searching`);
             }
           }
           
@@ -2612,15 +2651,15 @@ class MissWooApp {
           this.allOrders = currentOrders;
           
         } catch (error) {
-          console.error(`❌ Failed to preload data for ${email}:`, error);
+          console.error(`❌ Failed to preload data for ${normalizedEmail}:`, error);
         } finally {
-          // Remove from tracking when done (success or failure)
-          this.preloadingEmails.delete(email);
+          // Remove from tracking when done (success or failure) - use normalized email
+          this.preloadingEmails.delete(normalizedEmail);
         }
       })();
       
-      // Track the promise
-      this.preloadingEmails.set(email, preloadPromise);
+      // Track the promise (use normalized email for tracking)
+      this.preloadingEmails.set(normalizedEmail, preloadPromise);
       return preloadPromise;
     });
     
@@ -2670,13 +2709,17 @@ class MissWooApp {
   }
 
   isPreloadedDataValid(email) {
-    // Check unified emailCache instead of separate preloadedConversations
-    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+    // Normalize email for consistent cache lookups
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) return false;
+    
+    // Check unified emailCache instead of separate preloadedConversations (use normalized email)
+    if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
       return true;
     }
     
-    // Fallback to preloadedConversations for backward compatibility
-    const preloadedData = this.preloadedConversations.get(email);
+    // Fallback to preloadedConversations for backward compatibility (use normalized email)
+    const preloadedData = this.preloadedConversations.get(normalizedEmail);
     if (!preloadedData) return false;
     
     const now = Date.now();
@@ -2708,6 +2751,13 @@ class MissWooApp {
       return;
     }
 
+    // OPTIMIZATION: Normalize email for consistent cache lookups
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) {
+      console.log("❌ Failed to normalize email:", email);
+      return;
+    }
+
     // OPTIMIZATION 4: Cancel any previous search requests
     if (this.activeSearchAbortController) {
       console.log("Cancelling previous search requests");
@@ -2716,36 +2766,44 @@ class MissWooApp {
     // Create new AbortController for this search
     this.activeSearchAbortController = new AbortController();
 
-    // Check if we're already searching this email
-    if (this.searchInProgress && this.activeSearches.has(email)) {
-      console.log(`⏳ Already searching for ${email}, skipping`);
+    // Check if we're already searching this email (use normalized email)
+    if (this.searchInProgress && this.activeSearches.has(normalizedEmail)) {
+      console.log(`⏳ Already searching for ${normalizedEmail}, skipping`);
       return;
     }
 
     // Always clear the display first when switching emails
     this.clearCurrentEmailData();
 
-    // Check for cached/preloaded data first (immediate)
-    if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-      const cachedOrders = this.emailCache.get(email);
+    // Check for cached/preloaded data first (immediate) - use normalized email
+    console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
+    if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+      const cachedOrders = this.emailCache.get(normalizedEmail);
       if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
-        console.log(`✅ Found cached data for ${email}: ${cachedOrders.length} orders`);
+        console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
         this.allOrders = cachedOrders; // No need to clone for cache
-        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
         return;
+      } else {
+        console.log(`⚠️ Cache miss: Found email in cache but no valid orders (cachedOrders: ${cachedOrders ? Array.isArray(cachedOrders) ? cachedOrders.length : typeof cachedOrders : 'null'})`);
+      }
+    } else {
+      console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
+      if (this.emailCache) {
+        console.log(`📋 Cache keys:`, Array.from(this.emailCache.keys()).slice(0, 10));
       }
     }
 
-    // Check preloaded data
-    if (this.isPreloadedDataValid(email)) {
-      const preloadedData = this.preloadedConversations.get(email);
+    // Check preloaded data (use normalized email)
+    if (this.isPreloadedDataValid(normalizedEmail)) {
+      const preloadedData = this.preloadedConversations.get(normalizedEmail);
       if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
-        console.log(`✅ Found preloaded data for ${email}: ${preloadedData.orders.length} orders`);
+        console.log(`✅ Found preloaded data for ${normalizedEmail}: ${preloadedData.orders.length} orders`);
         this.allOrders = preloadedData.orders; // No need to clone for preloaded
-        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
         // Ensure correct status is set after displayOrdersList
         this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2753,21 +2811,21 @@ class MissWooApp {
       }
     }
 
-    // IMPORTANT: Check if preloading is in progress for this email
+    // IMPORTANT: Check if preloading is in progress for this email (use normalized email)
     // If so, wait for it to complete and then check cache again
-    if (this.preloadingEmails.has(email)) {
-      console.log(`⏳ Preloading in progress for ${email}, waiting for completion...`);
-      this.setStatus(`Preloading data for ${email}...`);
+    if (this.preloadingEmails.has(normalizedEmail)) {
+      console.log(`⏳ Preloading in progress for ${normalizedEmail}, waiting for completion...`);
+      this.setStatus(`Preloading data for ${normalizedEmail}...`);
       
       try {
         // Wait for preloading to complete
-        await this.preloadingEmails.get(email);
+        await this.preloadingEmails.get(normalizedEmail);
         
-        // After preloading completes, check cache again
-        if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-          const cachedOrders = this.emailCache.get(email);
+        // After preloading completes, check cache again (use normalized email)
+        if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+          const cachedOrders = this.emailCache.get(normalizedEmail);
           if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
-            console.log(`✅ Found cached data for ${email} after waiting for preload: ${cachedOrders.length} orders`);
+            console.log(`✅ Found cached data for ${normalizedEmail} after waiting for preload: ${cachedOrders.length} orders`);
             this.allOrders = cachedOrders;
             this.displayOrdersList();
             this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2775,10 +2833,10 @@ class MissWooApp {
           }
         }
         
-        // Also check preloadedConversations
-        const preloadedData = this.preloadedConversations.get(email);
+        // Also check preloadedConversations (use normalized email)
+        const preloadedData = this.preloadedConversations.get(normalizedEmail);
         if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
-          console.log(`✅ Found preloaded data for ${email} after waiting: ${preloadedData.orders.length} orders`);
+          console.log(`✅ Found preloaded data for ${normalizedEmail} after waiting: ${preloadedData.orders.length} orders`);
           this.allOrders = preloadedData.orders;
           this.displayOrdersList();
           this.setStatus(`Found ${this.allOrders.length} order(s)`);
@@ -2791,9 +2849,10 @@ class MissWooApp {
     }
 
     // Only proceed with API search if cache and preloading checks failed
-    // Set search in progress
+    console.log(`⚠️ No cached/preloaded data found for ${normalizedEmail}, performing API search...`);
+    // Set search in progress (use normalized email for tracking)
     this.searchInProgress = true;
-    this.activeSearches.set(email, true);
+    this.activeSearches.set(normalizedEmail, true);
     
     // Debounce API calls (but not cache checks)
     if (this.searchDebounceTimer) {
@@ -2805,7 +2864,9 @@ class MissWooApp {
         // Show searching status (only when actually searching API)
         this.setStatus("Searching orders...");
         
-        // console.log(`🔍 Starting search for: ${email}`);
+        // Use original email for API search (WooCommerce may need original format)
+        // but use normalized email for cache storage
+        console.log(`🔍 Starting API search for: ${email} (normalized: ${normalizedEmail})`);
         const orderResults = await this.searchWooCommerceOrders(email);
         
         // OPTIMIZATION 4: Check if search was cancelled

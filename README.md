@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.07  
+**Version**: vJS4.08  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.07 (Current)
+### vJS4.08 (Current)
+- ✅ Fixed email normalization for consistent cache lookups
+- ✅ Preloaded/cached data now properly retrieved when clicking emails
+- ✅ Eliminated "Searching orders..." when data is already cached
+- ✅ Improved cache hit rate with normalized email matching
+
+### vJS4.07
 - ✅ Enhanced preloading to fetch ALL visible inbox conversations
 - ✅ Improved fetchConversations API handling with Promise-based pattern
 - ✅ Increased maxPreloadedConversations limit to 50
