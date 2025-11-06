@@ -62,8 +62,11 @@ class MissWooApp {
       this.seenConversationIds = new Set();
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
+      this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
       this.maxPreloadedConversations = 20;
       this.backgroundTasks = [];
+      this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
+      this.pendingConversationIds = null; // Track pending conversation IDs for debouncing
       
       // Cache configuration
       this.cacheConfig = {
@@ -71,7 +74,9 @@ class MissWooApp {
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
         emailCache: 2 * 60 * 1000, // 2 minutes
-        preloadedCache: 15 * 60 * 1000 // 15 minutes for preloaded data
+        preloadedCache: 15 * 60 * 1000, // 15 minutes for preloaded data
+        maxCacheSize: 100, // Maximum number of entries in emailCache
+        maxPreloadedSize: 50 // Maximum number of entries in preloadedConversations
       };
       
       // Search state management
@@ -190,10 +195,27 @@ class MissWooApp {
     try {
       // Check if data is an array of conversation IDs (from change:conversations event)
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
-        console.log(`📧 Received ${data.length} conversation IDs, fetching all conversations for preloading...`);
+        console.log(`📧 Received ${data.length} conversation IDs, scheduling preloading...`);
         
-        // Fetch all conversations and preload their emails in the background
-        await this.fetchAndPreloadConversations(data);
+        // OPTIMIZATION: Debounce conversation changes to prevent rapid-fire preloading
+        // Store the latest conversation IDs
+        this.pendingConversationIds = data;
+        
+        // Clear existing debounce timer
+        if (this.conversationChangeDebounceTimer) {
+          clearTimeout(this.conversationChangeDebounceTimer);
+        }
+        
+        // Debounce: Wait 500ms after last change event before preloading
+        this.conversationChangeDebounceTimer = setTimeout(async () => {
+          if (this.pendingConversationIds) {
+            const idsToFetch = [...this.pendingConversationIds];
+            this.pendingConversationIds = null;
+            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
+            await this.fetchAndPreloadConversations(idsToFetch);
+          }
+        }, 500); // 500ms debounce - faster than triggerDynamicPreloading but still prevents spam
+        
         return;
       }
       
@@ -228,7 +250,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.04';
+    return 'vJS4.05';
   }
 
   async loadVersionFromManifest() {
@@ -537,6 +559,8 @@ class MissWooApp {
       if (this.emailCache) {
         this.emailCache.set(email, orderResults); // No need to clone for cache
         this.setCacheExpiry(email, 'emailCache');
+        // OPTIMIZATION: Enforce cache size limit
+        this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
         console.log(`Cached ${orderResults.length} orders for ${email} in emailCache`);
       }
       
@@ -726,6 +750,8 @@ class MissWooApp {
     if (this.emailCache) {
       this.emailCache.set(email, orders);
       this.setCacheExpiry(email, 'emailCache');
+      // OPTIMIZATION: Enforce cache size limit
+      this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
       console.log(`Cached ${orders.length} processed orders for ${email} in emailCache`);
     }
     
@@ -1073,6 +1099,8 @@ class MissWooApp {
         if (this.emailCache) {
           this.emailCache.set(email, processedOrders);
           this.setCacheExpiry(email, 'emailCache');
+          // OPTIMIZATION: Enforce cache size limit
+          this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
           console.log(`Silent cached ${processedOrders.length} processed orders for ${email} in emailCache`);
         }
         
@@ -1777,7 +1805,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.04' : 'vJS4.04 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.05' : 'vJS4.05 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2236,8 +2264,14 @@ class MissWooApp {
             return;
           }
           
-          // Preload data for each email
-          await this.preloadEmailsData(emailsToPreload);
+          // OPTIMIZATION: Prioritize first conversation (current one) for preloading
+          let prioritizedEmail = null;
+          if (conversations.length > 0) {
+            prioritizedEmail = this.extractEmailFromData(conversations[0]);
+          }
+
+          // Preload data for each email (prioritizing current conversation)
+          await this.preloadEmailsData(emailsToPreload, prioritizedEmail);
           
           // Clean up archived conversations
           this.cleanupArchivedConversations();
@@ -2317,21 +2351,33 @@ class MissWooApp {
         return;
       }
 
-      // Preload customer details for all emails in the background (non-blocking)
-      // Don't await this - let it run in background so the UI stays responsive
-      this.preloadEmailsData(emailsToPreload).catch(error => {
-        console.error("❌ Error preloading emails data:", error);
-      });
-
-      // Also trigger auto-search for the first conversation (current one) immediately
+      // OPTIMIZATION: Prioritize first conversation (current one) for preloading
+      // Extract first conversation email for prioritization
+      let prioritizedEmail = null;
       if (conversations.length > 0) {
         const firstConversation = conversations[0];
-        const firstEmail = this.extractEmailFromData(firstConversation);
-        if (firstEmail && this.isValidEmailForSearch(firstEmail)) {
-          console.log(`🔍 Triggering auto-search for current email: ${firstEmail}`);
-          this.performAutoSearch(firstEmail);
+        prioritizedEmail = this.extractEmailFromData(firstConversation);
+        
+        // Also trigger auto-search for the first conversation (current one) immediately
+        if (prioritizedEmail && this.isValidEmailForSearch(prioritizedEmail)) {
+          console.log(`🔍 Triggering auto-search for current email: ${prioritizedEmail}`);
+          this.performAutoSearch(prioritizedEmail);
         }
       }
+
+      // Preload customer details for all emails in the background (non-blocking)
+      // Pass prioritized email to ensure it's preloaded first
+      // Don't await this - let it run in background so the UI stays responsive
+      this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(error => {
+        console.error("❌ Error preloading emails data:", error);
+        // OPTIMIZATION: Retry failed preloads after a delay
+        setTimeout(() => {
+          console.log(`🔄 Retrying preload for ${emailsToPreload.length} emails after error...`);
+          this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(retryError => {
+            console.error("❌ Retry preload also failed:", retryError);
+          });
+        }, 5000); // Retry after 5 seconds
+      });
 
       console.log(`✅ Started preloading data for ${emailsToPreload.length} emails in background`);
     } catch (error) {
@@ -2442,48 +2488,87 @@ class MissWooApp {
     return Array.from(emails);
   }
 
-  async preloadEmailsData(emails) {
-    const preloadPromises = emails.map(async (email) => {
-      try {
-        // Check if already cached and still valid
-        if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-          console.log(`📧 Skipping ${email} - already cached and valid`);
-          return;
-        }
-        
-        console.log(`📧 Preloading all customer details for: ${email}`);
-        
-        // Store current orders to restore after preloading
-        const currentOrders = [...this.allOrders];
-        
-        // Step 1: Preload WooCommerce order data (this will populate emailCache)
-        await this.searchOrdersByEmail(email);
-        
-        // Step 2: Preload all customer details if we have orders
-        if (this.allOrders.length > 0) {
-          await this.preloadOrderDetails(this.allOrders);
-          
-          // Update emailCache with enhanced orders (now includes notes)
-          if (this.emailCache) {
-            this.emailCache.set(email, [...this.allOrders]);
-            this.setCacheExpiry(email, 'emailCache');
-            console.log(`📦 Updated emailCache for ${email} with enhanced orders (includes notes)`);
+  // OPTIMIZATION: Added prioritizedEmail parameter to ensure current conversation loads first
+  async preloadEmailsData(emails, prioritizedEmail = null) {
+    // Sort emails to prioritize the current conversation
+    const sortedEmails = [...emails];
+    if (prioritizedEmail && sortedEmails.includes(prioritizedEmail)) {
+      // Move prioritized email to the front
+      sortedEmails.splice(sortedEmails.indexOf(prioritizedEmail), 1);
+      sortedEmails.unshift(prioritizedEmail);
+      console.log(`⭐ Prioritizing preload for current conversation: ${prioritizedEmail}`);
+    }
+
+    const preloadPromises = sortedEmails.map(async (email) => {
+      // Skip if already being preloaded
+      if (this.preloadingEmails.has(email)) {
+        console.log(`📧 ${email} is already being preloaded, skipping duplicate`);
+        return this.preloadingEmails.get(email);
+      }
+      
+      // Create preload promise and track it
+      const preloadPromise = (async () => {
+        try {
+          // Check if already cached and still valid
+          if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+            console.log(`📧 Skipping ${email} - already cached and valid`);
+            return;
           }
           
-          // Store enhanced orders in preloadedConversations for tracking
-          this.preloadedConversations.set(email, {
-            orders: [...this.allOrders],
-            timestamp: Date.now()
-          });
-          console.log(`✅ Preloaded all details for ${email}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
+          console.log(`📧 Preloading all customer details for: ${email}`);
+          
+          // Store current orders to restore after preloading
+          const currentOrders = [...this.allOrders];
+          
+          // Step 1: Preload WooCommerce order data (this will populate emailCache)
+          await this.searchOrdersByEmail(email);
+          
+          // Step 2: Preload all customer details if we have orders
+          if (this.allOrders.length > 0) {
+            await this.preloadOrderDetails(this.allOrders);
+            
+            // Update emailCache with enhanced orders (now includes notes)
+            if (this.emailCache) {
+              this.emailCache.set(email, [...this.allOrders]);
+              this.setCacheExpiry(email, 'emailCache');
+              // OPTIMIZATION: Enforce cache size limit
+              this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+              console.log(`📦 Updated emailCache for ${email} with enhanced orders (includes notes)`);
+            }
+            
+            // Store enhanced orders in preloadedConversations for tracking
+            this.preloadedConversations.set(email, {
+              orders: [...this.allOrders],
+              timestamp: Date.now()
+            });
+            // OPTIMIZATION: Enforce preloadedConversations size limit
+            this.enforceCacheSizeLimit(this.preloadedConversations, 'preloadedCache', this.cacheConfig.maxPreloadedSize);
+            console.log(`✅ Preloaded all details for ${email}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
+          } else {
+            // No orders found, but still cache this result to avoid re-searching
+            if (this.emailCache) {
+              this.emailCache.set(email, []);
+              this.setCacheExpiry(email, 'emailCache');
+              // OPTIMIZATION: Enforce cache size limit
+              this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+              console.log(`📦 Cached empty result for ${email} to avoid re-searching`);
+            }
+          }
+          
+          // Restore current orders
+          this.allOrders = currentOrders;
+          
+        } catch (error) {
+          console.error(`❌ Failed to preload data for ${email}:`, error);
+        } finally {
+          // Remove from tracking when done (success or failure)
+          this.preloadingEmails.delete(email);
         }
-        
-        // Restore current orders
-        this.allOrders = currentOrders;
-        
-      } catch (error) {
-        console.error(`❌ Failed to preload data for ${email}:`, error);
-      }
+      })();
+      
+      // Track the promise
+      this.preloadingEmails.set(email, preloadPromise);
+      return preloadPromise;
     });
     
     await Promise.all(preloadPromises);
@@ -2615,12 +2700,47 @@ class MissWooApp {
       }
     }
 
+    // IMPORTANT: Check if preloading is in progress for this email
+    // If so, wait for it to complete and then check cache again
+    if (this.preloadingEmails.has(email)) {
+      console.log(`⏳ Preloading in progress for ${email}, waiting for completion...`);
+      this.setStatus(`Preloading data for ${email}...`);
+      
+      try {
+        // Wait for preloading to complete
+        await this.preloadingEmails.get(email);
+        
+        // After preloading completes, check cache again
+        if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
+          const cachedOrders = this.emailCache.get(email);
+          if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
+            console.log(`✅ Found cached data for ${email} after waiting for preload: ${cachedOrders.length} orders`);
+            this.allOrders = cachedOrders;
+            this.displayOrdersList();
+            this.setStatus(`Found ${this.allOrders.length} order(s)`);
+            return;
+          }
+        }
+        
+        // Also check preloadedConversations
+        const preloadedData = this.preloadedConversations.get(email);
+        if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
+          console.log(`✅ Found preloaded data for ${email} after waiting: ${preloadedData.orders.length} orders`);
+          this.allOrders = preloadedData.orders;
+          this.displayOrdersList();
+          this.setStatus(`Found ${this.allOrders.length} order(s)`);
+          return;
+        }
+      } catch (error) {
+        console.error(`❌ Error waiting for preloading to complete:`, error);
+        // Continue to API search if preloading failed
+      }
+    }
+
+    // Only proceed with API search if cache and preloading checks failed
     // Set search in progress
     this.searchInProgress = true;
     this.activeSearches.set(email, true);
-    
-    // Show email detection status
-    this.setStatus(`Found email: ${email}`);
     
     // Debounce API calls (but not cache checks)
     if (this.searchDebounceTimer) {
@@ -2629,7 +2749,7 @@ class MissWooApp {
 
     this.searchDebounceTimer = setTimeout(async () => {
       try {
-        // Show searching status
+        // Show searching status (only when actually searching API)
         this.setStatus("Searching orders...");
         
         // console.log(`🔍 Starting search for: ${email}`);
@@ -2701,8 +2821,8 @@ class MissWooApp {
       console.log("🧹 Removed no-orders element");
     });
     
-    // Clear status message to show we're switching emails
-    this.setStatus("Switching emails...");
+    // Don't set status here - let performAutoSearch handle status messages
+    // This prevents showing "Switching emails..." when data is already cached
     
     console.log("✅ Current email data cleared");
   }
@@ -2855,6 +2975,33 @@ class MissWooApp {
     const expiryTime = Date.now() + this.cacheConfig[cacheType];
     this.cacheExpiry.set(expiryKey, expiryTime);
   }
+
+  // OPTIMIZATION: Enforce cache size limits using LRU eviction
+  enforceCacheSizeLimit(cache, cacheType, maxSize) {
+    if (!cache || cache.size <= maxSize) {
+      return;
+    }
+
+    // Get all entries with their expiry times to determine LRU
+    const entries = Array.from(cache.entries()).map(([key, value]) => {
+      const expiryKey = `${cacheType}-${key}`;
+      const expiryTime = this.cacheExpiry.get(expiryKey) || 0;
+      return { key, value, expiryTime };
+    });
+
+    // Sort by expiry time (oldest first - LRU)
+    entries.sort((a, b) => a.expiryTime - b.expiryTime);
+
+    // Remove oldest entries until we're under the limit
+    const toRemove = entries.slice(0, cache.size - maxSize);
+    for (const entry of toRemove) {
+      cache.delete(entry.key);
+      const expiryKey = `${cacheType}-${entry.key}`;
+      this.cacheExpiry.delete(expiryKey);
+      console.log(`🗑️ Evicted ${entry.key} from ${cacheType} cache (LRU)`);
+    }
+  }
+
 
   // Add cleanup on page unload (using beforeunload instead of unload)
   setupCleanup() {

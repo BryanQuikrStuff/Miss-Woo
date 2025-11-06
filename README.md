@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.04  
+**Version**: vJS4.05  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,15 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.04 (Current)
+### vJS4.05 (Current)
+- ✅ Performance optimizations for preloading system:
+  - Added debouncing (500ms) to conversation change events to prevent rapid-fire API calls
+  - Implemented cache size limits with LRU eviction (100 emailCache, 50 preloadedConversations)
+  - Added prioritization system to preload current conversation first
+  - Enhanced error recovery with automatic retry for failed preloads
+  - Improved memory management to prevent unbounded cache growth
+
+### vJS4.04
 - ✅ Automatic preloading of all visible emails: Enhanced Missive integration to automatically detect and preload customer details for all visible conversations via `change:conversations` event
 
 ### vJS4.03
