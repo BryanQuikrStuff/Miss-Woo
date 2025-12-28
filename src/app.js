@@ -60,6 +60,11 @@ class MissWooApp {
       this.preloadedConversations = new Map();
       this.visibleConversationIds = new Set();
       this.seenConversationIds = new Set();
+      this.visibleEmails = new Set(); // Track visible emails for cleanup
+      
+      // Store bound function references for proper event listener removal
+      this.boundHandleSearch = this.handleSearch.bind(this);
+      this.boundKeyPressHandlers = new Map(); // Store keypress handlers by element
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
@@ -250,7 +255,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.09';
+    return 'vJS4.10';
   }
 
   async loadVersionFromManifest() {
@@ -375,24 +380,32 @@ class MissWooApp {
       const searchBtnB = document.getElementById("searchButton");
       const searchInputB = document.getElementById("searchInput");
 
-      // Bind classic UI
+      // Bind classic UI - store references for proper cleanup
       if (searchBtnA) {
-        searchBtnA.addEventListener("click", () => this.handleSearch());
+        searchBtnA.addEventListener("click", this.boundHandleSearch);
+        this.boundSearchBtnA = searchBtnA; // Store reference for cleanup
       }
       if (searchInputA) {
-        searchInputA.addEventListener("keypress", (e) => {
+        const keyPressHandlerA = (e) => {
           if (e.key === "Enter") this.handleSearch();
-        });
+        };
+        searchInputA.addEventListener("keypress", keyPressHandlerA);
+        this.boundKeyPressHandlers.set(searchInputA, keyPressHandlerA);
+        this.boundSearchInputA = searchInputA; // Store reference for cleanup
       }
 
-      // Bind dynamic UI
+      // Bind dynamic UI - store references for proper cleanup
       if (searchBtnB) {
-        searchBtnB.addEventListener("click", () => this.handleSearch());
+        searchBtnB.addEventListener("click", this.boundHandleSearch);
+        this.boundSearchBtnB = searchBtnB; // Store reference for cleanup
       }
       if (searchInputB) {
-        searchInputB.addEventListener("keypress", (e) => {
+        const keyPressHandlerB = (e) => {
           if (e.key === "Enter") this.handleSearch();
-        });
+        };
+        searchInputB.addEventListener("keypress", keyPressHandlerB);
+        this.boundKeyPressHandlers.set(searchInputB, keyPressHandlerB);
+        this.boundSearchInputB = searchInputB; // Store reference for cleanup
       }
 
       // Configure UI based on environment
@@ -1797,7 +1810,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.09' : 'vJS4.09 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.10' : 'vJS4.10 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -3005,9 +3018,17 @@ class MissWooApp {
       this.preloadingDebounceTimer = null;
     }
     
+    // Clear conversation change debounce timer
+    if (this.conversationChangeDebounceTimer) {
+      clearTimeout(this.conversationChangeDebounceTimer);
+      this.conversationChangeDebounceTimer = null;
+    }
+    
     // Clear cache (only on navigation away)
     this.emailCache.clear();
-    this.visibleEmails.clear();
+    if (this.visibleEmails) {
+      this.visibleEmails.clear();
+    }
     
     // Clear preloading data
     this.preloadedConversations.clear();
@@ -3018,21 +3039,44 @@ class MissWooApp {
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
     
-    // Remove event listeners if they exist
+    // Remove event listeners using stored bound references
+    // Fix: Use stored bound function references instead of creating new ones
+    if (this.boundSearchBtnA) {
+      this.boundSearchBtnA.removeEventListener("click", this.boundHandleSearch);
+    }
+    if (this.boundSearchBtnB) {
+      this.boundSearchBtnB.removeEventListener("click", this.boundHandleSearch);
+    }
+    
+    // Remove keypress handlers using stored references
+    if (this.boundSearchInputA) {
+      const handlerA = this.boundKeyPressHandlers.get(this.boundSearchInputA);
+      if (handlerA) {
+        this.boundSearchInputA.removeEventListener("keypress", handlerA);
+      }
+    }
+    if (this.boundSearchInputB) {
+      const handlerB = this.boundKeyPressHandlers.get(this.boundSearchInputB);
+      if (handlerB) {
+        this.boundSearchInputB.removeEventListener("keypress", handlerB);
+      }
+    }
+    
+    // Also try to remove from elements that might exist but weren't stored
     const searchBtn = document.getElementById("searchBtn");
     const searchInput = document.getElementById("orderSearch");
-    
-    if (searchBtn) {
-      searchBtn.removeEventListener("click", this.handleSearch.bind(this));
+    if (searchBtn && this.boundHandleSearch) {
+      searchBtn.removeEventListener("click", this.boundHandleSearch);
     }
-    
     if (searchInput) {
-      searchInput.removeEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-          this.handleSearch();
-        }
-      });
+      const handler = this.boundKeyPressHandlers.get(searchInput);
+      if (handler) {
+        searchInput.removeEventListener("keypress", handler);
+      }
     }
+    
+    // Clear stored references
+    this.boundKeyPressHandlers.clear();
     
     console.log("Cleanup completed");
   }

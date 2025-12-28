@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.09  
+**Version**: vJS4.10  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.09 (Current)
+### vJS4.10 (Current)
+- ✅ Fixed critical memory leak: Event listener removal now works properly
+- ✅ Fixed undefined property error: `visibleEmails` now properly initialized
+- ✅ Added missing timer cleanup: `conversationChangeDebounceTimer` now cleaned up
+- ✅ Improved event listener management: Stored bound function references for proper cleanup
+
+### vJS4.09
 - ✅ JavaScript performance optimizations for faster search:
   - Early termination in filterOrdersByEmail (stops at 5 matches)
   - Reduced excessive logging in hot paths (cache hits, API responses)
