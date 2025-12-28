@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.11  
+**Version**: vJS4.09  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,23 +130,7 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.11 (Current)
-- ✅ Critical fix: Auto-search and manual search now working
-  - Fixed immediate search on conversation click (was only preloading)
-  - Added fallback to getCurrentConversation() if fetchConversations fails
-  - Auto-search now triggers immediately when clicking emails in Missive
-  - Manual search functionality restored
-
-### vJS4.10
-- ✅ Fixed Missive API compliance issues:
-  - Removed unsupported `email:focus` event listener (not in official API)
-  - Added warnings for potentially unsupported `getCurrentConversation()` and `getCurrentEmail()` methods
-  - Standardized `fetchConversations()` API calls to use correct format (array of conversation IDs)
-  - Optimized fallback fetching strategy (increased batch size from 5 to 10, reduced delays from 100ms to 50ms)
-  - Reduced `triggerDynamicPreloading()` debounce from 2000ms to 1000ms for better responsiveness
-  - Added comprehensive error handling and warnings for undocumented API methods
-
-### vJS4.09
+### vJS4.09 (Current)
 - ✅ JavaScript performance optimizations for faster search:
   - Early termination in filterOrdersByEmail (stops at 5 matches)
   - Reduced excessive logging in hot paths (cache hits, API responses)
@@ -159,6 +143,14 @@ Open browser console to see detailed logs:
 - ✅ Preloaded/cached data now properly retrieved when clicking emails
 - ✅ Eliminated "Searching orders..." when data is already cached
 - ✅ Improved cache hit rate with normalized email matching
+
+### vJS4.07
+- ✅ JavaScript performance optimizations for faster search:
+  - Early termination in filterOrdersByEmail (stops at 5 matches)
+  - Reduced excessive logging in hot paths (cache hits, API responses)
+  - Cached base URL construction to avoid repeated string operations
+  - Streamlined cache hit path for minimal processing overhead
+  - Removed unnecessary array operations and logging statements
 
 ### vJS4.07
 - ✅ Enhanced preloading to fetch ALL visible inbox conversations

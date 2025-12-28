@@ -137,7 +137,7 @@ class MissWooApp {
     console.log("🔧 Setting up Missive event listeners...");
     
     try {
-      // Listen for conversation changes (official API event)
+      // Listen for conversation changes
       if (Missive.on) {
         Missive.on('change:conversations', (data) => {
           console.log("📧 Conversation changed:", data);
@@ -147,8 +147,15 @@ class MissWooApp {
         console.log("✅ change:conversations listener set up");
       }
       
-      // NOTE: email:focus event is not in the official Missive API documentation
-      // Removed to avoid silent failures. Email detection is handled via change:conversations event
+      // Listen for email focus (if available)
+      if (Missive.on) {
+        Missive.on('email:focus', (data) => {
+          console.log("📧 Email focused:", data);
+          this.handleEmailFocus(data);
+        });
+        
+        console.log("✅ email:focus listener set up");
+      }
       
     } catch (error) {
       console.error("❌ Failed to set up Missive event listeners:", error);
@@ -160,41 +167,21 @@ class MissWooApp {
       console.log("🔍 Attempting to get current context...");
       
       // Try to get current conversation
-      // NOTE: getCurrentConversation() is not explicitly documented in official API
-      // but may work. Using with fallback handling.
       if (Missive.getCurrentConversation) {
-        try {
-          const conversation = await Missive.getCurrentConversation();
-          if (conversation) {
-            console.log("📧 Current conversation:", conversation);
-            this.handleConversationChange(conversation);
-          }
-        } catch (error) {
-          console.warn("⚠️ getCurrentConversation() failed (may not be supported):", error.message);
+        const conversation = await Missive.getCurrentConversation();
+        if (conversation) {
+          console.log("📧 Current conversation:", conversation);
+          this.handleConversationChange(conversation);
         }
-      } else {
-        console.warn("⚠️ Missive.getCurrentConversation() not available - may not be in official API");
       }
       
       // Try to get current email
-      // NOTE: getCurrentEmail() is not explicitly documented in official API
-      // but may work. Using with fallback handling.
       if (Missive.getCurrentEmail) {
-        try {
-          const email = await Missive.getCurrentEmail();
-          if (email) {
-            console.log("📧 Current email:", email);
-            // Extract email and trigger search via conversation change handler
-            const emailAddress = this.extractEmailFromData(email);
-            if (emailAddress && this.isValidEmailForSearch(emailAddress)) {
-              this.performAutoSearch(emailAddress);
-            }
-          }
-        } catch (error) {
-          console.warn("⚠️ getCurrentEmail() failed (may not be supported):", error.message);
+        const email = await Missive.getCurrentEmail();
+        if (email) {
+          console.log("📧 Current email:", email);
+          this.handleEmailFocus(email);
         }
-      } else {
-        console.warn("⚠️ Missive.getCurrentEmail() not available - may not be in official API");
       }
       
     } catch (error) {
@@ -208,55 +195,7 @@ class MissWooApp {
     try {
       // Check if data is an array of conversation IDs (from change:conversations event)
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
-        console.log(`📧 Received ${data.length} conversation IDs, processing...`);
-        
-        // CRITICAL FIX: Immediately fetch and search the FIRST conversation (current one)
-        // Don't wait for preloading - user clicked on this conversation and expects immediate results
-        const firstConversationId = data[0];
-        console.log(`🔍 Immediately fetching current conversation: ${firstConversationId}`);
-        
-        try {
-          let firstConversation = null;
-          
-          // Try fetchConversations first (preferred method)
-          if (Missive.fetchConversations && typeof Missive.fetchConversations === 'function') {
-            try {
-              const firstConversationResult = await Missive.fetchConversations([firstConversationId]);
-              if (Array.isArray(firstConversationResult) && firstConversationResult.length > 0) {
-                firstConversation = firstConversationResult[0];
-              }
-            } catch (fetchError) {
-              console.warn("⚠️ fetchConversations failed, trying getCurrentConversation:", fetchError.message);
-            }
-          }
-          
-          // Fallback: Try getCurrentConversation if fetchConversations failed or not available
-          if (!firstConversation && Missive.getCurrentConversation) {
-            try {
-              firstConversation = await Missive.getCurrentConversation();
-              console.log("✅ Got current conversation via getCurrentConversation()");
-            } catch (getCurrentError) {
-              console.warn("⚠️ getCurrentConversation also failed:", getCurrentError.message);
-            }
-          }
-          
-          // Extract email and search if we have a conversation
-          if (firstConversation) {
-            const email = this.extractEmailFromData(firstConversation);
-            if (email && this.isValidEmailForSearch(email)) {
-              console.log(`✅ Extracted email from current conversation: ${email}`);
-              // Immediately search for this email
-              this.performAutoSearch(email);
-            } else {
-              console.log("❌ No valid email found in current conversation");
-            }
-          } else {
-            console.warn("⚠️ Could not fetch current conversation - auto-search skipped");
-          }
-        } catch (error) {
-          console.error("❌ Error fetching current conversation:", error);
-          // Continue with preloading even if immediate fetch fails
-        }
+        console.log(`📧 Received ${data.length} conversation IDs, scheduling preloading...`);
         
         // OPTIMIZATION: Debounce conversation changes to prevent rapid-fire preloading
         // Store the latest conversation IDs
@@ -272,7 +211,7 @@ class MissWooApp {
           if (this.pendingConversationIds) {
             const idsToFetch = [...this.pendingConversationIds];
             this.pendingConversationIds = null;
-            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce for preloading...`);
+            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
             await this.fetchAndPreloadConversations(idsToFetch);
           }
         }, 500); // 500ms debounce - faster than triggerDynamicPreloading but still prevents spam
@@ -311,7 +250,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.11';
+    return 'vJS4.09';
   }
 
   async loadVersionFromManifest() {
@@ -1858,7 +1797,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.11' : 'vJS4.11 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.09' : 'vJS4.09 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2245,17 +2184,9 @@ class MissWooApp {
 
   async getEmailFromMissiveAPI() {
     try {
-      // NOTE: getCurrentEmail() is not explicitly documented in official Missive API
-      // Using with error handling as it may work but isn't guaranteed
       if (window.Missive && Missive.getCurrentEmail) {
-        try {
-          const emailData = await Missive.getCurrentEmail();
-          return this.extractEmailFromData(emailData);
-        } catch (error) {
-          console.warn("⚠️ getCurrentEmail() failed (may not be supported):", error.message);
-        }
-      } else {
-        console.warn("⚠️ Missive.getCurrentEmail() not available - may not be in official API");
+        const emailData = await Missive.getCurrentEmail();
+        return this.extractEmailFromData(emailData);
       }
     } catch (error) {
       console.error("Error getting email from Missive API:", error);
@@ -2467,57 +2398,42 @@ class MissWooApp {
     }
   }
 
-  // Fallback method: fetch conversations in smaller batches if batch fetch fails
-  // OPTIMIZED: Increased batch size and reduced delays for better performance
+  // Fallback method: fetch conversations one by one if batch fetch fails
   async fetchConversationsOneByOne(conversationIds) {
     const conversations = [];
     const maxToFetch = Math.min(conversationIds.length, this.maxPreloadedConversations || 50);
-    console.log(`📧 Fetching ${maxToFetch} conversations using optimized fallback method...`);
+    console.log(`📧 Fetching ${maxToFetch} conversations one by one (fallback method)...`);
     
-    // OPTIMIZATION: Increased batch size from 5 to 10 for better performance
-    // Reduced delay from 100ms to 50ms between batches
-    const batchSize = 10;
+    // Process in batches to avoid overwhelming the API
+    const batchSize = 5;
     for (let i = 0; i < maxToFetch; i += batchSize) {
       const batch = conversationIds.slice(i, i + batchSize);
-      
-      // Fetch entire batch at once using fetchConversations with array of IDs
-      // This is more efficient than fetching one-by-one
-      try {
-        if (Missive.fetchConversations) {
-          const batchResults = await Missive.fetchConversations(batch);
-          if (Array.isArray(batchResults)) {
-            conversations.push(...batchResults.filter(conv => conv !== null && conv !== undefined));
-          }
-        }
-      } catch (error) {
-        // If batch fails, try individual fetches for this batch only
-        console.warn(`⚠️ Batch fetch failed for batch ${i}-${i + batchSize}, trying individual fetches...`);
-        const batchPromises = batch.map(async (convId) => {
-          try {
-            if (Missive.fetchConversations) {
-              const result = await Missive.fetchConversations([convId]);
-              if (Array.isArray(result) && result.length > 0) {
-                return result[0];
-              }
+      const batchPromises = batch.map(async (convId) => {
+        try {
+          // Try fetching single conversation by ID
+          // API returns Promise(Array) so we get an array even for single ID
+          if (Missive.fetchConversations) {
+            const result = await Missive.fetchConversations([convId]);
+            if (Array.isArray(result) && result.length > 0) {
+              return result[0];
             }
-          } catch (err) {
-            console.log(`❌ Failed to fetch conversation ${convId}:`, err.message);
-            return null;
           }
-        });
-        
-        const individualResults = await Promise.all(batchPromises);
-        conversations.push(...individualResults.filter(conv => conv !== null));
-      }
+        } catch (error) {
+          console.log(`❌ Failed to fetch conversation ${convId}:`, error.message);
+          return null;
+        }
+      });
       
-      // OPTIMIZATION: Reduced delay between batches (100ms -> 50ms)
-      // Only delay if there are more batches to process
+      const batchResults = await Promise.all(batchPromises);
+      conversations.push(...batchResults.filter(conv => conv !== null));
+      
+      // Small delay between batches to avoid rate limiting
       if (i + batchSize < maxToFetch) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
     
-    console.log(`✅ Fetched ${conversations.length} conversations using optimized fallback method`);
+    console.log(`✅ Fetched ${conversations.length} conversations using fallback method`);
     return conversations;
   }
 
@@ -2527,7 +2443,6 @@ class MissWooApp {
       const conversationIds = new Set(); // Track unique conversation IDs
       
       // Try to get current conversation first
-      // NOTE: getCurrentConversation() is not explicitly documented in official API
       if (Missive.getCurrentConversation) {
         try {
           const currentConv = await Missive.getCurrentConversation();
@@ -2537,24 +2452,48 @@ class MissWooApp {
             console.log(`📧 Got current conversation: ${currentConv.id}`);
           }
         } catch (error) {
-          console.warn("⚠️ getCurrentConversation() failed (may not be supported):", error.message);
+          // console.log("❌ Failed to get current conversation:", error);
         }
       }
       
-      // Fetch conversations using official API format
-      // According to Missive API docs, fetchConversations accepts an array of conversation IDs
-      // However, we need to fetch visible conversations, so we'll use the change:conversations event data
-      // This method is called from preloadVisibleConversations() which should have conversation IDs
-      // For now, we'll rely on the change:conversations event to provide conversation IDs
-      // If we need to fetch without IDs, we'll need to use a different approach
-      
-      // NOTE: The official API doesn't show a way to fetch "all visible" conversations without IDs
-      // The change:conversations event provides the conversation IDs we need
-      console.log(`📧 Note: fetchVisibleConversations() should be called with conversation IDs from change:conversations event`);
-      
-      if (conversations.length === 0) {
-        console.log("⚠️ No conversations available. Waiting for change:conversations event to provide conversation IDs...");
-      }
+      // Always try to fetch more conversations (not just when conversations.length === 0)
+      if (Missive.fetchConversations) {
+        try {
+          console.log(`📧 Fetching up to ${this.maxPreloadedConversations} visible conversations...`);
+          // Use proper API format: { limit: number, sort: 'oldest' | 'newest' }
+          // Try fetching with limit first, fallback to array format if needed
+          let fetchedConversations = null;
+          
+          // Try object format first (correct API format)
+          if (typeof Missive.fetchConversations === 'function') {
+            try {
+              fetchedConversations = await Missive.fetchConversations({
+                limit: this.maxPreloadedConversations,
+                sort: 'oldest'
+              });
+            } catch (objError) {
+              // Fallback to array format if object format doesn't work
+              console.log(`⚠️ Object format failed (${objError.message}), trying array format...`);
+              try {
+                fetchedConversations = await Missive.fetchConversations([this.maxPreloadedConversations, 'oldest']);
+              } catch (arrayError) {
+                console.log(`⚠️ Array format also failed (${arrayError.message}), trying direct call...`);
+                // Last resort: try calling without parameters or with just limit
+                fetchedConversations = await Missive.fetchConversations(this.maxPreloadedConversations);
+              }
+            }
+          }
+          
+          if (Array.isArray(fetchedConversations)) {
+            // Add conversations that aren't already in the list
+            for (const conv of fetchedConversations) {
+              if (conv && conv.id && !conversationIds.has(conv.id)) {
+                conversations.push(conv);
+                conversationIds.add(conv.id);
+              }
+            }
+            console.log(`📧 Fetched ${fetchedConversations.length} conversations, total: ${conversations.length}`);
+          }
         } catch (error) {
           console.log("❌ fetchConversations failed:", error);
         }
@@ -2988,22 +2927,18 @@ class MissWooApp {
   }
 
   // Trigger dynamic preloading with debouncing
-  // NOTE: This method is primarily for debug/testing. Main preloading is triggered via
-  // handleConversationChange() which uses conversationChangeDebounceTimer (500ms)
   triggerDynamicPreloading() {
     // Debounce preloading to avoid excessive API calls
     if (this.preloadingDebounceTimer) {
       clearTimeout(this.preloadingDebounceTimer);
     }
     
-    // OPTIMIZATION: Reduced debounce from 2000ms to 1000ms for faster response
-    // Still longer than conversationChangeDebounceTimer (500ms) to avoid conflicts
     this.preloadingDebounceTimer = setTimeout(async () => {
       if (this.isMissiveEnvironment && !this.preloadingInProgress) {
         console.log("🔄 Triggering dynamic preloading...");
         await this.preloadVisibleConversations();
       }
-    }, 1000); // Reduced from 2000ms to 1000ms for better responsiveness
+    }, 2000); // Wait 2 seconds after last conversation change
   }
 
   // Initialize preloading on app start
