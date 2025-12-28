@@ -244,6 +244,6 @@ Missive.on('change:conversations', (data) => {
 ---
 
 **Review Date**: January 2025  
-**Code Version**: vJS4.10  
+**Code Version**: vJS4.11  
 **API Documentation Version**: https://learn.missiveapp.com/api-documentation/iframe-integrations-api
 

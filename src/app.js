@@ -208,7 +208,55 @@ class MissWooApp {
     try {
       // Check if data is an array of conversation IDs (from change:conversations event)
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
-        console.log(`📧 Received ${data.length} conversation IDs, scheduling preloading...`);
+        console.log(`📧 Received ${data.length} conversation IDs, processing...`);
+        
+        // CRITICAL FIX: Immediately fetch and search the FIRST conversation (current one)
+        // Don't wait for preloading - user clicked on this conversation and expects immediate results
+        const firstConversationId = data[0];
+        console.log(`🔍 Immediately fetching current conversation: ${firstConversationId}`);
+        
+        try {
+          let firstConversation = null;
+          
+          // Try fetchConversations first (preferred method)
+          if (Missive.fetchConversations && typeof Missive.fetchConversations === 'function') {
+            try {
+              const firstConversationResult = await Missive.fetchConversations([firstConversationId]);
+              if (Array.isArray(firstConversationResult) && firstConversationResult.length > 0) {
+                firstConversation = firstConversationResult[0];
+              }
+            } catch (fetchError) {
+              console.warn("⚠️ fetchConversations failed, trying getCurrentConversation:", fetchError.message);
+            }
+          }
+          
+          // Fallback: Try getCurrentConversation if fetchConversations failed or not available
+          if (!firstConversation && Missive.getCurrentConversation) {
+            try {
+              firstConversation = await Missive.getCurrentConversation();
+              console.log("✅ Got current conversation via getCurrentConversation()");
+            } catch (getCurrentError) {
+              console.warn("⚠️ getCurrentConversation also failed:", getCurrentError.message);
+            }
+          }
+          
+          // Extract email and search if we have a conversation
+          if (firstConversation) {
+            const email = this.extractEmailFromData(firstConversation);
+            if (email && this.isValidEmailForSearch(email)) {
+              console.log(`✅ Extracted email from current conversation: ${email}`);
+              // Immediately search for this email
+              this.performAutoSearch(email);
+            } else {
+              console.log("❌ No valid email found in current conversation");
+            }
+          } else {
+            console.warn("⚠️ Could not fetch current conversation - auto-search skipped");
+          }
+        } catch (error) {
+          console.error("❌ Error fetching current conversation:", error);
+          // Continue with preloading even if immediate fetch fails
+        }
         
         // OPTIMIZATION: Debounce conversation changes to prevent rapid-fire preloading
         // Store the latest conversation IDs
@@ -224,7 +272,7 @@ class MissWooApp {
           if (this.pendingConversationIds) {
             const idsToFetch = [...this.pendingConversationIds];
             this.pendingConversationIds = null;
-            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
+            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce for preloading...`);
             await this.fetchAndPreloadConversations(idsToFetch);
           }
         }, 500); // 500ms debounce - faster than triggerDynamicPreloading but still prevents spam
@@ -263,7 +311,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.10';
+    return 'vJS4.11';
   }
 
   async loadVersionFromManifest() {
@@ -1810,7 +1858,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.10' : 'vJS4.10 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.11' : 'vJS4.11 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

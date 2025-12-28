@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.10  
+**Version**: vJS4.11  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.10 (Current)
+### vJS4.11 (Current)
+- ✅ Critical fix: Auto-search and manual search now working
+  - Fixed immediate search on conversation click (was only preloading)
+  - Added fallback to getCurrentConversation() if fetchConversations fails
+  - Auto-search now triggers immediately when clicking emails in Missive
+  - Manual search functionality restored
+
+### vJS4.10
 - ✅ Fixed Missive API compliance issues:
   - Removed unsupported `email:focus` event listener (not in official API)
   - Added warnings for potentially unsupported `getCurrentConversation()` and `getCurrentEmail()` methods
