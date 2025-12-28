@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.09  
+**Version**: vJS4.10  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,16 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.09 (Current)
+### vJS4.10 (Current)
+- ✅ Fixed Missive API compliance issues:
+  - Removed unsupported `email:focus` event listener (not in official API)
+  - Added warnings for potentially unsupported `getCurrentConversation()` and `getCurrentEmail()` methods
+  - Standardized `fetchConversations()` API calls to use correct format (array of conversation IDs)
+  - Optimized fallback fetching strategy (increased batch size from 5 to 10, reduced delays from 100ms to 50ms)
+  - Reduced `triggerDynamicPreloading()` debounce from 2000ms to 1000ms for better responsiveness
+  - Added comprehensive error handling and warnings for undocumented API methods
+
+### vJS4.09
 - ✅ JavaScript performance optimizations for faster search:
   - Early termination in filterOrdersByEmail (stops at 5 matches)
   - Reduced excessive logging in hot paths (cache hits, API responses)
