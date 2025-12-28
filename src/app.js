@@ -61,6 +61,8 @@ class MissWooApp {
       this.visibleConversationIds = new Set();
       this.seenConversationIds = new Set();
       this.visibleEmails = new Set(); // Track visible emails for cleanup
+      this.salesExportData = new Map(); // Historical sales export data (order_no -> records)
+      this.salesExportDataLoaded = false; // Track if data has been loaded
       
       // Store bound function references for proper event listener removal
       this.boundHandleSearch = this.handleSearch.bind(this);
@@ -255,7 +257,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.12';
+    return 'vJS4.13';
   }
 
   async loadVersionFromManifest() {
@@ -304,6 +306,9 @@ class MissWooApp {
       if (this.isMissiveEnvironment) {
         await this.initializeMissiveAPI();
       }
+      
+      // Load historical sales export data for older orders
+      await this.loadSalesExportData();
       
       // Always attempt URL-driven auto-search (works in web and Missive)
       this.maybeAutoSearchFromUrl();
@@ -1195,6 +1200,98 @@ class MissWooApp {
     return parts.join(', ');
   }
 
+  // Load sales export data from JSON file
+  async loadSalesExportData() {
+    try {
+      const salesExportUrl = this.isMissiveEnvironment 
+        ? 'sales_export_filtered.json' 
+        : 'sales_export_filtered.json';
+      
+      console.log('📚 Loading sales export data for historical orders...');
+      const response = await fetch(salesExportUrl, {
+        cache: 'no-cache',
+        signal: this.activeSearchAbortController?.signal
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          // Group by SalesOrderNo for fast lookup
+          for (const record of data) {
+            const orderNo = String(record.SalesOrderNo);
+            // Only process numeric order numbers
+            const orderNoInt = parseInt(orderNo);
+            if (!isNaN(orderNoInt)) {
+              if (!this.salesExportData.has(orderNo)) {
+                this.salesExportData.set(orderNo, []);
+              }
+              this.salesExportData.get(orderNo).push(record);
+            }
+          }
+        }
+        this.salesExportDataLoaded = true;
+        console.log(`✅ Loaded sales export data for ${this.salesExportData.size} orders`);
+      } else if (response.status === 404) {
+        console.log('ℹ️ Sales export data file not found (this is optional)');
+        this.salesExportDataLoaded = true; // Mark as loaded even if file doesn't exist
+      } else {
+        console.log(`⚠️ Could not load sales export data: ${response.status}`);
+        this.salesExportDataLoaded = true; // Mark as loaded to prevent retries
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      // Don't fail initialization if sales export data can't be loaded
+      console.log('ℹ️ Sales export data not available (this is optional):', error.message);
+      this.salesExportDataLoaded = true; // Mark as loaded to prevent retries
+    }
+  }
+
+  // Get serial numbers and keys from sales export data for older orders
+  getSalesExportData(orderNumber) {
+    if (!this.salesExportDataLoaded || !this.salesExportData || this.salesExportData.size === 0) {
+      return null;
+    }
+    
+    const orderNoStr = String(orderNumber);
+    const records = this.salesExportData.get(orderNoStr);
+    
+    if (!records || records.length === 0) {
+      return null;
+    }
+    
+    // Collect all serial numbers and keys
+    const serialNumbers = new Set();
+    const keys = new Set();
+    
+    for (const record of records) {
+      // Add Keys
+      if (record.Keys) {
+        keys.add(String(record.Keys));
+      }
+      
+      // Add RackSerialNumber
+      if (record.RackSerialNumber) {
+        serialNumbers.add(String(record.RackSerialNumber));
+      }
+      
+      // Add AddOnSerialNumbers
+      if (Array.isArray(record.AddOnSerialNumbers)) {
+        record.AddOnSerialNumbers.forEach(serial => {
+          if (serial) {
+            serialNumbers.add(String(serial));
+          }
+        });
+      }
+    }
+    
+    return {
+      serialNumbers: Array.from(serialNumbers),
+      keys: Array.from(keys)
+    };
+  }
+
   async getSerialNumber(order) {
     try {
       console.log(`Getting serial number for WooCommerce order #${order.number}`);
@@ -1203,6 +1300,26 @@ class MissWooApp {
       if (this.serialNumberCache && this.serialNumberCache.has(order.number) && this.isCacheValid(order.number, 'serialCache')) {
         console.log(`Using cached serial numbers for order #${order.number}`);
         return this.serialNumberCache.get(order.number);
+      }
+      
+      const orderNumber = parseInt(order.number);
+      
+      // For orders <= 19769, check sales export data first
+      if (!isNaN(orderNumber) && orderNumber <= 19769) {
+        const salesData = this.getSalesExportData(order.number);
+        if (salesData && salesData.serialNumbers.length > 0) {
+          console.log(`✅ Found serial numbers from sales export data for order #${order.number}`);
+          
+          // Format: Serial numbers, and Keys if available
+          let result = salesData.serialNumbers.join(', ');
+          if (salesData.keys.length > 0) {
+            result += ` (Keys: ${salesData.keys.join(', ')})`;
+          }
+          
+          this.serialNumberCache.set(order.number, result);
+          this.setCacheExpiry(order.number, 'serialCache');
+          return result;
+        }
       }
       
       // Get the Katana sales order that matches this WooCommerce order
@@ -1810,7 +1927,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.12' : 'vJS4.12 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.13' : 'vJS4.13 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.12  
+**Version**: vJS4.13  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.12 (Current)
+### vJS4.13 (Current)
+- ✅ **Historical Sales Data Integration**: Added support for sales export data for older orders (≤ 19769)
+- ✅ **Serial Number Fallback**: Orders ≤ 19769 now use sales_export_filtered.json for serial numbers and keys
+- ✅ **Key Number Display**: Key numbers from sales export data are now displayed alongside serial numbers
+- ✅ **Improved Data Access**: Historical order data loads on initialization for fast lookup
+
+### vJS4.12
 - ✅ **Preloading Optimization**: Preload only first 15 emails when inbox opens for faster data access
 - ✅ **Reduced Debounce**: Reduced preloading debounce from 500ms to 250ms for faster response
 - ✅ **Performance**: Focuses preloading on most commonly accessed emails at top of inbox
