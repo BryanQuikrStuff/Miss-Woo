@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.10  
+**Version**: vJS4.12  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.10 (Current)
+### vJS4.12 (Current)
+- ✅ **Preloading Optimization**: Preload only first 15 emails when inbox opens for faster data access
+- ✅ **Reduced Debounce**: Reduced preloading debounce from 500ms to 250ms for faster response
+- ✅ **Performance**: Focuses preloading on most commonly accessed emails at top of inbox
+
+### vJS4.10
 - ✅ Fixed critical memory leak: Event listener removal now works properly
 - ✅ Fixed undefined property error: `visibleEmails` now properly initialized
 - ✅ Added missing timer cleanup: `conversationChangeDebounceTimer` now cleaned up

@@ -68,7 +68,7 @@ class MissWooApp {
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
-      this.maxPreloadedConversations = 50; // Increased to preload more conversations
+      this.maxPreloadedConversations = 15; // Preload first 15 emails when inbox opens for faster access
       this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.pendingConversationIds = null; // Track pending conversation IDs for debouncing
@@ -211,7 +211,7 @@ class MissWooApp {
           clearTimeout(this.conversationChangeDebounceTimer);
         }
         
-        // Debounce: Wait 500ms after last change event before preloading
+        // Debounce: Wait 250ms after last change event before preloading
         this.conversationChangeDebounceTimer = setTimeout(async () => {
           if (this.pendingConversationIds) {
             const idsToFetch = [...this.pendingConversationIds];
@@ -219,7 +219,7 @@ class MissWooApp {
             console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
             await this.fetchAndPreloadConversations(idsToFetch);
           }
-        }, 500); // 500ms debounce - faster than triggerDynamicPreloading but still prevents spam
+        }, 250); // 250ms debounce - faster response while still preventing rapid-fire preloading
         
         return;
       }
@@ -255,7 +255,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.10';
+    return 'vJS4.12';
   }
 
   async loadVersionFromManifest() {
@@ -1810,7 +1810,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.10' : 'vJS4.10 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.12' : 'vJS4.12 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2310,10 +2310,10 @@ class MissWooApp {
       return;
     }
 
-    // Process ALL conversation IDs - don't limit to ensure all visible emails are preloaded
-    // Use maxPreloadedConversations only as a safety limit for very large inboxes
-    const idsToFetch = conversationIds.slice(0, Math.min(conversationIds.length, this.maxPreloadedConversations || 50));
-    console.log(`📧 Fetching ALL ${idsToFetch.length} conversations (from ${conversationIds.length} total visible) for preloading...`);
+    // OPTIMIZATION: Only preload first 15 emails when inbox opens for faster data access
+    // This focuses on the most commonly accessed emails at the top of the inbox
+    const idsToFetch = conversationIds.slice(0, Math.min(15, conversationIds.length));
+    console.log(`📧 Preloading first ${idsToFetch.length} emails (from ${conversationIds.length} total visible) when inbox opened...`);
 
     try {
       let conversations = [];
@@ -2385,9 +2385,9 @@ class MissWooApp {
         }
       }
 
-      // Preload customer details for all emails
-      // IMPORTANT: Process ALL visible emails to ensure inbox is fully preloaded
-      console.log(`🔄 Starting preload for ${emailsToPreload.length} emails from visible inbox...`);
+      // Preload customer details for first 15 emails
+      // OPTIMIZATION: Focus on top 15 emails for faster access to most commonly used conversations
+      console.log(`🔄 Starting preload for first ${emailsToPreload.length} emails (top of inbox)...`);
       
       // Preload in background but track progress (use normalized prioritized email)
       this.preloadEmailsData(emailsToPreload, prioritizedEmail)
@@ -2414,8 +2414,9 @@ class MissWooApp {
   // Fallback method: fetch conversations one by one if batch fetch fails
   async fetchConversationsOneByOne(conversationIds) {
     const conversations = [];
-    const maxToFetch = Math.min(conversationIds.length, this.maxPreloadedConversations || 50);
-    console.log(`📧 Fetching ${maxToFetch} conversations one by one (fallback method)...`);
+    // Limit to first 15 for preloading optimization
+    const maxToFetch = Math.min(15, conversationIds.length);
+    console.log(`📧 Fetching first ${maxToFetch} conversations one by one (fallback method)...`);
     
     // Process in batches to avoid overwhelming the API
     const batchSize = 5;
