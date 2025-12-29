@@ -257,7 +257,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.13';
+    return 'vJS4.14';
   }
 
   async loadVersionFromManifest() {
@@ -1217,15 +1217,14 @@ class MissWooApp {
         const data = await response.json();
         if (Array.isArray(data)) {
           // Group by SalesOrderNo for fast lookup
+          // New format: Each record is already combined per order number
           for (const record of data) {
             const orderNo = String(record.SalesOrderNo);
             // Only process numeric order numbers
             const orderNoInt = parseInt(orderNo);
             if (!isNaN(orderNoInt)) {
-              if (!this.salesExportData.has(orderNo)) {
-                this.salesExportData.set(orderNo, []);
-              }
-              this.salesExportData.get(orderNo).push(record);
+              // Store the combined record directly (already has SerialNumbers and Keys arrays)
+              this.salesExportData.set(orderNo, record);
             }
           }
         }
@@ -1255,40 +1254,16 @@ class MissWooApp {
     }
     
     const orderNoStr = String(orderNumber);
-    const records = this.salesExportData.get(orderNoStr);
+    const record = this.salesExportData.get(orderNoStr);
     
-    if (!records || records.length === 0) {
+    if (!record) {
       return null;
     }
     
-    // Collect all serial numbers and keys
-    const serialNumbers = new Set();
-    const keys = new Set();
-    
-    for (const record of records) {
-      // Add Keys
-      if (record.Keys) {
-        keys.add(String(record.Keys));
-      }
-      
-      // Add RackSerialNumber
-      if (record.RackSerialNumber) {
-        serialNumbers.add(String(record.RackSerialNumber));
-      }
-      
-      // Add AddOnSerialNumbers
-      if (Array.isArray(record.AddOnSerialNumbers)) {
-        record.AddOnSerialNumbers.forEach(serial => {
-          if (serial) {
-            serialNumbers.add(String(serial));
-          }
-        });
-      }
-    }
-    
+    // New format: record already has SerialNumbers and Keys arrays (already combined)
     return {
-      serialNumbers: Array.from(serialNumbers),
-      keys: Array.from(keys)
+      serialNumbers: Array.isArray(record.SerialNumbers) ? record.SerialNumbers : [],
+      keys: Array.isArray(record.Keys) ? record.Keys : []
     };
   }
 
@@ -1927,7 +1902,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.13' : 'vJS4.13 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.14' : 'vJS4.14 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

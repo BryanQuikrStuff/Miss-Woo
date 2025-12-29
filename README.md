@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.13  
+**Version**: vJS4.14  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.13 (Current)
+### vJS4.14 (Current)
+- ✅ **Combined Sales Export Data**: Optimized sales_export_filtered.json structure - entries with same order number are now combined
+- ✅ **Improved Data Structure**: Each order now has a single entry with combined SerialNumbers and Keys arrays
+- ✅ **Better Performance**: Reduced file size and faster lookups with combined data structure
+
+### vJS4.13
 - ✅ **Historical Sales Data Integration**: Added support for sales export data for older orders (≤ 19769)
 - ✅ **Serial Number Fallback**: Orders ≤ 19769 now use sales_export_filtered.json for serial numbers and keys
 - ✅ **Key Number Display**: Key numbers from sales export data are now displayed alongside serial numbers
