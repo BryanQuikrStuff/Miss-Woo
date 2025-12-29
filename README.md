@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.16  
+**Version**: vJS4.17  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.16 (Current)
+### vJS4.17 (Current)
+
+- **API call optimization**: Added request deduplication to prevent duplicate Katana API calls
+- **Performance improvement**: In-flight request tracking ensures each order is only fetched once, even with concurrent requests
+- **Reduced API usage**: Eliminates redundant API calls when multiple code paths request the same order simultaneously
+- **Better logging**: Added "Reusing in-flight request" messages to track when duplicate calls are prevented
+
+### vJS4.16
 
 - **Fixed serial number display for historical orders**: Added sales export data check to `batchGetSerialNumbers()` function
 - **Improved data lookup flow**: Orders ≤ 19769 now check sales export data before attempting Katana API calls

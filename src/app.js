@@ -46,6 +46,7 @@ class MissWooApp {
       this.requestQueue = new Map();
       this.pendingRequests = new Set();
       this.cacheBuster = Date.now();
+      this.inFlightKatanaRequests = new Map(); // Track in-flight Katana order requests to prevent duplicates
       this.corsHeaders = {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -257,7 +258,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.16';
+    return 'vJS4.17';
   }
 
   async loadVersionFromManifest() {
@@ -1452,62 +1453,92 @@ class MissWooApp {
 
   async getKatanaOrder(wooOrderNumber) {
     try {
-      console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
-      
       // Check cache first with expiration
       if (this.katanaOrderCache && this.katanaOrderCache.has(wooOrderNumber) && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
         console.log(`Using cached Katana order for #${wooOrderNumber}`);
         return this.katanaOrderCache.get(wooOrderNumber);
       }
       
-      const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
-      console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        },
-        signal: this.activeSearchAbortController?.signal
-      });
-      console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
-
-      if (!response.ok) {
-        throw new Error(`Katana API error: ${response.status}`);
+      // Check if there's already an in-flight request for this order
+      if (this.inFlightKatanaRequests && this.inFlightKatanaRequests.has(wooOrderNumber)) {
+        console.log(`⏳ Reusing in-flight request for Katana order #${wooOrderNumber}`);
+        return await this.inFlightKatanaRequests.get(wooOrderNumber);
       }
-
-      const data = await response.json();
-      console.log(`Katana order data for order #${wooOrderNumber}:`, data);
       
-      const katanaOrder = data.data?.[0] || null;
-      if (katanaOrder) {
-        console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
-        
-        // Try to get the full sales order with line items
-        console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
-        const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
-        if (fullOrder) {
-          console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
-          this.katanaOrderCache.set(wooOrderNumber, fullOrder);
-          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
-          return fullOrder;
-        } else {
-          console.log(`Could not get full order details, returning basic order`);
-          this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
-          return katanaOrder;
+      // Create a new request promise
+      const requestPromise = (async () => {
+        try {
+          console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
+          
+          const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
+          console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${this.katanaApiKey}`,
+              'Accept': 'application/json'
+            },
+            signal: this.activeSearchAbortController?.signal
+          });
+          console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
+
+          if (!response.ok) {
+            throw new Error(`Katana API error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log(`Katana order data for order #${wooOrderNumber}:`, data);
+          
+          const katanaOrder = data.data?.[0] || null;
+          if (katanaOrder) {
+            console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
+            
+            // Try to get the full sales order with line items
+            console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
+            const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
+            if (fullOrder) {
+              console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
+              this.katanaOrderCache.set(wooOrderNumber, fullOrder);
+              this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+              return fullOrder;
+            } else {
+              console.log(`Could not get full order details, returning basic order`);
+              this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
+              return katanaOrder;
+            }
+          } else {
+            console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
+            this.katanaOrderCache.set(wooOrderNumber, null);
+            return null;
+          }
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            console.log("Katana order fetch cancelled");
+            throw error;
+          }
+          console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
+          this.katanaOrderCache.set(wooOrderNumber, null);
+          return null;
+        } finally {
+          // Clean up in-flight request tracking
+          if (this.inFlightKatanaRequests) {
+            this.inFlightKatanaRequests.delete(wooOrderNumber);
+          }
         }
-      } else {
-        console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
-        this.katanaOrderCache.set(wooOrderNumber, null);
-        return null;
+      })();
+      
+      // Store the in-flight request
+      if (this.inFlightKatanaRequests) {
+        this.inFlightKatanaRequests.set(wooOrderNumber, requestPromise);
       }
+      
+      return await requestPromise;
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Katana order fetch cancelled");
-        throw error;
+      if (error.name === 'AbortError') throw error;
+      // Clean up on error
+      if (this.inFlightKatanaRequests) {
+        this.inFlightKatanaRequests.delete(wooOrderNumber);
       }
-      console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
-      this.katanaOrderCache.set(wooOrderNumber, null);
-      return null;
+      throw error;
     }
   }
 
@@ -1992,7 +2023,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.16' : 'vJS4.16 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.17' : 'vJS4.17 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
