@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.18  
+**Version**: vJS4.19  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.18 (Current)
+### vJS4.19 (Current)
+
+- **Fixed preloading API usage**: Changed from unsupported limit/sort parameters to conversation ID accumulation
+- **API compliance**: Now uses correct `fetchConversations(idsArray)` format per official Missive API documentation
+- **Improved preloading strategy**: Accumulates conversation IDs from `change:conversations` events and triggers bulk preload once 5+ IDs collected
+- **Eliminated null responses**: Removed attempts to use unsupported limit/sort parameters that returned null
+
+### vJS4.18
 
 - **Bulk preloading for inbox**: Added automatic fetching and preloading of 15 most recent emails when inbox opens
 - **Improved performance**: Preloads customer data for top 15 emails in background for faster access
