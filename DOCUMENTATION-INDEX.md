@@ -335,7 +335,7 @@ All documentation files include:
 
 **Documentation Suite Version**: 1.0  
 **Created**: October 21, 2025  
-**Application Version**: vJS4.15  
+**Application Version**: vJS4.16  
 **Last Code Update**: August 22, 2025  
 
 ---

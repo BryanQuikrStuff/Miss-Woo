@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.15  
+**Version**: vJS4.16  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.15 (Current)
+### vJS4.16 (Current)
+
+- **Fixed serial number display for historical orders**: Added sales export data check to `batchGetSerialNumbers()` function
+- **Improved data lookup flow**: Orders ≤ 19769 now check sales export data before attempting Katana API calls
+- **Fixed missing serial numbers**: Resolved issue where serial numbers showed "N/A" for orders in JSON file
+- **Performance optimization**: Batch serial number fetching now properly uses sales export data when available
+
+### vJS4.15
 
 - **Enhanced debugging for sales export data**: Added comprehensive logging to track data loading, lookup, and retrieval for historical orders
 - **Fixed abort signal issue**: Removed abort signal from sales export data fetch during initialization to prevent loading failures

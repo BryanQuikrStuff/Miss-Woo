@@ -257,7 +257,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.15';
+    return 'vJS4.16';
   }
 
   async loadVersionFromManifest() {
@@ -1636,8 +1636,53 @@ class MissWooApp {
         return cachedResults;
       }
       
-      // Step 1: Batch fetch all Katana orders in parallel
-      const wooOrderNumbers = uncachedOrders.map(o => o.number);
+      // Step 0: Check sales export data for orders <= 19769 BEFORE trying Katana API
+      const ordersToCheckSalesExport = [];
+      const ordersToCheckKatana = [];
+      
+      // Ensure sales export data is loaded
+      if (!this.salesExportDataLoaded) {
+        await this.loadSalesExportData();
+      }
+      
+      for (const order of uncachedOrders) {
+        const orderNumber = parseInt(order.number);
+        if (!isNaN(orderNumber) && orderNumber <= 19769) {
+          ordersToCheckSalesExport.push(order);
+        } else {
+          ordersToCheckKatana.push(order);
+        }
+      }
+      
+      // Check sales export data for eligible orders
+      for (const order of ordersToCheckSalesExport) {
+        const salesData = this.getSalesExportData(order.number);
+        if (salesData && salesData.serialNumbers && salesData.serialNumbers.length > 0) {
+          console.log(`✅ Found ${salesData.serialNumbers.length} serial numbers from sales export data for order #${order.number}`);
+          
+          // Format: Serial numbers, and Keys if available
+          let result = salesData.serialNumbers.join(', ');
+          if (salesData.keys && salesData.keys.length > 0) {
+            result += ` (Keys: ${salesData.keys.join(', ')})`;
+          }
+          
+          // Cache the result
+          this.serialNumberCache.set(order.number, result);
+          this.setCacheExpiry(order.number, 'serialCache');
+          cachedResults.set(order.number, result);
+        } else {
+          // No sales export data found, fall through to Katana API
+          ordersToCheckKatana.push(order);
+        }
+      }
+      
+      // If all orders were found in sales export data, return early
+      if (ordersToCheckKatana.length === 0) {
+        return cachedResults;
+      }
+      
+      // Step 1: Batch fetch all Katana orders in parallel (only for orders not found in sales export)
+      const wooOrderNumbers = ordersToCheckKatana.map(o => o.number);
       const katanaOrdersMap = await this.batchGetKatanaOrders(wooOrderNumbers);
       
       // Step 2: Collect all row IDs from all orders
@@ -1656,8 +1701,8 @@ class MissWooApp {
       const allRowIds = Array.from(rowIdsByOrder.values()).flat();
       const serialNumberMap = await this.batchGetSerialNumbersForRows(allRowIds);
       
-      // Step 4: Group serial numbers by order
-      for (const order of uncachedOrders) {
+      // Step 4: Group serial numbers by order (only for orders checked via Katana API)
+      for (const order of ordersToCheckKatana) {
         const rowIds = rowIdsByOrder.get(order.number) || [];
         const orderSerialNumbers = [];
         
@@ -1947,7 +1992,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.15' : 'vJS4.15 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.16' : 'vJS4.16 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
