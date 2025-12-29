@@ -300,5 +300,5 @@ Status: Invalid email in URL: not-an-email
 
 **Document Version**: 1.0
 **Last Updated**: October 21, 2025
-**Application Version**: vJS4.17
+**Application Version**: vJS4.18
 

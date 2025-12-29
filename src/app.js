@@ -75,6 +75,7 @@ class MissWooApp {
       this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.pendingConversationIds = null; // Track pending conversation IDs for debouncing
+      this.recentConversationsFetched = false; // Track if we've already fetched recent conversations
       
       // Cache configuration
       this.cacheConfig = {
@@ -174,6 +175,9 @@ class MissWooApp {
     try {
       console.log("🔍 Attempting to get current context...");
       
+      // Try to fetch and preload the 15 most recent conversations when inbox opens
+      await this.fetchAndPreloadRecentConversations();
+      
       // Try to get current conversation
       if (Missive.getCurrentConversation) {
         const conversation = await Missive.getCurrentConversation();
@@ -220,6 +224,11 @@ class MissWooApp {
             const idsToFetch = [...this.pendingConversationIds];
             this.pendingConversationIds = null;
             console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
+            
+            // First, try to fetch the 15 most recent conversations from the inbox
+            await this.fetchAndPreloadRecentConversations();
+            
+            // Also preload the specific conversations from the event
             await this.fetchAndPreloadConversations(idsToFetch);
           }
         }, 250); // 250ms debounce - faster response while still preventing rapid-fire preloading
@@ -258,7 +267,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.17';
+    return 'vJS4.18';
   }
 
   async loadVersionFromManifest() {
@@ -2023,7 +2032,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.17' : 'vJS4.17 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.18' : 'vJS4.18 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2513,6 +2522,84 @@ class MissWooApp {
       }
     } finally {
       this.preloadingInProgress = false;
+    }
+  }
+
+  // Fetch the 15 most recent conversations from the inbox and preload their data
+  async fetchAndPreloadRecentConversations() {
+    if (!Missive || !Missive.fetchConversations) {
+      console.log("⚠️ Missive.fetchConversations not available for fetching recent conversations");
+      return;
+    }
+
+    // Only fetch once per session to avoid excessive API calls
+    // Reset this flag when needed (e.g., on inbox refresh)
+    if (this.recentConversationsFetched) {
+      console.log("ℹ️ Recent conversations already fetched, skipping...");
+      return;
+    }
+
+    try {
+      console.log(`📧 Fetching ${this.maxPreloadedConversations} most recent conversations from inbox...`);
+      
+      let fetchedConversations = null;
+      
+      // Try different API formats to fetch recent conversations
+      try {
+        // Try object format first (most likely correct format)
+        fetchedConversations = await Missive.fetchConversations({
+          limit: this.maxPreloadedConversations,
+          sort: 'newest' // Get most recent first
+        });
+      } catch (objError) {
+        console.log(`⚠️ Object format failed (${objError.message}), trying array format...`);
+        try {
+          // Try array format
+          fetchedConversations = await Missive.fetchConversations([this.maxPreloadedConversations, 'newest']);
+        } catch (arrayError) {
+          console.log(`⚠️ Array format also failed (${arrayError.message}), trying direct call...`);
+          try {
+            // Last resort: try calling with just limit
+            fetchedConversations = await Missive.fetchConversations(this.maxPreloadedConversations);
+          } catch (directError) {
+            console.log(`⚠️ Direct call also failed (${directError.message}), skipping recent conversations fetch`);
+            return;
+          }
+        }
+      }
+      
+      if (Array.isArray(fetchedConversations) && fetchedConversations.length > 0) {
+        console.log(`✅ Fetched ${fetchedConversations.length} recent conversations from inbox`);
+        
+        // Mark as fetched to prevent duplicate calls
+        this.recentConversationsFetched = true;
+        
+        // Update visible conversation tracking
+        this.updateVisibleConversations(fetchedConversations);
+        
+        // Extract emails from all conversations
+        const emailsToPreload = this.extractEmailsFromConversations(fetchedConversations);
+        console.log(`📧 Extracted ${emailsToPreload.length} unique emails from ${fetchedConversations.length} recent conversations`);
+        
+        if (emailsToPreload.length > 0) {
+          // Preload customer details for all recent emails in background
+          console.log(`🔄 Starting preload for ${emailsToPreload.length} recent emails from inbox...`);
+          
+          // Preload in background (no prioritization needed for bulk preload)
+          this.preloadEmailsData(emailsToPreload, null)
+            .then(() => {
+              console.log(`✅ Completed preloading ${emailsToPreload.length} recent emails from inbox`);
+            })
+            .catch(error => {
+              console.error("❌ Error preloading recent emails data:", error);
+            });
+        }
+      } else {
+        console.log(`⚠️ fetchConversations returned ${fetchedConversations ? typeof fetchedConversations : 'null'}, expected array`);
+      }
+    } catch (error) {
+      console.log(`⚠️ Error fetching recent conversations: ${error.message}`);
+      // Don't throw - this is an optimization, not critical
     }
   }
 

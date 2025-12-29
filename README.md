@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.17  
+**Version**: vJS4.18  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.17 (Current)
+### vJS4.18 (Current)
+
+- **Bulk preloading for inbox**: Added automatic fetching and preloading of 15 most recent emails when inbox opens
+- **Improved performance**: Preloads customer data for top 15 emails in background for faster access
+- **Smart fetching**: Tries multiple API formats to ensure compatibility with different Missive API versions
+- **Duplicate prevention**: Uses flag to prevent fetching recent conversations multiple times per session
+
+### vJS4.17
 
 - **API call optimization**: Added request deduplication to prevent duplicate Katana API calls
 - **Performance improvement**: In-flight request tracking ensures each order is only fetched once, even with concurrent requests
