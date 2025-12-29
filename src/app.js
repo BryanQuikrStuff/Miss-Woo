@@ -257,7 +257,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.14';
+    return 'vJS4.15';
   }
 
   async loadVersionFromManifest() {
@@ -1208,13 +1208,19 @@ class MissWooApp {
         : 'sales_export_filtered.json';
       
       console.log('📚 Loading sales export data for historical orders...');
+      console.log(`📁 Loading from: ${salesExportUrl}`);
+      
+      // Don't use abort signal during initialization - it might not exist yet
       const response = await fetch(salesExportUrl, {
-        cache: 'no-cache',
-        signal: this.activeSearchAbortController?.signal
+        cache: 'no-cache'
       });
+      
+      console.log(`📡 Response status: ${response.status}`);
       
       if (response.ok) {
         const data = await response.json();
+        console.log(`📦 Received data: ${Array.isArray(data) ? `Array with ${data.length} items` : typeof data}`);
+        
         if (Array.isArray(data)) {
           // Group by SalesOrderNo for fast lookup
           // New format: Each record is already combined per order number
@@ -1227,9 +1233,17 @@ class MissWooApp {
               this.salesExportData.set(orderNo, record);
             }
           }
+        } else {
+          console.log('⚠️ Sales export data is not an array:', typeof data);
         }
         this.salesExportDataLoaded = true;
         console.log(`✅ Loaded sales export data for ${this.salesExportData.size} orders`);
+        
+        // Debug: Check if a sample order exists
+        if (this.salesExportData.has('2103')) {
+          const sample = this.salesExportData.get('2103');
+          console.log('📋 Sample order 2103:', sample);
+        }
       } else if (response.status === 404) {
         console.log('ℹ️ Sales export data file not found (this is optional)');
         this.salesExportDataLoaded = true; // Mark as loaded even if file doesn't exist
@@ -1250,20 +1264,34 @@ class MissWooApp {
   // Get serial numbers and keys from sales export data for older orders
   getSalesExportData(orderNumber) {
     if (!this.salesExportDataLoaded || !this.salesExportData || this.salesExportData.size === 0) {
+      console.log(`⚠️ Sales export data not available (loaded: ${this.salesExportDataLoaded}, size: ${this.salesExportData?.size || 0})`);
       return null;
     }
     
     const orderNoStr = String(orderNumber);
+    console.log(`🔍 Looking up order #${orderNoStr} in sales export data (map size: ${this.salesExportData.size})`);
+    
     const record = this.salesExportData.get(orderNoStr);
     
     if (!record) {
+      console.log(`⚠️ No record found for order #${orderNoStr}`);
+      // Debug: Show first few order numbers in map
+      const firstFew = Array.from(this.salesExportData.keys()).slice(0, 5);
+      console.log(`📋 First 5 order numbers in map:`, firstFew);
       return null;
     }
     
+    console.log(`✅ Found record for order #${orderNoStr}:`, record);
+    
     // New format: record already has SerialNumbers and Keys arrays (already combined)
+    const serialNumbers = Array.isArray(record.SerialNumbers) ? record.SerialNumbers : [];
+    const keys = Array.isArray(record.Keys) ? record.Keys : [];
+    
+    console.log(`📊 Extracted: ${serialNumbers.length} serial numbers, ${keys.length} keys`);
+    
     return {
-      serialNumbers: Array.isArray(record.SerialNumbers) ? record.SerialNumbers : [],
-      keys: Array.isArray(record.Keys) ? record.Keys : []
+      serialNumbers: serialNumbers,
+      keys: keys
     };
   }
 
@@ -1281,19 +1309,36 @@ class MissWooApp {
       
       // For orders <= 19769, check sales export data first
       if (!isNaN(orderNumber) && orderNumber <= 19769) {
+        console.log(`🔍 Order #${order.number} is <= 19769, checking sales export data...`);
+        
+        // Ensure data is loaded (wait if still loading)
+        if (!this.salesExportDataLoaded) {
+          console.log(`⏳ Sales export data still loading, waiting for order #${order.number}...`);
+          await this.loadSalesExportData();
+        }
+        
         const salesData = this.getSalesExportData(order.number);
-        if (salesData && salesData.serialNumbers.length > 0) {
-          console.log(`✅ Found serial numbers from sales export data for order #${order.number}`);
-          
-          // Format: Serial numbers, and Keys if available
-          let result = salesData.serialNumbers.join(', ');
-          if (salesData.keys.length > 0) {
-            result += ` (Keys: ${salesData.keys.join(', ')})`;
+        
+        if (salesData) {
+          console.log(`📊 Sales data retrieved for order #${order.number}:`, salesData);
+          if (salesData.serialNumbers && salesData.serialNumbers.length > 0) {
+            console.log(`✅ Found ${salesData.serialNumbers.length} serial numbers from sales export data for order #${order.number}`);
+            
+            // Format: Serial numbers, and Keys if available
+            let result = salesData.serialNumbers.join(', ');
+            if (salesData.keys && salesData.keys.length > 0) {
+              result += ` (Keys: ${salesData.keys.join(', ')})`;
+            }
+            
+            console.log(`📝 Formatted result: "${result}"`);
+            this.serialNumberCache.set(order.number, result);
+            this.setCacheExpiry(order.number, 'serialCache');
+            return result;
+          } else {
+            console.log(`⚠️ Sales data found but no serial numbers (array length: ${salesData.serialNumbers?.length || 0})`);
           }
-          
-          this.serialNumberCache.set(order.number, result);
-          this.setCacheExpiry(order.number, 'serialCache');
-          return result;
+        } else {
+          console.log(`⚠️ No sales export data found for order #${order.number}`);
         }
       }
       
@@ -1902,7 +1947,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.14' : 'vJS4.14 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.15' : 'vJS4.15 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

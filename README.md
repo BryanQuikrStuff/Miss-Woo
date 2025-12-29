@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.14  
+**Version**: vJS4.15  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.14 (Current)
+### vJS4.15 (Current)
+
+- **Enhanced debugging for sales export data**: Added comprehensive logging to track data loading, lookup, and retrieval for historical orders
+- **Fixed abort signal issue**: Removed abort signal from sales export data fetch during initialization to prevent loading failures
+- **Improved data loading**: Added wait logic to ensure sales export data is loaded before attempting lookups
+- **Better error handling**: Enhanced error messages and logging throughout the sales export data flow
+
+### vJS4.14
 - ✅ **Combined Sales Export Data**: Optimized sales_export_filtered.json structure - entries with same order number are now combined
 - ✅ **Improved Data Structure**: Each order now has a single entry with combined SerialNumbers and Keys arrays
 - ✅ **Better Performance**: Reduced file size and faster lookups with combined data structure
