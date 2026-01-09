@@ -389,14 +389,16 @@ Missive.on('email:focus', (emailData) => {
 
 **Current Implementation** (Frontend-only):
 ```javascript
-// src/config.js - EXPOSED IN BROWSER
+// src/config.js - Keys injected by GitHub Actions during build
+// Production: Keys come from GitHub Secrets (${{ secrets.WOOCOMMERCE_CONSUMER_KEY }})
+// Local Dev: Use environment variables or .env file
 const config = {
   woocommerce: {
-    consumerKey: "ck_285852a66ac9cf16db7723e1d6deda54937a8a03",
-    consumerSecret: "cs_3211f905108b717426e6b6a63613147b66993333"
+    consumerKey: "${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}",
+    consumerSecret: "${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}"
   },
   katana: {
-    apiKey: "8292a174-0f66-4ac1-a0e9-cb3c9db7ecc4"
+    apiKey: "${{ secrets.KATANA_API_KEY }}"
   }
 };
 ```
