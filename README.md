@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.21  
+**Version**: vJS4.19  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,13 +130,7 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.21 (Current)
-- **Fix**: Added .nojekyll file to disable Jekyll processing on GitHub Pages
-
-### vJS4.20
-- **Security**: Removed hardcoded API keys from source code, now using GitHub Secrets placeholders
-
-### vJS4.19
+### vJS4.19 (Current)
 
 - **Fixed preloading API usage**: Changed from unsupported limit/sort parameters to conversation ID accumulation
 - **API compliance**: Now uses correct `fetchConversations(idsArray)` format per official Missive API documentation

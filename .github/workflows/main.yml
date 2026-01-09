@@ -91,8 +91,6 @@ jobs:
         cp integrations/missive-js/app.js dist/integrations/missive-js/
         # Copy sales export data file for historical orders
         cp sales_export_filtered.json dist/ 2>/dev/null || echo "⚠️ sales_export_filtered.json not found, skipping..."
-        # Create .nojekyll to disable Jekyll processing on GitHub Pages
-        touch dist/.nojekyll
         BUILD_VERSION=$(date +%Y%m%d%H%M%S)  # cache-busting only
         DISPLAY_VERSION=${GITHUB_SHA::7}     # human-readable version
         # Update cache-busting version in HTML references (keep timestamps here)
