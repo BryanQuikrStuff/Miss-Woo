@@ -290,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.25';
+    return 'vJS5.00';
   }
 
   async loadVersionFromManifest() {
@@ -1787,6 +1787,11 @@ class MissWooApp {
   }
 
   getTrackingInfo(order) {
+    // OPTIMIZATION: Cache tracking info on order object to avoid re-extraction
+    if (order._cachedTrackingInfo !== undefined) {
+      return order._cachedTrackingInfo;
+    }
+    
     try {
       // Check order notes first
       if (order.notes && Array.isArray(order.notes)) {
@@ -1798,6 +1803,8 @@ class MissWooApp {
           const trackingMatch = this.extractTrackingFromText(noteContent);
           if (trackingMatch) {
             console.log(`Found tracking number: ${trackingMatch.number}`);
+            // Cache the result
+            order._cachedTrackingInfo = trackingMatch;
             return trackingMatch;
           }
         }
@@ -1811,11 +1818,16 @@ class MissWooApp {
             const trackingMatch = this.extractTrackingFromText(metaValue);
             if (trackingMatch) {
               console.log(`Found tracking number in meta: ${trackingMatch.number}`);
+              // Cache the result
+              order._cachedTrackingInfo = trackingMatch;
               return trackingMatch;
             }
           }
         }
       }
+      
+      // Cache null result to avoid re-checking
+      order._cachedTrackingInfo = null;
 
       return null;
     } catch (error) {
@@ -2048,7 +2060,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.25' : 'vJS4.25 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.00' : 'vJS5.00 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
