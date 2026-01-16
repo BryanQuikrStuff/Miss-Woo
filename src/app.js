@@ -71,13 +71,10 @@ class MissWooApp {
       this.preloadingInProgress = false;
       this.preloadingDebounceTimer = null;
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
-      this.maxPreloadedConversations = 15; // Preload first 15 emails when inbox opens for faster access
+      this.maxPreloadedConversations = 15; // Cache 15 most recently opened conversations
       this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
-      this.pendingConversationIds = null; // Track pending conversation IDs for debouncing
-      this.recentConversationsFetched = false; // Track if we've already fetched recent conversations
-      this.accumulatedConversationIds = new Set(); // Accumulate conversation IDs from change:conversations events
-      this.maxAccumulatedConversations = 15; // Maximum number of conversation IDs to accumulate
+      this.recentlyOpenedConversations = new Map(); // LRU cache: conversationId -> { email, timestamp, processed }
       
       // Cache configuration
       this.cacheConfig = {
@@ -177,8 +174,7 @@ class MissWooApp {
     try {
       console.log("🔍 Attempting to get current context...");
       
-      // Note: We'll accumulate conversation IDs from change:conversations events
-      // and preload them once we have enough (handled in handleConversationChange)
+      // Conversations are now processed individually when user clicks on them
       
       // Try to get current conversation
       if (Missive.getCurrentConversation) {
@@ -208,52 +204,30 @@ class MissWooApp {
     
     try {
       // Check if data is an array of conversation IDs (from change:conversations event)
+      // The first ID in the array is the currently clicked/opened conversation
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
-        console.log(`📧 Received ${data.length} conversation IDs, scheduling preloading...`);
+        const clickedConversationId = data[0]; // First ID is the one user clicked on
+        console.log(`📧 User clicked on conversation: ${clickedConversationId}`);
         
-        // Accumulate conversation IDs to build a list of recent conversations
-        const previousSize = this.accumulatedConversationIds.size;
-        for (const id of data) {
-          if (!this.accumulatedConversationIds.has(id)) {
-            if (this.accumulatedConversationIds.size < this.maxAccumulatedConversations) {
-              this.accumulatedConversationIds.add(id);
-            } else {
-              // If we've reached the limit, remove oldest and add newest (FIFO)
-              const firstId = this.accumulatedConversationIds.values().next().value;
-              this.accumulatedConversationIds.delete(firstId);
-              this.accumulatedConversationIds.add(id);
-            }
+        // Check if we've already processed this conversation
+        const cached = this.recentlyOpenedConversations.get(clickedConversationId);
+        if (cached && cached.processed) {
+          console.log(`✅ Conversation ${clickedConversationId} already processed, using cached data`);
+          // If we have cached email, trigger search with it
+          if (cached.email && this.isValidEmailForSearch(cached.email)) {
+            this.performAutoSearch(cached.email);
           }
+          return;
         }
-        const newIdsAdded = this.accumulatedConversationIds.size > previousSize;
-        const currentAccumulatedSize = this.accumulatedConversationIds.size;
         
-        // OPTIMIZATION: Debounce conversation changes to prevent rapid-fire preloading
-        // Store the latest conversation IDs
-        this.pendingConversationIds = data;
-        
-        // Clear existing debounce timer
+        // Debounce to prevent rapid-fire processing when user clicks quickly
         if (this.conversationChangeDebounceTimer) {
           clearTimeout(this.conversationChangeDebounceTimer);
         }
         
-        // Debounce: Wait 250ms after last change event before preloading
         this.conversationChangeDebounceTimer = setTimeout(async () => {
-          if (this.pendingConversationIds) {
-            const idsToFetch = [...this.pendingConversationIds];
-            this.pendingConversationIds = null;
-            console.log(`📧 Processing ${idsToFetch.length} conversation IDs after debounce...`);
-            
-            // If we've accumulated enough conversation IDs (5+) and haven't preloaded yet, do bulk preload
-            if (newIdsAdded && currentAccumulatedSize >= 5 && !this.recentConversationsFetched) {
-              console.log(`📧 Accumulated ${currentAccumulatedSize} conversation IDs, triggering bulk preload...`);
-              await this.fetchAndPreloadAccumulatedConversations();
-            }
-            
-            // Also preload the specific conversations from the event (current email)
-            await this.fetchAndPreloadConversations(idsToFetch);
-          }
-        }, 250); // 250ms debounce - faster response while still preventing rapid-fire preloading
+          await this.processClickedConversation(clickedConversationId);
+        }, 100); // Short debounce (100ms) for responsive feel
         
         return;
       }
@@ -289,7 +263,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.20';
+    return 'vJS4.21';
   }
 
   async loadVersionFromManifest() {
@@ -2054,7 +2028,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.20' : 'vJS4.20 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.21' : 'vJS4.21 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2547,83 +2521,129 @@ class MissWooApp {
     }
   }
 
-  // Fetch and preload conversations from accumulated conversation IDs
-  async fetchAndPreloadAccumulatedConversations() {
+  // Process a single clicked conversation - fetch and cache data
+  async processClickedConversation(conversationId) {
     if (!Missive || !Missive.fetchConversations) {
-      console.log("⚠️ Missive.fetchConversations not available for fetching accumulated conversations");
+      console.log("⚠️ Missive.fetchConversations not available");
       return;
     }
 
-    // Only fetch once per session to avoid excessive API calls
-    // Reset this flag when needed (e.g., on inbox refresh)
-    if (this.recentConversationsFetched) {
-      console.log("ℹ️ Accumulated conversations already fetched, skipping...");
-      return;
-    }
-
-    // Check if we have enough accumulated conversation IDs
-    if (!this.accumulatedConversationIds || this.accumulatedConversationIds.size === 0) {
-      console.log("ℹ️ No accumulated conversation IDs yet, will preload as conversations are accessed");
-      return;
-    }
-    
-    // Only preload if we have at least 3 accumulated IDs (to avoid too many small preloads)
-    if (this.accumulatedConversationIds.size < 3) {
-      console.log(`ℹ️ Only ${this.accumulatedConversationIds.size} accumulated conversation IDs, waiting for more...`);
+    // Check if already processed and cached
+    const cached = this.recentlyOpenedConversations.get(conversationId);
+    if (cached && cached.processed) {
+      console.log(`✅ Conversation ${conversationId} already processed`);
+      if (cached.email && this.isValidEmailForSearch(cached.email)) {
+        this.performAutoSearch(cached.email);
+      }
       return;
     }
 
     try {
-      const idsArray = Array.from(this.accumulatedConversationIds).slice(0, this.maxPreloadedConversations);
-      console.log(`📧 Fetching ${idsArray.length} accumulated conversations from inbox (from ${this.accumulatedConversationIds.size} total)...`);
+      console.log(`📧 Processing clicked conversation: ${conversationId}`);
       
-      // Fetch conversations by their IDs (this is the supported API format)
-      const fetchedConversations = await Missive.fetchConversations(idsArray);
+      // Fetch the single conversation
+      const fetchedConversations = await Missive.fetchConversations([conversationId]);
       
-      if (Array.isArray(fetchedConversations) && fetchedConversations.length > 0) {
-        console.log(`✅ Fetched ${fetchedConversations.length} accumulated conversations from inbox`);
-        
-        // Mark as fetched to prevent duplicate calls
-        this.recentConversationsFetched = true;
-        
-        // Update visible conversation tracking
-        this.updateVisibleConversations(fetchedConversations);
-        
-        // Extract emails from all conversations
-        const emailsToPreload = this.extractEmailsFromConversations(fetchedConversations);
-        console.log(`📧 Extracted ${emailsToPreload.length} unique emails from ${fetchedConversations.length} accumulated conversations`);
-        
-        if (emailsToPreload.length > 0) {
-          // Preload customer details for all recent emails in background
-          console.log(`🔄 Starting preload for ${emailsToPreload.length} accumulated emails from inbox...`);
-          
-          // Preload in background (no prioritization needed for bulk preload)
-          this.preloadEmailsData(emailsToPreload, null)
-            .then(() => {
-              console.log(`✅ Completed preloading ${emailsToPreload.length} accumulated emails from inbox`);
-            })
-            .catch(error => {
-              console.error("❌ Error preloading accumulated emails data:", error);
-            });
-        }
-      } else {
-        console.log(`⚠️ fetchConversations returned ${fetchedConversations ? typeof fetchedConversations : 'null'}, expected array`);
+      if (!Array.isArray(fetchedConversations) || fetchedConversations.length === 0) {
+        console.log(`⚠️ No conversation data returned for ${conversationId}`);
+        return;
       }
+
+      const conversation = fetchedConversations[0];
+      
+      // Extract email from conversation
+      const email = this.extractEmailFromData(conversation);
+      if (!email || !this.isValidEmailForSearch(email)) {
+        console.log(`⚠️ No valid email found in conversation ${conversationId}`);
+        // Still cache the conversation ID to avoid re-processing
+        this.updateRecentlyOpenedCache(conversationId, null, false);
+        return;
+      }
+
+      const normalizedEmail = this.normalizeEmail(email);
+      console.log(`📧 Extracted email from conversation: ${email} (normalized: ${normalizedEmail})`);
+
+      // Check if email data is already cached
+      if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+        console.log(`✅ Email ${normalizedEmail} already cached, using cached data`);
+        this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
+        this.performAutoSearch(email);
+        return;
+      }
+
+      // Mark as being processed
+      this.updateRecentlyOpenedCache(conversationId, normalizedEmail, false);
+
+      // Process the email data (search orders and preload details)
+      await this.preloadEmailsData([normalizedEmail], normalizedEmail);
+      
+      // Mark as processed
+      this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
+      
+      // Trigger auto-search to display results
+      this.performAutoSearch(email);
+      
+      console.log(`✅ Completed processing conversation ${conversationId} for email ${normalizedEmail}`);
     } catch (error) {
-      console.log(`⚠️ Error fetching accumulated conversations: ${error.message}`);
-      // Don't throw - this is an optimization, not critical
+      console.error(`❌ Error processing conversation ${conversationId}:`, error);
+      // Remove from cache on error so it can be retried
+      this.recentlyOpenedConversations.delete(conversationId);
     }
   }
 
-  // Fetch conversations by their IDs and preload all emails in background
+  // Update LRU cache for recently opened conversations (max 15)
+  updateRecentlyOpenedCache(conversationId, email, processed) {
+    // If cache is full, remove oldest entry (LRU)
+    if (this.recentlyOpenedConversations.size >= this.maxPreloadedConversations) {
+      // Find oldest entry by timestamp
+      let oldestId = null;
+      let oldestTimestamp = Infinity;
+      
+      for (const [id, data] of this.recentlyOpenedConversations.entries()) {
+        if (data.timestamp < oldestTimestamp) {
+          oldestTimestamp = data.timestamp;
+          oldestId = id;
+        }
+      }
+      
+      if (oldestId) {
+        console.log(`🗑️ Removing oldest conversation from cache: ${oldestId}`);
+        this.recentlyOpenedConversations.delete(oldestId);
+      }
+    }
+
+    // Add/update current conversation
+    this.recentlyOpenedConversations.set(conversationId, {
+      email: email,
+      timestamp: Date.now(),
+      processed: processed
+    });
+    
+    console.log(`💾 Cached conversation ${conversationId} (${this.recentlyOpenedConversations.size}/${this.maxPreloadedConversations} cached)`);
+  }
+
+  // Fetch and preload conversations from accumulated conversation IDs (DEPRECATED - no longer used)
+  async fetchAndPreloadAccumulatedConversations() {
+    // This method is deprecated - conversations are now processed individually on click
+    console.log("ℹ️ fetchAndPreloadAccumulatedConversations is deprecated - using per-click processing");
+    return;
+  }
+
+  // Fetch conversations by their IDs and preload all emails in background (DEPRECATED - now processes single conversation on click)
   async fetchAndPreloadConversations(conversationIds) {
     if (!conversationIds || conversationIds.length === 0) {
       console.log("❌ No conversation IDs provided");
       return;
     }
 
-    // OPTIMIZATION: Only preload first 15 emails when inbox opens for faster data access
-    // This focuses on the most commonly accessed emails at the top of the inbox
+    // Process only the first conversation (the one user clicked on)
+    const clickedConversationId = conversationIds[0];
+    console.log(`📧 Processing clicked conversation: ${clickedConversationId}`);
+    await this.processClickedConversation(clickedConversationId);
+    return;
+
+    // OLD CODE BELOW - kept for reference but not executed
+    /*
     const idsToFetch = conversationIds.slice(0, Math.min(15, conversationIds.length));
     console.log(`📧 Preloading first ${idsToFetch.length} emails (from ${conversationIds.length} total visible) when inbox opened...`);
 
@@ -2721,6 +2741,7 @@ class MissWooApp {
     } catch (error) {
       console.error("❌ Error in fetchAndPreloadConversations:", error);
     }
+    */
   }
 
   // Fallback method: fetch conversations one by one if batch fetch fails
