@@ -173,10 +173,11 @@ We've created **4 comprehensive guides** for you:
 ## 🔑 Most Important Things to Know
 
 ### **1. API Credentials** ⚠️
-- Located in: `src/config.js`
-- **SECURITY WARNING**: Keys are visible in browser
+- Located in: `src/config.js` (uses placeholders for local development)
+- **Production**: API keys are injected from GitHub Secrets during build
+- **Local Development**: Replace placeholders with your actual keys
 - Should be rotated regularly
-- Consider backend proxy for production
+- Consider backend proxy for enhanced security
 
 ### **2. How Auto-Search Works**
 - Listens for Missive email events
@@ -202,10 +203,12 @@ We've created **4 comprehensive guides** for you:
 ## 🛠️ Common Tasks
 
 ### **Task: Update API Credentials**
-1. Edit `src/config.js`
-2. Update `consumerKey`, `consumerSecret`, or `apiKey`
+1. **For Production**: Update GitHub Secrets in repository settings
+   - Go to: Settings → Secrets and variables → Actions
+   - Update: `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET`, `KATANA_API_KEY`
+2. **For Local Development**: Edit `src/config.js` and replace placeholders
 3. Test locally
-4. Commit and push
+4. Commit and push (production will use GitHub Secrets automatically)
 
 ### **Task: Change Number of Orders Displayed**
 1. Open `src/app.js`
@@ -234,12 +237,12 @@ We've created **4 comprehensive guides** for you:
 
 | Problem | Solution |
 |---------|----------|
-| "Loading..." stuck | Check browser console, verify API keys |
+| "Loading..." stuck | Check browser console, verify API keys in GitHub Secrets |
 | No orders found | Verify customer has orders in WooCommerce |
 | Serial numbers show N/A | Check Katana order exists with matching number |
 | Auto-search not working | Verify running in Missive, not web browser |
 | CORS errors | Ensure WooCommerce CORS settings allow requests |
-| API errors | Check API credentials in `config.js` |
+| API errors | Check GitHub Secrets are configured correctly |
 
 **Full troubleshooting guide**: DEVELOPMENT-GUIDE.md → "Common Issues & Solutions"
 
@@ -289,7 +292,7 @@ We've created **4 comprehensive guides** for you:
 - **APIs Integrated**: 3 (WooCommerce, Katana, Missive)
 - **Deployment**: Automated via GitHub Actions
 - **Test Coverage**: Basic (needs expansion)
-- **Version**: vJS4.19
+- **Version**: vJS4.20
 
 ---
 

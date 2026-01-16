@@ -304,16 +304,18 @@
 
 ## ⚠️ Security Notes
 
-**API Credentials in `config.js`**:
-- ⚠️ **NEVER commit real API keys to public repositories**
-- Current setup has keys in plain text (frontend-only limitation)
-- Consider implementing a backend proxy for production
+**API Credentials Management**:
+- ✅ **API keys are stored in GitHub Secrets** (not hardcoded in code)
+- ✅ **Production builds** inject keys from GitHub Secrets during CI/CD
+- ✅ **Local development** uses placeholders in `src/config.js` (replace with your keys)
+- ⚠️ **NEVER commit real API keys** to the repository
+- Consider implementing a backend proxy for enhanced security
 - Rotate keys regularly
-- Use environment variables for local development
+- For local development, use placeholders or environment variables
 
 ---
 
 **Last Updated**: October 21, 2025
-**Version**: vJS4.19
+**Version**: vJS4.20
 **Maintainer**: Bryan (QuikrStuff)
 

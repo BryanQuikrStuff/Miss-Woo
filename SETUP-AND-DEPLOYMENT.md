@@ -138,7 +138,7 @@ When you push to `main` branch:
 ### **Before Pushing:**
 1. ✅ Test your changes locally
 2. ✅ Make sure tests pass (`npm test`)
-3. ✅ Check that you're not committing sensitive data (API keys in `config.js` are okay for this project, but be aware they're public)
+3. ✅ Verify API keys are not hardcoded (use placeholders in `config.js`, actual keys stored in GitHub Secrets)
 
 ---
 

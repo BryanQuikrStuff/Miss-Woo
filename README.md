@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS4.19  
+**Version**: vJS4.20  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,9 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS4.19 (Current)
+### vJS4.20 (Current)
+
+### vJS4.19
 
 - **Fixed preloading API usage**: Changed from unsupported limit/sort parameters to conversation ID accumulation
 - **API compliance**: Now uses correct `fetchConversations(idsArray)` format per official Missive API documentation

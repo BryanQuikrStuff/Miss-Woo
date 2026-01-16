@@ -389,19 +389,19 @@ Missive.on('email:focus', (emailData) => {
 
 **Current Implementation** (Frontend-only):
 ```javascript
-// src/config.js - EXPOSED IN BROWSER
+// src/config.js - Placeholders replaced by GitHub Actions during build
 const config = {
   woocommerce: {
-    consumerKey: "ck_285852a66ac9cf16db7723e1d6deda54937a8a03",
-    consumerSecret: "cs_3211f905108b717426e6b6a63613147b66993333"
+    consumerKey: "${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}",
+    consumerSecret: "${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}"
   },
   katana: {
-    apiKey: "8292a174-0f66-4ac1-a0e9-cb3c9db7ecc4"
+    apiKey: "${{ secrets.KATANA_API_KEY }}"
   }
 };
 ```
 
-⚠️ **Security Risk**: API keys are visible in browser source code
+⚠️ **Security Note**: API keys are injected during build from GitHub Secrets. For local development, replace placeholders with your actual keys.
 
 ### **Recommended Improvements**:
 
@@ -415,9 +415,10 @@ Browser → Backend Proxy → WooCommerce/Katana
 2. **Environment Variables** (Development):
 ```javascript
 // .env (not committed to git)
-WOOCOMMERCE_CONSUMER_KEY=ck_...
-WOOCOMMERCE_CONSUMER_SECRET=cs_...
-KATANA_API_KEY=...
+WOOCOMMERCE_CONSUMER_KEY=your_key_here
+WOOCOMMERCE_CONSUMER_SECRET=your_secret_here
+WOOCOMMERCE_SITE_URL=https://your-site.com
+KATANA_API_KEY=your_katana_key_here
 ```
 
 3. **Key Rotation Schedule**:
