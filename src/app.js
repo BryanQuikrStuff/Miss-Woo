@@ -75,6 +75,8 @@ class MissWooApp {
       this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.recentlyOpenedConversations = new Map(); // LRU cache: conversationId -> { email, timestamp, processed }
+      this.processingConversationId = null; // Track currently processing conversation to prevent duplicates
+      this.inFlightSerialRequests = new Map(); // Request deduplication for serial number fetching
       
       // Cache configuration
       this.cacheConfig = {
@@ -209,6 +211,12 @@ class MissWooApp {
         const clickedConversationId = data[0]; // First ID is the one user clicked on
         console.log(`📧 User clicked on conversation: ${clickedConversationId}`);
         
+        // OPTIMIZATION: Prevent duplicate processing if already in progress
+        if (this.processingConversationId === clickedConversationId) {
+          console.log(`⏳ Conversation ${clickedConversationId} already being processed, skipping duplicate`);
+          return;
+        }
+        
         // Check if we've already processed this conversation
         const cached = this.recentlyOpenedConversations.get(clickedConversationId);
         if (cached && cached.processed) {
@@ -263,7 +271,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.22';
+    return 'vJS4.23';
   }
 
   async loadVersionFromManifest() {
@@ -1388,44 +1396,65 @@ class MissWooApp {
   }
 
   async getSerialNumbersForRow(rowId) {
-    try {
-      console.log(`Fetching serial numbers for row ID: ${rowId}`);
-      // Use the row ID as resource_id to get serial numbers
-      const url = `${this.katanaApiBaseUrl}/serial_numbers?resource_id=${rowId}&resource_type=SalesOrderRow`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        },
-        signal: this.activeSearchAbortController?.signal
-      });
-
-      if (!response.ok) {
-        console.log(`No serial numbers found for row ID ${rowId}: ${response.status}`);
-        return [];
-      }
-
-      const data = await response.json();
-      console.log(`Serial numbers data for row ID ${rowId}:`, data);
-      
-      if (data.data && Array.isArray(data.data)) {
-        // Extract the actual serial_number values from each object
-        const serialNumbers = data.data
-          .map(item => item.serial_number)
-          .filter(Boolean);
-        console.log(`Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
-        return serialNumbers;
-      }
-      
-      return [];
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Serial numbers fetch cancelled");
-        throw error;
-      }
-      console.error(`Error fetching serial numbers for row ID ${rowId}:`, error);
-      return [];
+    // OPTIMIZATION: Request deduplication - reuse in-flight requests
+    if (this.inFlightSerialRequests && this.inFlightSerialRequests.has(rowId)) {
+      console.log(`⏳ Reusing in-flight request for serial numbers row ID: ${rowId}`);
+      return await this.inFlightSerialRequests.get(rowId);
     }
+    
+    // Create a new request promise
+    const requestPromise = (async () => {
+      try {
+        console.log(`Fetching serial numbers for row ID: ${rowId}`);
+        // Use the row ID as resource_id to get serial numbers
+        const url = `${this.katanaApiBaseUrl}/serial_numbers?resource_id=${rowId}&resource_type=SalesOrderRow`;
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${this.katanaApiKey}`,
+            'Accept': 'application/json'
+          },
+          signal: this.activeSearchAbortController?.signal
+        });
+
+        if (!response.ok) {
+          console.log(`No serial numbers found for row ID ${rowId}: ${response.status}`);
+          return [];
+        }
+
+        const data = await response.json();
+        console.log(`Serial numbers data for row ID ${rowId}:`, data);
+        
+        if (data.data && Array.isArray(data.data)) {
+          // Extract the actual serial_number values from each object
+          const serialNumbers = data.data
+            .map(item => item.serial_number)
+            .filter(Boolean);
+          console.log(`Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
+          return serialNumbers;
+        }
+        
+        return [];
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          console.log("Serial numbers fetch cancelled");
+          throw error;
+        }
+        console.error(`Error fetching serial numbers for row ID ${rowId}:`, error);
+        return [];
+      } finally {
+        // Remove from tracking when done
+        if (this.inFlightSerialRequests) {
+          this.inFlightSerialRequests.delete(rowId);
+        }
+      }
+    })();
+    
+    // Track the promise
+    if (this.inFlightSerialRequests) {
+      this.inFlightSerialRequests.set(rowId, requestPromise);
+    }
+    
+    return requestPromise;
   }
 
   async getKatanaOrder(wooOrderNumber) {
@@ -2000,7 +2029,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.22' : 'vJS4.22 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.23' : 'vJS4.23 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2427,6 +2456,9 @@ class MissWooApp {
     }
 
     try {
+      // OPTIMIZATION: Mark as processing to prevent duplicate handling
+      this.processingConversationId = conversationId;
+      
       console.log(`📧 Processing clicked conversation: ${conversationId}`);
       
       // Fetch the single conversation
@@ -2490,14 +2522,23 @@ class MissWooApp {
       // Mark as processed
       this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
       
-      // Display the results
-      this.performAutoSearch(email);
+      // OPTIMIZATION: Display results directly without redundant cache check
+      // We just loaded and cached the data, so skip performAutoSearch's cache check
+      this.allOrders = this.emailCache.get(normalizedEmail) || [];
+      this.displayOrdersList();
+      
+      // Clear processing flag
+      this.processingConversationId = null;
       
       console.log(`✅ Completed processing conversation ${conversationId} for email ${normalizedEmail}`);
     } catch (error) {
       console.error(`❌ Error processing conversation ${conversationId}:`, error);
       // Remove from cache on error so it can be retried
       this.recentlyOpenedConversations.delete(conversationId);
+      // Clear processing flag on error
+      if (this.processingConversationId === conversationId) {
+        this.processingConversationId = null;
+      }
     }
   }
 
@@ -2924,8 +2965,7 @@ class MissWooApp {
         this.allOrders = cachedOrders; // No need to clone for cache
         // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
-        // Ensure correct status is set after displayOrdersList
-        this.setStatus(`Found ${this.allOrders.length} order(s)`);
+        // Status is already set by displayOrdersList, no need to set again
         return;
       } else {
         console.log(`⚠️ Cache miss: Found email in cache but no valid orders (cachedOrders: ${cachedOrders ? Array.isArray(cachedOrders) ? cachedOrders.length : typeof cachedOrders : 'null'})`);
@@ -2945,8 +2985,7 @@ class MissWooApp {
         this.allOrders = preloadedData.orders; // No need to clone for preloaded
         // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
         this.displayOrdersList();
-        // Ensure correct status is set after displayOrdersList
-        this.setStatus(`Found ${this.allOrders.length} order(s)`);
+        // Status is already set by displayOrdersList, no need to set again
         return;
       }
     }
@@ -2968,7 +3007,7 @@ class MissWooApp {
             console.log(`✅ Found cached data for ${normalizedEmail} after waiting for preload: ${cachedOrders.length} orders`);
             this.allOrders = cachedOrders;
             this.displayOrdersList();
-            this.setStatus(`Found ${this.allOrders.length} order(s)`);
+            // Status is already set by displayOrdersList, no need to set again
             return;
           }
         }
@@ -2979,7 +3018,7 @@ class MissWooApp {
           console.log(`✅ Found preloaded data for ${normalizedEmail} after waiting: ${preloadedData.orders.length} orders`);
           this.allOrders = preloadedData.orders;
           this.displayOrdersList();
-          this.setStatus(`Found ${this.allOrders.length} order(s)`);
+          // Status is already set by displayOrdersList, no need to set again
           return;
         }
       } catch (error) {
@@ -3021,12 +3060,7 @@ class MissWooApp {
           // console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
           // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
           this.displayOrdersList();
-          // Ensure correct status is set after displayOrdersList
-          if (this.allOrders.length > 0) {
-            this.setStatus(`Found ${this.allOrders.length} order(s)`);
-          } else {
-            this.setStatus("No orders found");
-          }
+          // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
         } else {
           // console.log("❌ Invalid order results:", orderResults);
           this.setStatus("No orders found");
