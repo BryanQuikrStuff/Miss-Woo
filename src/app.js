@@ -290,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.00';
+    return 'vJS5.01';
   }
 
   async loadVersionFromManifest() {
@@ -990,68 +990,35 @@ class MissWooApp {
     // Hide loading after basic info is displayed
     this.hideLoading();
     
-    // OPTIMIZATION 1: Batch fetch all serial numbers at once in parallel
-    const serialNumbersMap = await this.batchGetSerialNumbers(this.allOrders);
-    
-    // OPTIMIZATION 3: Fetch notes lazily only when needed for tracking
-    const notesAndTrackingPromises = this.allOrders.map(async (order) => {
-      try {
-        // Fetch notes only if not already present
-        if (!order.notes || order.notes.length === 0) {
-          const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
-          try {
-            order.notes = await this.makeRequest(notesUrl, {
-              signal: this.activeSearchAbortController?.signal
-            });
-          } catch (error) {
-            if (error.name === 'AbortError') throw error;
-            console.error(`Failed to get notes for order ${order.id}:`, error);
-            order.notes = [];
-          }
+    // OPTIMIZATION: Don't fetch serial numbers/notes here to avoid duplicate API calls
+    // loadOrderDetails() will handle fetching all details. Just show "Loading..." placeholders.
+    // Update from cache if available, otherwise show "Loading..."
+    for (const order of this.allOrders) {
+      const serialCell = document.getElementById(`serial-${order.id}`);
+      if (serialCell) {
+        if (this.serialNumberCache && this.serialNumberCache.has(order.number) && this.isCacheValid(order.number, 'serialCache')) {
+          serialCell.textContent = this.serialNumberCache.get(order.number);
+        } else {
+          serialCell.textContent = "Loading...";
         }
-        
-        // Get tracking info from notes
-        const trackingInfo = this.getTrackingInfo(order);
-        
-        // Update serial number from batch results
-        const serialNumber = serialNumbersMap.get(order.number) || "Loading...";
-        const serialCell = document.getElementById(`serial-${order.id}`);
-        if (serialCell) serialCell.textContent = serialNumber;
-        
-        // Update tracking info
-        const trackingCell = document.getElementById(`tracking-${order.id}`);
-        if (trackingCell) {
-          if (trackingInfo) {
-            const trackingLink = document.createElement("a");
-            trackingLink.href = trackingInfo.url;
-            trackingLink.target = "_blank";
-            trackingLink.textContent = trackingInfo.number;
-            trackingCell.innerHTML = "";
-            trackingCell.appendChild(trackingLink);
-          } else {
-            trackingCell.textContent = "N/A";
-          }
-        }
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          // Request was cancelled, stop processing
-          throw error;
-        }
-        console.error(`Error enhancing order ${order.id}:`, error);
-        // Still update UI elements even on error
-        const serialCell = document.getElementById(`serial-${order.id}`);
-        const trackingCell = document.getElementById(`tracking-${order.id}`);
-        if (serialCell) serialCell.textContent = serialNumbersMap.get(order.number) || "N/A";
-        if (trackingCell) trackingCell.textContent = "N/A";
       }
-    });
-    
-    try {
-      await Promise.all(notesAndTrackingPromises);
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Display enhancement cancelled");
-        // Don't throw - allow partial results to show
+      
+      // If notes are already loaded (from cache), extract tracking info immediately
+      const trackingCell = document.getElementById(`tracking-${order.id}`);
+      if (trackingCell && order.notes && order.notes.length > 0) {
+        const trackingInfo = this.getTrackingInfo(order);
+        if (trackingInfo) {
+          const trackingLink = document.createElement("a");
+          trackingLink.href = trackingInfo.url;
+          trackingLink.target = "_blank";
+          trackingLink.textContent = trackingInfo.number;
+          trackingCell.innerHTML = "";
+          trackingCell.appendChild(trackingLink);
+        } else {
+          trackingCell.textContent = "Loading...";
+        }
+      } else if (trackingCell) {
+        trackingCell.textContent = "Loading...";
       }
     }
     
@@ -1060,6 +1027,41 @@ class MissWooApp {
     } finally {
       this._displayInProgress = false;
       // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
+    }
+  }
+
+  // Update order details UI after loadOrderDetails completes (avoids re-rendering entire list)
+  updateOrderDetailsUI(orders) {
+    if (!orders || orders.length === 0) return;
+    
+    for (const order of orders) {
+      // Update serial number
+      const serialCell = document.getElementById(`serial-${order.id}`);
+      if (serialCell) {
+        if (this.serialNumberCache && this.serialNumberCache.has(order.number) && this.isCacheValid(order.number, 'serialCache')) {
+          serialCell.textContent = this.serialNumberCache.get(order.number);
+        } else {
+          serialCell.textContent = "N/A";
+        }
+      }
+      
+      // Update tracking info
+      const trackingCell = document.getElementById(`tracking-${order.id}`);
+      if (trackingCell && order.notes && order.notes.length > 0) {
+        const trackingInfo = this.getTrackingInfo(order);
+        if (trackingInfo) {
+          const trackingLink = document.createElement("a");
+          trackingLink.href = trackingInfo.url;
+          trackingLink.target = "_blank";
+          trackingLink.textContent = trackingInfo.number;
+          trackingCell.innerHTML = "";
+          trackingCell.appendChild(trackingLink);
+        } else {
+          trackingCell.textContent = "N/A";
+        }
+      } else if (trackingCell) {
+        trackingCell.textContent = "N/A";
+      }
     }
   }
 
@@ -2060,7 +2062,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.00' : 'vJS5.00 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.01' : 'vJS5.01 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2546,9 +2548,9 @@ class MissWooApp {
             this.setCacheExpiry(normalizedEmail, 'emailCache');
             this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
           }
-          // Re-render to show enhanced data (tracking numbers, serial numbers, etc.)
-          // displayOrdersList will update the "Loading..." placeholders
-          this.displayOrdersList();
+          // Update UI with enhanced data (tracking numbers, serial numbers, etc.)
+          // Instead of re-rendering entire list, just update the cells that changed
+          this.updateOrderDetailsUI(this.allOrders);
         }).catch(error => {
           console.error(`❌ Error loading additional details:`, error);
           // Still cache basic orders even if details fail
