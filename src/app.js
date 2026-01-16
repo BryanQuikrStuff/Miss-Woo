@@ -263,7 +263,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.21';
+    return 'vJS4.22';
   }
 
   async loadVersionFromManifest() {
@@ -1037,15 +1037,7 @@ class MissWooApp {
   }
 
   startBackgroundProcessing() {
-    // Process additional data in background without blocking UI
-    this.backgroundTasks.push(async () => {
-      try {
-        // Preload related data for better UX
-        await this.preloadRelatedData();
-      } catch (error) {
-        console.log('Background processing error:', error);
-      }
-    });
+    // Background tasks removed - no longer preloading data
     
     // Process background tasks
     this.processBackgroundTasks();
@@ -1069,26 +1061,6 @@ class MissWooApp {
     }
   }
 
-  async preloadRelatedData() {
-    // Preload data for orders that might be accessed next
-    if (this.allOrders.length > 0) {
-      const firstOrder = this.allOrders[0];
-      const customerEmail = firstOrder.billing?.email;
-      
-      if (customerEmail && !this.orderCache.has(customerEmail)) {
-        console.log('Preloading related order data for:', customerEmail);
-        // Preload in background without blocking UI or affecting status
-        setTimeout(async () => {
-          try {
-            // Use a silent version that doesn't set status messages
-            await this.searchOrdersByEmailSilent(customerEmail);
-          } catch (error) {
-            console.log('Preload failed:', error);
-          }
-        }, 1000);
-      }
-    }
-  }
 
   // Silent version of searchOrdersByEmail that doesn't set status messages
   async searchOrdersByEmailSilent(email) {
@@ -1474,55 +1446,55 @@ class MissWooApp {
       const requestPromise = (async () => {
         try {
           console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
-          
-          const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
-          console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
-          const response = await fetch(url, {
-            headers: {
-              'Authorization': `Bearer ${this.katanaApiKey}`,
-              'Accept': 'application/json'
-            },
-            signal: this.activeSearchAbortController?.signal
-          });
-          console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
+      
+      const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
+      console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.katanaApiKey}`,
+          'Accept': 'application/json'
+        },
+        signal: this.activeSearchAbortController?.signal
+      });
+      console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
 
-          if (!response.ok) {
-            throw new Error(`Katana API error: ${response.status}`);
-          }
+      if (!response.ok) {
+        throw new Error(`Katana API error: ${response.status}`);
+      }
 
-          const data = await response.json();
-          console.log(`Katana order data for order #${wooOrderNumber}:`, data);
-          
-          const katanaOrder = data.data?.[0] || null;
-          if (katanaOrder) {
-            console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
-            
-            // Try to get the full sales order with line items
-            console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
-            const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
-            if (fullOrder) {
-              console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
-              this.katanaOrderCache.set(wooOrderNumber, fullOrder);
-              this.setCacheExpiry(wooOrderNumber, 'katanaCache');
-              return fullOrder;
-            } else {
-              console.log(`Could not get full order details, returning basic order`);
-              this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
-              return katanaOrder;
-            }
-          } else {
-            console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
-            this.katanaOrderCache.set(wooOrderNumber, null);
-            return null;
-          }
-        } catch (error) {
-          if (error.name === 'AbortError') {
-            console.log("Katana order fetch cancelled");
-            throw error;
-          }
-          console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
-          this.katanaOrderCache.set(wooOrderNumber, null);
-          return null;
+      const data = await response.json();
+      console.log(`Katana order data for order #${wooOrderNumber}:`, data);
+      
+      const katanaOrder = data.data?.[0] || null;
+      if (katanaOrder) {
+        console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
+        
+        // Try to get the full sales order with line items
+        console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
+        const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
+        if (fullOrder) {
+          console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
+          this.katanaOrderCache.set(wooOrderNumber, fullOrder);
+          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+          return fullOrder;
+        } else {
+          console.log(`Could not get full order details, returning basic order`);
+          this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
+          return katanaOrder;
+        }
+      } else {
+        console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
+        this.katanaOrderCache.set(wooOrderNumber, null);
+        return null;
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Katana order fetch cancelled");
+        throw error;
+      }
+      console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
+      this.katanaOrderCache.set(wooOrderNumber, null);
+      return null;
         } finally {
           // Clean up in-flight request tracking
           if (this.inFlightKatanaRequests) {
@@ -2028,7 +2000,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.21' : 'vJS4.21 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.22' : 'vJS4.22 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2436,90 +2408,6 @@ class MissWooApp {
   }
 
   // Dynamic preloading system for Visible Conversations
-  async preloadVisibleConversations() {
-    if (this.preloadingInProgress) {
-      console.log("⏳ Preloading already in progress, skipping...");
-      return;
-    }
-    
-    this.preloadingInProgress = true;
-    
-    // Add timeout to prevent getting stuck
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Preloading timeout")), 10000); // 10 second timeout
-    });
-    
-    try {
-      // Race between preloading and timeout
-      await Promise.race([
-        (async () => {
-          console.log("🔄 Starting visible conversation preloading...");
-          
-          // Only set status if no search is in progress
-          if (!this.searchInProgress) {
-            this.setStatus("Preloading visible emails...");
-          }
-          
-          const conversations = await this.fetchVisibleConversations();
-          
-          if (!conversations || conversations.length === 0) {
-            // console.log("❌ No conversations found for preloading");
-            // Only set Ready status if no search is in progress
-            if (!this.searchInProgress) {
-              this.setStatus("Ready");
-            }
-            return;
-          }
-          
-          // Update visible conversation tracking
-          this.updateVisibleConversations(conversations);
-          
-          // Extract and preload emails
-          const emailsToPreload = this.extractEmailsFromConversations(conversations);
-          console.log(`📧 Found ${emailsToPreload.length} emails to preload`);
-          
-          if (emailsToPreload.length === 0) {
-            // console.log("❌ No valid emails found in conversations");
-            // Only set Ready status if no search is in progress
-            if (!this.searchInProgress) {
-              this.setStatus("Ready");
-            }
-            return;
-          }
-          
-          // OPTIMIZATION: Prioritize first conversation (current one) for preloading
-          let prioritizedEmail = null;
-          if (conversations.length > 0) {
-            const firstEmail = this.extractEmailFromData(conversations[0]);
-            // Normalize prioritized email for consistent caching
-            prioritizedEmail = firstEmail ? this.normalizeEmail(firstEmail) : null;
-          }
-
-          // Preload data for each email (prioritizing current conversation)
-          await this.preloadEmailsData(emailsToPreload, prioritizedEmail);
-          
-          // Clean up archived conversations
-          this.cleanupArchivedConversations();
-          
-          console.log(`✅ Visible conversation preloading complete: ${emailsToPreload.length} emails preloaded`);
-          // Only set Ready status if no search is in progress
-          if (!this.searchInProgress) {
-            this.setStatus("Ready");
-          }
-        })(),
-        timeoutPromise
-      ]);
-      
-    } catch (error) {
-      console.error("❌ Visible conversation preloading failed:", error);
-      // Only set Ready status if no search is in progress
-      if (!this.searchInProgress) {
-        this.setStatus("Ready");
-      }
-    } finally {
-      this.preloadingInProgress = false;
-    }
-  }
 
   // Process a single clicked conversation - fetch and cache data
   async processClickedConversation(conversationId) {
@@ -2574,13 +2462,35 @@ class MissWooApp {
       // Mark as being processed
       this.updateRecentlyOpenedCache(conversationId, normalizedEmail, false);
 
-      // Process the email data (search orders and preload details)
-      await this.preloadEmailsData([normalizedEmail], normalizedEmail);
+      // Show searching status immediately when user clicks on email
+      this.setStatus("Searching orders...");
+
+      // Search for orders and load all details
+      await this.searchOrdersByEmail(email);
+      
+      // If orders found, load additional details (notes, Katana orders, serial numbers)
+      if (this.allOrders.length > 0) {
+        await this.loadOrderDetails(this.allOrders);
+        
+        // Cache the enhanced orders
+        if (this.emailCache) {
+          this.emailCache.set(normalizedEmail, [...this.allOrders]);
+          this.setCacheExpiry(normalizedEmail, 'emailCache');
+          this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+        }
+      } else {
+        // No orders found, but cache empty result to avoid re-searching
+        if (this.emailCache) {
+          this.emailCache.set(normalizedEmail, []);
+          this.setCacheExpiry(normalizedEmail, 'emailCache');
+          this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+        }
+      }
       
       // Mark as processed
       this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
       
-      // Trigger auto-search to display results
+      // Display the results
       this.performAutoSearch(email);
       
       console.log(`✅ Completed processing conversation ${conversationId} for email ${normalizedEmail}`);
@@ -2895,117 +2805,15 @@ class MissWooApp {
     return Array.from(emails);
   }
 
-  // OPTIMIZATION: Added prioritizedEmail parameter to ensure current conversation loads first
-  async preloadEmailsData(emails, prioritizedEmail = null) {
-    // Normalize prioritized email if provided
-    const normalizedPrioritizedEmail = prioritizedEmail ? this.normalizeEmail(prioritizedEmail) : null;
-    
-    // Sort emails to prioritize the current conversation
-    const sortedEmails = [...emails];
-    if (normalizedPrioritizedEmail && sortedEmails.includes(normalizedPrioritizedEmail)) {
-      // Move prioritized email to the front
-      sortedEmails.splice(sortedEmails.indexOf(normalizedPrioritizedEmail), 1);
-      sortedEmails.unshift(normalizedPrioritizedEmail);
-      console.log(`⭐ Prioritizing preload for current conversation: ${normalizedPrioritizedEmail}`);
-    }
 
-    const preloadPromises = sortedEmails.map(async (email) => {
-      // Normalize email for consistent tracking
-      const normalizedEmail = this.normalizeEmail(email);
-      if (!normalizedEmail) {
-        console.log(`❌ Failed to normalize email for preloading check: ${email}`);
-        return Promise.resolve();
-      }
-
-      // Skip if already being preloaded (use normalized email)
-      if (this.preloadingEmails.has(normalizedEmail)) {
-        console.log(`📧 ${normalizedEmail} is already being preloaded, skipping duplicate`);
-        return this.preloadingEmails.get(normalizedEmail);
-      }
-      
-      // Create preload promise and track it
-      const preloadPromise = (async () => {
-        try {
-          // Normalize email for consistent cache lookups
-          const normalizedEmail = this.normalizeEmail(email);
-          if (!normalizedEmail) {
-            console.log(`❌ Failed to normalize email for preloading: ${email}`);
-            return;
-          }
-
-          // Check if already cached and still valid (use normalized email)
-          if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
-            console.log(`📧 Skipping ${normalizedEmail} - already cached and valid`);
-            return;
-          }
-          
-          console.log(`📧 Preloading all customer details for: ${normalizedEmail} (original: ${email})`);
-          
-          // Store current orders to restore after preloading
-          const currentOrders = [...this.allOrders];
-          
-          // Step 1: Preload WooCommerce order data (use original email for API, but store with normalized)
-          await this.searchOrdersByEmail(email);
-          
-          // Step 2: Preload all customer details if we have orders
-          if (this.allOrders.length > 0) {
-            await this.preloadOrderDetails(this.allOrders);
-            
-            // Update emailCache with enhanced orders (now includes notes) - use normalized email
-            if (this.emailCache) {
-              this.emailCache.set(normalizedEmail, [...this.allOrders]);
-              this.setCacheExpiry(normalizedEmail, 'emailCache');
-              // OPTIMIZATION: Enforce cache size limit
-              this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-              console.log(`📦 Updated emailCache for ${normalizedEmail} with enhanced orders (includes notes)`);
-            }
-            
-            // Store enhanced orders in preloadedConversations for tracking (use normalized email)
-            this.preloadedConversations.set(normalizedEmail, {
-              orders: [...this.allOrders],
-              timestamp: Date.now()
-            });
-            // OPTIMIZATION: Enforce preloadedConversations size limit
-            this.enforceCacheSizeLimit(this.preloadedConversations, 'preloadedCache', this.cacheConfig.maxPreloadedSize);
-            console.log(`✅ Preloaded all details for ${normalizedEmail}: ${this.allOrders.length} orders with notes, Katana data, and serial numbers`);
-          } else {
-            // No orders found, but still cache this result to avoid re-searching (use normalized email)
-            if (this.emailCache) {
-              this.emailCache.set(normalizedEmail, []);
-              this.setCacheExpiry(normalizedEmail, 'emailCache');
-              // OPTIMIZATION: Enforce cache size limit
-              this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-              console.log(`📦 Cached empty result for ${normalizedEmail} to avoid re-searching`);
-            }
-          }
-          
-          // Restore current orders
-          this.allOrders = currentOrders;
-          
-        } catch (error) {
-          console.error(`❌ Failed to preload data for ${normalizedEmail}:`, error);
-        } finally {
-          // Remove from tracking when done (success or failure) - use normalized email
-          this.preloadingEmails.delete(normalizedEmail);
-        }
-      })();
-      
-      // Track the promise (use normalized email for tracking)
-      this.preloadingEmails.set(normalizedEmail, preloadPromise);
-      return preloadPromise;
-    });
-    
-    await Promise.all(preloadPromises);
-  }
-
-  // Preload all customer details: order notes, Katana orders, and serial numbers
-  async preloadOrderDetails(orders) {
+  // Load all customer details: order notes, Katana orders, and serial numbers
+  async loadOrderDetails(orders) {
     if (!orders || orders.length === 0) {
       return;
     }
 
     try {
-      console.log(`📦 Preloading details for ${orders.length} orders...`);
+      console.log(`📦 Loading details for ${orders.length} orders...`);
       
       // Step 1: Fetch order notes in parallel for all orders
       const notesPromises = orders.map(async (order) => {
@@ -3014,10 +2822,10 @@ class MissWooApp {
           if (!order.notes || order.notes.length === 0) {
             const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
             order.notes = await this.makeRequest(notesUrl);
-            console.log(`✅ Preloaded ${order.notes?.length || 0} notes for order #${order.number}`);
+            console.log(`✅ Loaded ${order.notes?.length || 0} notes for order #${order.number}`);
           }
         } catch (error) {
-          console.error(`❌ Failed to preload notes for order ${order.id}:`, error);
+          console.error(`❌ Failed to load notes for order ${order.id}:`, error);
           order.notes = [];
         }
       });
@@ -3027,11 +2835,11 @@ class MissWooApp {
       // Step 2: Batch fetch Katana orders for all WooCommerce orders
       const wooOrderNumbers = orders.map(o => o.number);
       await this.batchGetKatanaOrders(wooOrderNumbers);
-      console.log(`✅ Preloaded Katana orders for ${orders.length} WooCommerce orders`);
+      console.log(`✅ Loaded Katana orders for ${orders.length} WooCommerce orders`);
       
       // Step 3: Batch fetch serial numbers for all orders
       await this.batchGetSerialNumbers(orders);
-      console.log(`✅ Preloaded serial numbers for ${orders.length} orders`);
+      console.log(`✅ Loaded serial numbers for ${orders.length} orders`);
       
       console.log(`✅ Completed preloading all details for ${orders.length} orders`);
     } catch (error) {
@@ -3280,36 +3088,13 @@ class MissWooApp {
       clearTimeout(this.preloadingDebounceTimer);
     }
     
-    this.preloadingDebounceTimer = setTimeout(async () => {
-      if (this.isMissiveEnvironment && !this.preloadingInProgress) {
-        console.log("🔄 Triggering dynamic preloading...");
-        await this.preloadVisibleConversations();
-      }
-    }, 2000); // Wait 2 seconds after last conversation change
+    // Preloading removed - conversations are now processed on click only
   }
 
-  // Initialize preloading on app start
+  // Initialize preloading on app start (DEPRECATED - no longer preloading)
   async initializePreloading() {
-    if (this.isMissiveEnvironment) {
-      console.log("🚀 Initializing Team Inbox preloading...");
-      // Set status to Ready immediately to prevent getting stuck
-      this.setStatus("Ready");
-      
-      // Wait a bit for Missive to be ready, then try preloading
-      setTimeout(async () => {
-        try {
-          await this.preloadVisibleConversations();
-          // Log preloading status after initialization
-          this.logPreloadingStatus();
-        } catch (error) {
-          console.error("❌ Preloading failed, but app is ready:", error);
-          this.setStatus("Ready");
-        }
-      }, 3000);
-    } else {
-      // Not in Missive environment, just set ready
-      this.setStatus("Ready");
-    }
+    // Preloading removed - conversations are now processed on click only
+    this.setStatus("Ready");
   }
 
   // Debug method to check preloading status
@@ -3329,11 +3114,9 @@ class MissWooApp {
     console.log("📊 === PRELOADING STATUS END ===");
   }
 
-  // Manual trigger for preloading (for testing)
+  // Manual trigger for preloading (DEPRECATED - no longer preloading)
   async triggerPreloading() {
-          // console.log("🔧 Manual preloading trigger...");
-    await this.preloadVisibleConversations();
-    this.logPreloadingStatus();
+    console.log("ℹ️ Preloading is disabled - conversations are processed on click only");
   }
 
   cleanup() {
@@ -3361,7 +3144,7 @@ class MissWooApp {
     // Clear cache (only on navigation away)
     this.emailCache.clear();
     if (this.visibleEmails) {
-      this.visibleEmails.clear();
+    this.visibleEmails.clear();
     }
     
     // Clear preloading data
