@@ -290,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.24';
+    return 'vJS4.25';
   }
 
   async loadVersionFromManifest() {
@@ -1792,7 +1792,7 @@ class MissWooApp {
       if (order.notes && Array.isArray(order.notes)) {
         for (const note of order.notes) {
           const noteContent = note.note || '';
-          console.log(`Checking note: ${noteContent}`);
+          // OPTIMIZATION: Only log when tracking is found to reduce console noise
           
           // Look for tracking patterns
           const trackingMatch = this.extractTrackingFromText(noteContent);
@@ -2048,7 +2048,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.24' : 'vJS4.24 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.25' : 'vJS4.25 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2516,19 +2516,36 @@ class MissWooApp {
       // Show searching status immediately when user clicks on email
       this.setStatus("Searching orders...");
 
-      // Search for orders and load all details
+      // Search for orders
       await this.searchOrdersByEmail(email);
       
-      // If orders found, load additional details (notes, Katana orders, serial numbers)
+      // OPTIMIZATION: Display basic order info immediately if orders found
+      // This gives user instant feedback while we load additional details in background
       if (this.allOrders.length > 0) {
-        await this.loadOrderDetails(this.allOrders);
+        // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
+        this.displayOrdersList();
         
-        // Cache the enhanced orders
-        if (this.emailCache) {
-          this.emailCache.set(normalizedEmail, [...this.allOrders]);
-          this.setCacheExpiry(normalizedEmail, 'emailCache');
-          this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-        }
+        // Then load additional details in background (non-blocking)
+        // This allows the UI to be responsive while data loads
+        this.loadOrderDetails(this.allOrders).then(() => {
+          // Update cache with enhanced orders (includes notes, Katana data, serial numbers)
+          if (this.emailCache) {
+            this.emailCache.set(normalizedEmail, [...this.allOrders]);
+            this.setCacheExpiry(normalizedEmail, 'emailCache');
+            this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+          }
+          // Re-render to show enhanced data (tracking numbers, serial numbers, etc.)
+          // displayOrdersList will update the "Loading..." placeholders
+          this.displayOrdersList();
+        }).catch(error => {
+          console.error(`❌ Error loading additional details:`, error);
+          // Still cache basic orders even if details fail
+          if (this.emailCache) {
+            this.emailCache.set(normalizedEmail, [...this.allOrders]);
+            this.setCacheExpiry(normalizedEmail, 'emailCache');
+            this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+          }
+        });
       } else {
         // No orders found, but cache empty result to avoid re-searching
         if (this.emailCache) {
@@ -2540,11 +2557,6 @@ class MissWooApp {
       
       // Mark as processed
       this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
-      
-      // OPTIMIZATION: Display results directly without redundant cache check
-      // We just loaded and cached the data, so skip performAutoSearch's cache check
-      this.allOrders = this.emailCache.get(normalizedEmail) || [];
-      this.displayOrdersList();
       
       // Clear processing flag
       this.processingConversationId = null;
