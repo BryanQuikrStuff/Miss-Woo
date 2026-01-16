@@ -76,6 +76,7 @@ class MissWooApp {
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.recentlyOpenedConversations = new Map(); // LRU cache: conversationId -> { email, timestamp, processed }
       this.processingConversationId = null; // Track currently processing conversation to prevent duplicates
+      this.lastConversationId = null; // Track last conversation ID to prevent duplicate debounce timers
       this.inFlightSerialRequests = new Map(); // Request deduplication for serial number fetching
       
       // Cache configuration
@@ -147,7 +148,15 @@ class MissWooApp {
     console.log("🔧 Setting up Missive event listeners...");
     
     try {
-      // Listen for conversation changes
+      // OPTIMIZATION: In Missive environment, MissiveJSBridge forwards events
+      // Only set up direct listeners if NOT using MissiveJSBridge (web/standalone mode)
+      if (this.isMissiveEnvironment) {
+        console.log("ℹ️ Missive environment detected - events will be forwarded by MissiveJSBridge");
+        console.log("✅ Skipping direct event listeners (handled by bridge)");
+        return;
+      }
+      
+      // Listen for conversation changes (only in non-Missive environments)
       if (Missive.on) {
         Missive.on('change:conversations', (data) => {
           console.log("📧 Conversation changed:", data);
@@ -217,6 +226,15 @@ class MissWooApp {
           return;
         }
         
+        // OPTIMIZATION: Also check if we're already handling this (debounce protection)
+        if (this.conversationChangeDebounceTimer && this.lastConversationId === clickedConversationId) {
+          console.log(`⏳ Conversation ${clickedConversationId} already queued for processing, skipping duplicate`);
+          return;
+        }
+        
+        // Track the last conversation ID being processed
+        this.lastConversationId = clickedConversationId;
+        
         // Check if we've already processed this conversation
         const cached = this.recentlyOpenedConversations.get(clickedConversationId);
         if (cached && cached.processed) {
@@ -234,6 +252,7 @@ class MissWooApp {
         }
         
         this.conversationChangeDebounceTimer = setTimeout(async () => {
+          this.lastConversationId = null; // Clear after processing starts
           await this.processClickedConversation(clickedConversationId);
         }, 100); // Short debounce (100ms) for responsive feel
         
@@ -271,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS4.23';
+    return 'vJS4.24';
   }
 
   async loadVersionFromManifest() {
@@ -2029,7 +2048,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS4.23' : 'vJS4.23 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS4.24' : 'vJS4.24 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
