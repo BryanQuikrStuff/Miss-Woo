@@ -290,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.01';
+    return 'vJS5.02';
   }
 
   async loadVersionFromManifest() {
@@ -2062,7 +2062,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.01' : 'vJS5.01 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.02' : 'vJS5.02 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
