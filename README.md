@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.02  
+**Version**: vJS5.03  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,9 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.02 (Current)
+### vJS5.03 (Current)
+- Fixed: Serial numbers and tracking information now load when searching by order ID
+- Fixed: Added loadOrderDetails() call after getOrderById() to fetch serial numbers from sales export data
 
 ### vJS5.01
 

@@ -290,7 +290,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.02';
+    return 'vJS5.03';
   }
 
   async loadVersionFromManifest() {
@@ -548,7 +548,19 @@ class MissWooApp {
       order.notes = [];
 
       this.allOrders = [order];
+      
+      // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
       await this.displayOrdersList();
+      
+      // Then load additional details in background (non-blocking)
+      // This allows the UI to be responsive while data loads
+      this.loadOrderDetails(this.allOrders).then(() => {
+        // Update UI with enhanced data (tracking numbers, serial numbers, etc.)
+        // Instead of re-rendering entire list, just update the cells that changed
+        this.updateOrderDetailsUI(this.allOrders);
+      }).catch(error => {
+        console.error(`❌ Error loading additional details:`, error);
+      });
         } catch (error) {
       if (error.name === 'AbortError') {
         console.log("Get order cancelled");
@@ -2062,7 +2074,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.02' : 'vJS5.02 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.03' : 'vJS5.03 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
