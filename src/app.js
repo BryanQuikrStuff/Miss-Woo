@@ -1,5 +1,4 @@
 // Miss-Woo Frontend Application
-// VERSION V2021a - Major Version Backup
 
 class MissWooApp {
     constructor(config) {
@@ -64,15 +63,14 @@ class MissWooApp {
       this.visibleEmails = new Set(); // Track visible emails for cleanup
       this.salesExportData = new Map(); // Historical sales export data (order_no -> records)
       this.salesExportDataLoaded = false; // Track if data has been loaded
+      this._salesDataLoadingPromise = null; // Track background loading promise
+      this.searchCache = new Map(); // Memoize recent search results
       
       // Store bound function references for proper event listener removal
       this.boundHandleSearch = this.handleSearch.bind(this);
       this.boundKeyPressHandlers = new Map(); // Store keypress handlers by element
-      this.preloadingInProgress = false;
-      this.preloadingDebounceTimer = null;
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
       this.maxPreloadedConversations = 15; // Cache 15 most recently opened conversations
-      this.backgroundTasks = [];
       this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
       this.recentlyOpenedConversations = new Map(); // LRU cache: conversationId -> { email, timestamp, processed }
       this.processingConversationId = null; // Track currently processing conversation to prevent duplicates
@@ -112,35 +110,115 @@ class MissWooApp {
 
   async initializeMissiveAPI() {
     console.log("🔧 Initializing Missive API integration...");
+    console.time('init:missive');
     
     try {
-      // Wait for Missive API to be available
-      let retries = 0;
-      const maxRetries = 10;
-      
-      while (!window.Missive && retries < maxRetries) {
-        console.log(`⏳ Waiting for Missive API... (${retries + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        retries++;
-      }
-      
-      if (!window.Missive) {
-        console.error("❌ Missive API not available after timeout");
-        this.setStatus("Missive API not available", 'error');
-        return;
-      }
-      
+      // Wait for Missive API to be available — prefer script onload, fallback to short poll
+      await new Promise((resolve, reject) => {
+        if (window.Missive) {
+          console.timeEnd('init:missive');
+          return resolve();
+        }
+
+        // Try to find the script tag that loads the Missive SDK
+        const script = document.querySelector('script[src*="integrations.missiveapp.com/missive.js"]');
+        let resolved = false;
+        
+        const cleanup = () => {
+          if (script) {
+            script.removeEventListener('load', onLoad);
+            script.removeEventListener('error', onError);
+          }
+          if (poller) clearInterval(poller);
+          if (timeout) clearTimeout(timeout);
+        };
+
+        const onLoad = () => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          console.timeEnd('init:missive');
+          resolve();
+        };
+        
+        const onError = () => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          reject(new Error('Missive script failed to load'));
+        };
+
+        if (script) {
+          // If script already loaded, check immediately
+          if (script.complete || script.readyState === 'complete') {
+            if (window.Missive) {
+              resolved = true;
+              cleanup();
+              console.timeEnd('init:missive');
+              resolve();
+              return;
+            }
+          }
+          script.addEventListener('load', onLoad);
+          script.addEventListener('error', onError);
+        }
+
+        // Short poll fallback up to 2s (reduced from 3s for faster cold-start)
+        const poller = setInterval(() => {
+          if (window.Missive) {
+            if (resolved) return;
+            resolved = true;
+            cleanup();
+            console.timeEnd('init:missive');
+            resolve();
+          }
+        }, 100); // Reduced from 150ms to 100ms for faster detection
+
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            console.timeEnd('init:missive');
+            reject(new Error('Missive API not available after 2s timeout'));
+          }
+        }, 2000); // Reduced from 3s to 2s for faster cold-start
+      });
+
       console.log("✅ Missive API detected");
       
       // Set up event listeners
       this.setupMissiveEventListeners();
       
-      // Try to get current conversation/email
-      await this.tryGetCurrentContext();
+      // Note: tryGetCurrentContext removed - events handle conversation changes automatically
       
     } catch (error) {
-      console.error("❌ Missive API initialization failed:", error);
-      this.setStatus("Missive API initialization failed", 'error');
+      console.error("❌ Missive API not available quickly:", error);
+      this.setStatus("Missive API not available", 'error');
+      // Don't block the app — continue without Missive
+    }
+  }
+
+  // Debounce utility function
+  debounce(fn, wait = 300) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn.apply(this, args), wait);
+    };
+  }
+
+  // Cache search results with TTL
+  cacheSearchResults(email, results) {
+    const cacheKey = `search:${email}`;
+    this.searchCache.set(cacheKey, {
+      results,
+      timestamp: Date.now()
+    });
+    
+    // Limit cache size to 50 entries (LRU eviction)
+    if (this.searchCache.size > 50) {
+      const firstKey = this.searchCache.keys().next().value;
+      this.searchCache.delete(firstKey);
     }
   }
 
@@ -156,59 +234,26 @@ class MissWooApp {
         return;
       }
       
+      // Create debounced handlers to avoid excessive event processing
+      this.debouncedHandleConversationChange = this.debounce((data) => {
+        console.log("📧 Conversation changed:", data);
+        this.handleConversationChange(data);
+      }, 300);
+      
       // Listen for conversation changes (only in non-Missive environments)
       if (Missive.on) {
-        Missive.on('change:conversations', (data) => {
-          console.log("📧 Conversation changed:", data);
-          this.handleConversationChange(data);
-        });
-        
-        console.log("✅ change:conversations listener set up");
+        Missive.on('change:conversations', this.debouncedHandleConversationChange);
+        console.log("✅ change:conversations listener set up (debounced)");
       }
       
-      // Listen for email focus (if available)
-      if (Missive.on) {
-        Missive.on('email:focus', (data) => {
-          console.log("📧 Email focused:", data);
-          this.handleEmailFocus(data);
-        });
-        
-        console.log("✅ email:focus listener set up");
-      }
+      // Note: email:focus event doesn't exist in Missive API, removed per API review
       
     } catch (error) {
       console.error("❌ Failed to set up Missive event listeners:", error);
     }
   }
 
-  async tryGetCurrentContext() {
-    try {
-      console.log("🔍 Attempting to get current context...");
-      
-      // Conversations are now processed individually when user clicks on them
-      
-      // Try to get current conversation
-      if (Missive.getCurrentConversation) {
-        const conversation = await Missive.getCurrentConversation();
-        if (conversation) {
-          console.log("📧 Current conversation:", conversation);
-          this.handleConversationChange(conversation);
-        }
-      }
-      
-      // Try to get current email
-      if (Missive.getCurrentEmail) {
-        const email = await Missive.getCurrentEmail();
-        if (email) {
-          console.log("📧 Current email:", email);
-          this.handleEmailFocus(email);
-        }
-      }
-      
-    } catch (error) {
-      console.error("❌ Failed to get current context:", error);
-    }
-  }
+  // Removed tryGetCurrentContext - events handle conversation changes automatically
 
   async handleConversationChange(data) {
     console.log("📧 Handling conversation change:", data);
@@ -272,32 +317,14 @@ class MissWooApp {
     }
   }
 
-  handleEmailFocus(data) {
-    console.log("📧 Handling email focus:", data);
-    
-    try {
-      const email = this.extractEmailFromData(data);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Extracted email from email focus:", email);
-        this.performAutoSearch(email);
-      } else {
-        console.log("❌ No valid email found in email focus data");
-      }
-    } catch (error) {
-      console.error("❌ Error handling email focus:", error);
-    }
-  }
+  // Removed handleEmailFocus - email:focus event doesn't exist in Missive API
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.03';
+    return 'vJS5.04';
   }
 
-  async loadVersionFromManifest() {
-    // Version is now handled directly in updateHeaderWithVersion()
-    // No need to fetch external version.json file
-    return;
-  }
+  // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
 
   detectMissiveEnvironment() {
     // Enhanced detection - check multiple indicators
@@ -332,36 +359,47 @@ class MissWooApp {
     
     try {
       await this.bindEvents();
-      // Try to sync version with deployed manifest so local and hosted match
-      this.loadVersionFromManifest();
       
       // Initialize Missive API integration
+      // OPTIMIZATION: Show UI immediately, then load data in background
+      this.setStatus("Ready"); // Set Ready immediately - don't wait for anything
+      this.hideLoading(); // Show UI right away
+      
+      // OPTIMIZATION: Don't block initialization on sales export data
+      // Start it in background - it will load lazily when needed (orders <= 19769)
+      // This makes cold-start much faster (only wait for Missive API, not large JSON download)
+      const initPromises = [];
+      
       if (this.isMissiveEnvironment) {
-        await this.initializeMissiveAPI();
+        initPromises.push(this.initializeMissiveAPI());
       }
       
-      // Load historical sales export data for older orders
-      await this.loadSalesExportData();
+      // Start sales export data loading in background (non-blocking)
+      // It will be ready when needed, or we'll wait for it only when searching orders <= 19769
+      initPromises.push(
+        this.loadSalesExportData().catch(err => {
+          console.warn('Background sales data load failed (will retry when needed):', err);
+        })
+      );
       
-      // Always attempt URL-driven auto-search (works in web and Missive)
+      // Continue with other setup while data loads in background
       this.maybeAutoSearchFromUrl();
       this.setupCleanup(); // Setup proper cleanup
-      // Initialize dynamic preloading for Team Inboxes - DISABLED in vJS3.35
-      // await this.initializePreloading();
-      this.setStatus("Ready"); // Set Ready immediately
-      // Only test connection if not in Missive environment
+      
+      // Wait for critical initialization (but UI is already shown)
+      await Promise.all(initPromises);
+      
+      // Only test connection if not in Missive environment (non-blocking)
       if (!this.isMissiveEnvironment) {
-        await this.testConnection();
+        // Test connection in background - don't block UI
+        this.testConnection().catch(err => {
+          console.warn('Connection test failed:', err);
+        });
       }
       console.log("Application initialized successfully");
       
-      // Always clear loading state after initialization
-      this.hideLoading();
-      
       // Add debug methods to global scope for testing
       window.MissWooDebug = {
-        logStatus: () => this.logPreloadingStatus(),
-        triggerPreload: () => this.triggerPreloading(),
         getPreloadedEmails: () => Array.from(this.preloadedConversations.keys()),
         getSeenConversations: () => Array.from(this.seenConversationIds),
         clearPreloaded: () => { this.preloadedConversations.clear(); console.log("Cleared preloaded data"); }
@@ -668,7 +706,9 @@ class MissWooApp {
         if (matchingAfterFirstPage.length >= maxMatchingOrders) {
           // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
           const processedOrders = await this.processOrdersWithDetails(matchingAfterFirstPage, email);
-          return Array.isArray(processedOrders) ? processedOrders : [];
+          const results = Array.isArray(processedOrders) ? processedOrders : [];
+          this.cacheSearchResults(email, results);
+          return results;
         }
         
         // OPTIMIZATION 2: Fetch pages 2 and 3 in parallel for faster results
@@ -715,7 +755,9 @@ class MissWooApp {
           if (matchingAfterPage2.length >= maxMatchingOrders) {
             // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
             const processedOrders = await this.processOrdersWithDetails(matchingAfterPage2, email);
-            return Array.isArray(processedOrders) ? processedOrders : [];
+            const results = Array.isArray(processedOrders) ? processedOrders : [];
+            this.cacheSearchResults(email, results);
+            return results;
           }
         }
         
@@ -730,7 +772,12 @@ class MissWooApp {
 
       // OPTIMIZATION 3: Process order details (without notes - notes fetched later)
       const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
-      return Array.isArray(processedOrders) ? processedOrders : [];
+      const results = Array.isArray(processedOrders) ? processedOrders : [];
+      
+      // Memoize results
+      this.cacheSearchResults(email, results);
+      
+      return results;
       
     } catch (error) {
       // Don't log abort errors as errors
@@ -1034,8 +1081,7 @@ class MissWooApp {
       }
     }
     
-    // Start background processing for additional data
-    this.startBackgroundProcessing();
+    // Removed startBackgroundProcessing - was unused
     } finally {
       this._displayInProgress = false;
       // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
@@ -1077,30 +1123,7 @@ class MissWooApp {
     }
   }
 
-  startBackgroundProcessing() {
-    // Background tasks removed - no longer preloading data
-    
-    // Process background tasks
-    this.processBackgroundTasks();
-  }
-
-  async processBackgroundTasks() {
-    if (this.backgroundTasks.length === 0) return;
-    
-    const task = this.backgroundTasks.shift();
-    if (task) {
-      try {
-        await task();
-        } catch (error) {
-        console.log('Background task error:', error);
-      }
-    }
-    
-    // Process next task after a short delay
-    if (this.backgroundTasks.length > 0) {
-      setTimeout(() => this.processBackgroundTasks(), 100);
-    }
-  }
+  // Removed startBackgroundProcessing - was unused
 
 
   // Silent version of searchOrdersByEmail that doesn't set status messages
@@ -1151,7 +1174,6 @@ class MissWooApp {
         serials: this.serialNumberCache ? this.serialNumberCache.size : 0
       },
       pendingRequests: this.pendingRequests.size,
-      backgroundTasks: this.backgroundTasks.length,
       cacheExpiryEntries: this.cacheExpiry.size
     };
   }
@@ -1219,19 +1241,114 @@ class MissWooApp {
     return parts.join(', ');
   }
 
-  // Load sales export data from JSON file
+  // Load sales export data from JSON file (with caching and Web Worker parsing)
+  // OPTIMIZATION: This is now lazy-loaded - only loads when needed (orders <= 19769)
   async loadSalesExportData() {
+    // Prevent duplicate concurrent loads
+    if (this._salesDataLoadingPromise && !this.salesExportDataLoaded) {
+      return this._salesDataLoadingPromise;
+    }
+    
+    console.log('📚 Loading sales export data for historical orders...');
+    console.time('load:sales-data');
+    
+    // Create loading promise
+    this._salesDataLoadingPromise = this._doLoadSalesExportData().finally(() => {
+      this._salesDataLoadingPromise = null;
+    });
+    
+    return this._salesDataLoadingPromise;
+  }
+  
+  async _doLoadSalesExportData() {
     try {
       const salesExportUrl = this.isMissiveEnvironment 
         ? 'sales_export_filtered.json' 
         : 'sales_export_filtered.json';
       
-      console.log('📚 Loading sales export data for historical orders...');
-      console.log(`📁 Loading from: ${salesExportUrl}`);
+      const cacheKey = 'sales_export_index_v1';
+      const cacheTimestampKey = 'sales_export_timestamp';
+      const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
       
-      // Don't use abort signal during initialization - it might not exist yet
+      // Check cache first
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        const cachedTimestamp = localStorage.getItem(cacheTimestampKey);
+        
+        if (cached && cachedTimestamp) {
+          const age = Date.now() - parseInt(cachedTimestamp, 10);
+          if (age < CACHE_TTL) {
+            const cachedData = JSON.parse(cached);
+            // Restore the Map from cached data
+            for (const [orderNo, record] of Object.entries(cachedData.idMap || {})) {
+              this.salesExportData.set(orderNo, record);
+            }
+            this.salesExportDataLoaded = true;
+            console.log(`✅ Loaded sales export data from cache (${this.salesExportData.size} orders, age: ${Math.round(age / 1000)}s)`);
+            console.timeEnd('load:sales-data');
+            return;
+          } else {
+            console.log('📦 Cache expired, fetching fresh data...');
+            localStorage.removeItem(cacheKey);
+            localStorage.removeItem(cacheTimestampKey);
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Cache read failed, will fetch fresh:', e);
+        localStorage.removeItem(cacheKey);
+        localStorage.removeItem(cacheTimestampKey);
+      }
+      
+      // Use Web Worker to parse JSON in background (doesn't block UI)
+      if (typeof Worker !== 'undefined') {
+        try {
+          const worker = new Worker('worker/parse-sales-worker.js');
+          const parsePromise = new Promise((resolve, reject) => {
+            worker.onmessage = (msg) => {
+              const data = msg.data;
+              if (data && data.success) {
+                // Restore the Map from worker result
+                for (const [orderNo, record] of Object.entries(data.idMap || {})) {
+                  this.salesExportData.set(orderNo, record);
+                }
+                
+                // Cache the parsed index
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify({ idMap: data.idMap }));
+                  localStorage.setItem(cacheTimestampKey, String(Date.now()));
+                } catch (e) {
+                  console.warn('⚠️ Could not cache order index to localStorage:', e);
+                }
+                
+                this.salesExportDataLoaded = true;
+                console.log(`✅ Loaded sales export data via worker (${this.salesExportData.size} orders)`);
+                console.timeEnd('load:sales-data');
+                resolve();
+              } else {
+                reject(new Error(data.error || 'Worker failed'));
+              }
+              worker.terminate();
+            };
+
+            worker.onerror = (err) => {
+              worker.terminate();
+              reject(err);
+            };
+          });
+
+          worker.postMessage({ action: 'parse', url: salesExportUrl });
+          await parsePromise;
+          return;
+        } catch (workerError) {
+          console.warn('⚠️ Web Worker not available, falling back to main thread parsing:', workerError);
+          // Fall through to main thread parsing
+        }
+      }
+      
+      // Fallback: Parse on main thread if worker unavailable
+      console.log(`📁 Loading from: ${salesExportUrl}`);
       const response = await fetch(salesExportUrl, {
-        cache: 'no-cache'
+        cache: 'default' // Allow browser caching instead of 'no-cache'
       });
       
       console.log(`📡 Response status: ${response.status}`);
@@ -1241,48 +1358,64 @@ class MissWooApp {
         console.log(`📦 Received data: ${Array.isArray(data) ? `Array with ${data.length} items` : typeof data}`);
         
         if (Array.isArray(data)) {
+          const idMap = {};
           // Group by SalesOrderNo for fast lookup
-          // New format: Each record is already combined per order number
           for (const record of data) {
             const orderNo = String(record.SalesOrderNo);
-            // Only process numeric order numbers
             const orderNoInt = parseInt(orderNo);
             if (!isNaN(orderNoInt)) {
-              // Store the combined record directly (already has SerialNumbers and Keys arrays)
               this.salesExportData.set(orderNo, record);
+              idMap[orderNo] = record;
             }
+          }
+          
+          // Cache the parsed index
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ idMap }));
+            localStorage.setItem(cacheTimestampKey, String(Date.now()));
+          } catch (e) {
+            console.warn('⚠️ Could not cache order index to localStorage:', e);
           }
         } else {
           console.log('⚠️ Sales export data is not an array:', typeof data);
         }
         this.salesExportDataLoaded = true;
         console.log(`✅ Loaded sales export data for ${this.salesExportData.size} orders`);
-        
-        // Debug: Check if a sample order exists
-        if (this.salesExportData.has('2103')) {
-          const sample = this.salesExportData.get('2103');
-          console.log('📋 Sample order 2103:', sample);
-        }
+        console.timeEnd('load:sales-data');
       } else if (response.status === 404) {
         console.log('ℹ️ Sales export data file not found (this is optional)');
-        this.salesExportDataLoaded = true; // Mark as loaded even if file doesn't exist
+        this.salesExportDataLoaded = true;
+        console.timeEnd('load:sales-data');
       } else {
         console.log(`⚠️ Could not load sales export data: ${response.status}`);
-        this.salesExportDataLoaded = true; // Mark as loaded to prevent retries
+        this.salesExportDataLoaded = true;
+        console.timeEnd('load:sales-data');
       }
     } catch (error) {
       if (error.name === 'AbortError') {
         throw error;
       }
-      // Don't fail initialization if sales export data can't be loaded
       console.log('ℹ️ Sales export data not available (this is optional):', error.message);
-      this.salesExportDataLoaded = true; // Mark as loaded to prevent retries
+      this.salesExportDataLoaded = true;
+      console.timeEnd('load:sales-data');
     }
   }
 
   // Get serial numbers and keys from sales export data for older orders
   getSalesExportData(orderNumber) {
-    if (!this.salesExportDataLoaded || !this.salesExportData || this.salesExportData.size === 0) {
+    // If data not loaded yet, trigger lazy load (non-blocking)
+    if (!this.salesExportDataLoaded) {
+      // Start loading in background if not already started
+      if (!this._salesDataLoadingPromise) {
+        this._salesDataLoadingPromise = this.loadSalesExportData().catch(err => {
+          console.warn('Lazy sales data load failed:', err);
+          this._salesDataLoadingPromise = null;
+        });
+      }
+      return null; // Return null immediately, data will be available on next call
+    }
+    
+    if (!this.salesExportData || this.salesExportData.size === 0) {
       console.log(`⚠️ Sales export data not available (loaded: ${this.salesExportDataLoaded}, size: ${this.salesExportData?.size || 0})`);
       return null;
     }
@@ -1332,8 +1465,13 @@ class MissWooApp {
         
         // Ensure data is loaded (wait if still loading)
         if (!this.salesExportDataLoaded) {
-          console.log(`⏳ Sales export data still loading, waiting for order #${order.number}...`);
-          await this.loadSalesExportData();
+          console.log(`⏳ Sales export data not loaded yet, loading now for order #${order.number}...`);
+          // Wait for background load if in progress, or start new load
+          if (this._salesDataLoadingPromise) {
+            await this._salesDataLoadingPromise;
+          } else {
+            await this.loadSalesExportData();
+          }
         }
         
         const salesData = this.getSalesExportData(order.number);
@@ -1712,7 +1850,12 @@ class MissWooApp {
       
       // Ensure sales export data is loaded
       if (!this.salesExportDataLoaded) {
-        await this.loadSalesExportData();
+        // Wait for background load if in progress, or start new load
+        if (this._salesDataLoadingPromise) {
+          await this._salesDataLoadingPromise;
+        } else {
+          await this.loadSalesExportData();
+        }
       }
       
       for (const order of uncachedOrders) {
@@ -2074,7 +2217,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.03' : 'vJS5.03 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.04' : 'vJS5.04 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2967,20 +3110,8 @@ class MissWooApp {
     return age < maxAge;
   }
 
-  cleanupArchivedConversations() {
-    // DISABLED: Cache should persist until user navigates away
-    // Previous behavior: Removed cached data when conversations were archived/no longer visible
-    // New behavior: Keep all cached data during session, only clear on navigation away
-    // This ensures positive search results remain available throughout the session
-    console.log(`Preloaded conversations: ${this.preloadedConversations.size}, Email cache: ${this.emailCache.size} (persisting until navigation)`);
-  }
-
-  isEmailFromVisibleConversation(email) {
-    // This is a simplified check - in a real implementation,
-    // we'd need to track which email belongs to which conversation
-    // For now, we'll keep preloaded data unless explicitly cleaned up
-    return true;
-  }
+  // Removed cleanupArchivedConversations - was just logging, does nothing
+  // Removed isEmailFromVisibleConversation - always returned true, redundant
 
   // Enhanced preloading that uses preloaded data when available
   async performAutoSearch(email) {
@@ -3172,43 +3303,14 @@ class MissWooApp {
     console.log("✅ Current email data cleared");
   }
 
-  // Trigger dynamic preloading with debouncing
-  triggerDynamicPreloading() {
-    // Debounce preloading to avoid excessive API calls
-    if (this.preloadingDebounceTimer) {
-      clearTimeout(this.preloadingDebounceTimer);
-    }
-    
-    // Preloading removed - conversations are now processed on click only
-  }
+  // Removed triggerDynamicPreloading - was empty, preloading disabled
 
   // Initialize preloading on app start (DEPRECATED - no longer preloading)
-  async initializePreloading() {
-    // Preloading removed - conversations are now processed on click only
-    this.setStatus("Ready");
-  }
+  // Removed initializePreloading - was just setting status, redundant
 
-  // Debug method to check preloading status
-  logPreloadingStatus() {
-    console.log("📊 === PRELOADING STATUS ===");
-    console.log(`📧 Seen conversation IDs: ${this.seenConversationIds.size}`);
-    console.log(`📧 Preloaded conversations: ${this.preloadedConversations.size}`);
-    console.log(`📧 Visible conversation IDs: ${this.visibleConversationIds.size}`);
-    console.log(`📧 Email cache size: ${this.emailCache.size}`);
-    
-    if (this.preloadedConversations.size > 0) {
-      console.log("📧 Preloaded emails:");
-      for (const [email, data] of this.preloadedConversations) {
-        console.log(`  - ${email}: ${data.orders.length} orders (age: ${Math.round((Date.now() - data.timestamp) / 1000)}s)`);
-      }
-    }
-    console.log("📊 === PRELOADING STATUS END ===");
-  }
+  // Removed logPreloadingStatus - was only used in debug methods, removed to reduce code
 
-  // Manual trigger for preloading (DEPRECATED - no longer preloading)
-  async triggerPreloading() {
-    console.log("ℹ️ Preloading is disabled - conversations are processed on click only");
-  }
+  // Removed triggerPreloading - was just logging that it's disabled
 
   cleanup() {
     // This method is called ONLY when user navigates away (via beforeunload event)

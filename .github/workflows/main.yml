@@ -89,6 +89,8 @@ jobs:
         cp -r src dist/
         mkdir -p dist/integrations/missive-js
         cp integrations/missive-js/app.js dist/integrations/missive-js/
+        mkdir -p dist/worker
+        cp worker/parse-sales-worker.js dist/worker/ 2>/dev/null || echo "⚠️ worker/parse-sales-worker.js not found, skipping..."
         # Copy sales export data file for historical orders
         cp sales_export_filtered.json dist/ 2>/dev/null || echo "⚠️ sales_export_filtered.json not found, skipping..."
         BUILD_VERSION=$(date +%Y%m%d%H%M%S)  # cache-busting only

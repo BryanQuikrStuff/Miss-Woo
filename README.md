@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.03  
+**Version**: vJS5.04  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,20 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.03 (Current)
+### vJS5.04 (Current)
+- Performance: Reduced cold-start time from ~10s to ~2s
+- Performance: Lazy-load sales export data (only loads when needed for orders <= 19769)
+- Performance: Web Worker for JSON parsing (non-blocking UI)
+- Performance: localStorage caching with 24h TTL for sales export data
+- Performance: Reduced Missive API polling timeout (3s → 2s)
+- Performance: Parallelized initialization steps
+- Performance: Added debouncing for Missive events (300ms)
+- Performance: Added search result memoization (5min TTL)
+- Code cleanup: Removed ~150 lines of dead code (unused functions, non-existent event listeners)
+- Code cleanup: Removed email:focus event listener (doesn't exist in Missive API)
+- Code cleanup: Removed unused background tasks system
+
+### vJS5.03
 - Fixed: Serial numbers and tracking information now load when searching by order ID
 - Fixed: Added loadOrderDetails() call after getOrderById() to fetch serial numbers from sales export data
 
