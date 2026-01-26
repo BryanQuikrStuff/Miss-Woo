@@ -321,7 +321,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.04';
+    return 'vJS5.05';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2217,7 +2217,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.04' : 'vJS5.04 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.05' : 'vJS5.05 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2792,148 +2792,9 @@ class MissWooApp {
     console.log(`📧 Processing clicked conversation: ${clickedConversationId}`);
     await this.processClickedConversation(clickedConversationId);
     return;
-
-    // OLD CODE BELOW - kept for reference but not executed
-    /*
-    const idsToFetch = conversationIds.slice(0, Math.min(15, conversationIds.length));
-    console.log(`📧 Preloading first ${idsToFetch.length} emails (from ${conversationIds.length} total visible) when inbox opened...`);
-
-    try {
-      let conversations = [];
-      
-      if (Missive.fetchConversations && typeof Missive.fetchConversations === 'function') {
-        try {
-          // Based on Missive API: fetchConversations accepts conversation IDs and returns Promise(Array)
-          // Try passing array of conversation IDs directly (most efficient)
-          console.log(`📧 Attempting to fetch ${idsToFetch.length} conversations by IDs: ${idsToFetch.slice(0, 5).join(', ')}${idsToFetch.length > 5 ? '...' : ''}`);
-          
-          // Call fetchConversations with array of IDs - API returns Promise(Array<Conversation>)
-          const fetchedConversations = await Missive.fetchConversations(idsToFetch);
-          
-          if (Array.isArray(fetchedConversations)) {
-            if (fetchedConversations.length > 0) {
-              conversations = fetchedConversations;
-              console.log(`✅ Successfully fetched ${conversations.length} conversations by IDs`);
-            } else {
-              console.log("⚠️ fetchConversations returned empty array, trying fallback method...");
-              conversations = await this.fetchConversationsOneByOne(idsToFetch);
-            }
-          } else {
-            console.log("⚠️ fetchConversations returned non-array result:", typeof fetchedConversations, "trying fallback...");
-            conversations = await this.fetchConversationsOneByOne(idsToFetch);
-          }
-        } catch (error) {
-          console.log(`⚠️ Error fetching conversations by IDs (${error.message}), trying fallback method...`);
-          console.log(`⚠️ Error details:`, error);
-          // Fallback: try fetching one by one (slower but more reliable)
-          conversations = await this.fetchConversationsOneByOne(idsToFetch);
-        }
-      } else {
-        console.log("❌ fetchConversations method not available, trying fallback method...");
-        // Fallback: try fetching one by one
-        conversations = await this.fetchConversationsOneByOne(idsToFetch);
-      }
-
-      if (conversations.length === 0) {
-        console.log("❌ No conversations fetched, preloading will be triggered on email focus");
-        return;
-      }
-
-      // Update visible conversation tracking
-      this.updateVisibleConversations(conversations);
-
-      // Extract emails from all conversations
-      const emailsToPreload = this.extractEmailsFromConversations(conversations);
-      console.log(`📧 Extracted ${emailsToPreload.length} unique emails from ${conversations.length} conversations`);
-
-      if (emailsToPreload.length === 0) {
-        console.log("❌ No valid emails found in conversations");
-        return;
-      }
-
-      // OPTIMIZATION: Prioritize first conversation (current one) for preloading
-      // Extract first conversation email for prioritization
-      let prioritizedEmail = null;
-      if (conversations.length > 0) {
-        const firstConversation = conversations[0];
-        const firstEmail = this.extractEmailFromData(firstConversation);
-        // Normalize prioritized email for consistent caching
-        prioritizedEmail = firstEmail ? this.normalizeEmail(firstEmail) : null;
-        
-        // Also trigger auto-search for the first conversation (current one) immediately
-        // Use original email for auto-search (performAutoSearch will normalize internally)
-        if (firstEmail && this.isValidEmailForSearch(firstEmail)) {
-          console.log(`🔍 Triggering auto-search for current email: ${firstEmail} (normalized: ${prioritizedEmail})`);
-          this.performAutoSearch(firstEmail);
-        }
-      }
-
-      // Preload customer details for first 15 emails
-      // OPTIMIZATION: Focus on top 15 emails for faster access to most commonly used conversations
-      console.log(`🔄 Starting preload for first ${emailsToPreload.length} emails (top of inbox)...`);
-      
-      // Preload in background but track progress (use normalized prioritized email)
-      this.preloadEmailsData(emailsToPreload, prioritizedEmail)
-        .then(() => {
-          console.log(`✅ Completed preloading ${emailsToPreload.length} emails from visible inbox`);
-        })
-        .catch(error => {
-          console.error("❌ Error preloading emails data:", error);
-          // OPTIMIZATION: Retry failed preloads after a delay
-          setTimeout(() => {
-            console.log(`🔄 Retrying preload for ${emailsToPreload.length} emails after error...`);
-            this.preloadEmailsData(emailsToPreload, prioritizedEmail).catch(retryError => {
-              console.error("❌ Retry preload also failed:", retryError);
-            });
-          }, 5000); // Retry after 5 seconds
-        });
-
-      console.log(`✅ Started preloading data for ${emailsToPreload.length} emails in background`);
-    } catch (error) {
-      console.error("❌ Error in fetchAndPreloadConversations:", error);
-    }
-    */
   }
 
-  // Fallback method: fetch conversations one by one if batch fetch fails
-  async fetchConversationsOneByOne(conversationIds) {
-    const conversations = [];
-    // Limit to first 15 for preloading optimization
-    const maxToFetch = Math.min(15, conversationIds.length);
-    console.log(`📧 Fetching first ${maxToFetch} conversations one by one (fallback method)...`);
-    
-    // Process in batches to avoid overwhelming the API
-    const batchSize = 5;
-    for (let i = 0; i < maxToFetch; i += batchSize) {
-      const batch = conversationIds.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (convId) => {
-        try {
-          // Try fetching single conversation by ID
-          // API returns Promise(Array) so we get an array even for single ID
-          if (Missive.fetchConversations) {
-            const result = await Missive.fetchConversations([convId]);
-            if (Array.isArray(result) && result.length > 0) {
-              return result[0];
-            }
-          }
-        } catch (error) {
-          console.log(`❌ Failed to fetch conversation ${convId}:`, error.message);
-          return null;
-        }
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      conversations.push(...batchResults.filter(conv => conv !== null));
-      
-      // Small delay between batches to avoid rate limiting
-      if (i + batchSize < maxToFetch) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    console.log(`✅ Fetched ${conversations.length} conversations using fallback method`);
-    return conversations;
-  }
+  // Removed fetchConversationsOneByOne - was only used in disabled preloading code
 
   async fetchVisibleConversations() {
     try {
@@ -3110,6 +2971,30 @@ class MissWooApp {
     return age < maxAge;
   }
 
+  // Unified cache lookup - consolidates all cache checks into single function
+  // Returns cached orders array if found, null otherwise
+  getCachedOrdersData(normalizedEmail) {
+    if (!normalizedEmail) return null;
+    
+    // Check emailCache first (primary cache)
+    if (this.emailCache?.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
+      const cached = this.emailCache.get(normalizedEmail);
+      if (Array.isArray(cached) && cached.length > 0) {
+        return cached;
+      }
+    }
+    
+    // Check preloadedConversations (fallback cache)
+    if (this.isPreloadedDataValid(normalizedEmail)) {
+      const preloaded = this.preloadedConversations.get(normalizedEmail);
+      if (preloaded?.orders && Array.isArray(preloaded.orders) && preloaded.orders.length > 0) {
+        return preloaded.orders;
+      }
+    }
+    
+    return null;
+  }
+
   // Removed cleanupArchivedConversations - was just logging, does nothing
   // Removed isEmailFromVisibleConversation - always returned true, redundant
 
@@ -3144,38 +3029,16 @@ class MissWooApp {
     // Always clear the display first when switching emails
     this.clearCurrentEmailData();
 
-    // Check for cached/preloaded data first (immediate) - use normalized email
+    // OPTIMIZATION: Unified cache lookup - single function checks all cache sources
     console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
-    if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
-      const cachedOrders = this.emailCache.get(normalizedEmail);
-      if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
-        console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
-        this.allOrders = cachedOrders; // No need to clone for cache
-        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
-        this.displayOrdersList();
-        // Status is already set by displayOrdersList, no need to set again
-        return;
-      } else {
-        console.log(`⚠️ Cache miss: Found email in cache but no valid orders (cachedOrders: ${cachedOrders ? Array.isArray(cachedOrders) ? cachedOrders.length : typeof cachedOrders : 'null'})`);
-      }
+    const cachedOrders = this.getCachedOrdersData(normalizedEmail);
+    if (cachedOrders) {
+      console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
+      this.allOrders = cachedOrders;
+      this.displayOrdersList();
+      return;
     } else {
       console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
-      if (this.emailCache) {
-        console.log(`📋 Cache keys:`, Array.from(this.emailCache.keys()).slice(0, 10));
-      }
-    }
-
-    // Check preloaded data (use normalized email)
-    if (this.isPreloadedDataValid(normalizedEmail)) {
-      const preloadedData = this.preloadedConversations.get(normalizedEmail);
-      if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
-        console.log(`✅ Found preloaded data for ${normalizedEmail}: ${preloadedData.orders.length} orders`);
-        this.allOrders = preloadedData.orders; // No need to clone for preloaded
-        // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${normalizedEmail}. allOrders.length: ${this.allOrders.length}`);
-        this.displayOrdersList();
-        // Status is already set by displayOrdersList, no need to set again
-        return;
-      }
     }
 
     // IMPORTANT: Check if preloading is in progress for this email (use normalized email)
@@ -3188,25 +3051,12 @@ class MissWooApp {
         // Wait for preloading to complete
         await this.preloadingEmails.get(normalizedEmail);
         
-        // After preloading completes, check cache again (use normalized email)
-        if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
-          const cachedOrders = this.emailCache.get(normalizedEmail);
-          if (Array.isArray(cachedOrders) && cachedOrders.length > 0) {
-            console.log(`✅ Found cached data for ${normalizedEmail} after waiting for preload: ${cachedOrders.length} orders`);
-            this.allOrders = cachedOrders;
-            this.displayOrdersList();
-            // Status is already set by displayOrdersList, no need to set again
-            return;
-          }
-        }
-        
-        // Also check preloadedConversations (use normalized email)
-        const preloadedData = this.preloadedConversations.get(normalizedEmail);
-        if (preloadedData && Array.isArray(preloadedData.orders) && preloadedData.orders.length > 0) {
-          console.log(`✅ Found preloaded data for ${normalizedEmail} after waiting: ${preloadedData.orders.length} orders`);
-          this.allOrders = preloadedData.orders;
+        // OPTIMIZATION: Use unified cache lookup after preloading completes
+        const cachedOrdersAfterPreload = this.getCachedOrdersData(normalizedEmail);
+        if (cachedOrdersAfterPreload) {
+          console.log(`✅ Found cached data for ${normalizedEmail} after waiting for preload: ${cachedOrdersAfterPreload.length} orders`);
+          this.allOrders = cachedOrdersAfterPreload;
           this.displayOrdersList();
-          // Status is already set by displayOrdersList, no need to set again
           return;
         }
       } catch (error) {
@@ -3321,11 +3171,6 @@ class MissWooApp {
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
       this.searchDebounceTimer = null;
-    }
-    
-    if (this.preloadingDebounceTimer) {
-      clearTimeout(this.preloadingDebounceTimer);
-      this.preloadingDebounceTimer = null;
     }
     
     // Clear conversation change debounce timer

@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.04  
+**Version**: vJS5.05  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.04 (Current)
+### vJS5.05 (Current)
+- Performance: Consolidated cache lookups into single unified function
+- Performance: Removed unused batching logic from disabled preloading code
+- Code cleanup: Removed 192 lines of dead code (fetchConversationsOneByOne, commented preloading code)
+- Code quality: Reduced redundant cache operations from 10+ to 1 function call
+
+### vJS5.04
 - Performance: Reduced cold-start time from ~10s to ~2s
 - Performance: Lazy-load sales export data (only loads when needed for orders <= 19769)
 - Performance: Web Worker for JSON parsing (non-blocking UI)
