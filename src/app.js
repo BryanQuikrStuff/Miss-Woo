@@ -52,14 +52,10 @@ class MissWooApp {
       };
       
       // Caching system
-      this.orderCache = new Map();
       this.katanaOrderCache = new Map();
       this.serialNumberCache = new Map();
       this.emailCache = new Map();
       this.cacheExpiry = new Map();
-      this.preloadedConversations = new Map();
-      this.visibleConversationIds = new Set();
-      this.seenConversationIds = new Set();
       this.visibleEmails = new Set(); // Track visible emails for cleanup
       this.salesExportData = new Map(); // Historical sales export data (order_no -> records)
       this.salesExportDataLoaded = false; // Track if data has been loaded
@@ -70,8 +66,7 @@ class MissWooApp {
       this.boundHandleSearch = this.handleSearch.bind(this);
       this.boundKeyPressHandlers = new Map(); // Store keypress handlers by element
       this.conversationChangeDebounceTimer = null; // Debounce for conversation change events
-      this.maxPreloadedConversations = 15; // Cache 15 most recently opened conversations
-      this.preloadingEmails = new Map(); // Track emails currently being preloaded (email -> Promise)
+      this.maxRecentlyOpenedConversations = 15; // Cache 15 most recently opened conversations
       this.recentlyOpenedConversations = new Map(); // LRU cache: conversationId -> { email, timestamp, processed }
       this.processingConversationId = null; // Track currently processing conversation to prevent duplicates
       this.lastConversationId = null; // Track last conversation ID to prevent duplicate debounce timers
@@ -79,21 +74,16 @@ class MissWooApp {
       
       // Cache configuration
       this.cacheConfig = {
-        orderCache: 5 * 60 * 1000, // 5 minutes
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
         emailCache: 2 * 60 * 1000, // 2 minutes
-        preloadedCache: 15 * 60 * 1000, // 15 minutes for preloaded data
-        maxCacheSize: 100, // Maximum number of entries in emailCache
-        maxPreloadedSize: 50 // Maximum number of entries in preloadedConversations
+        maxCacheSize: 100 // Maximum number of entries in emailCache
       };
       
       // Search state management
       this.allOrders = [];
       this.lastSearchedEmail = null;
       this.searchDebounceTimer = null;
-      this.lastSearchTime = 0;
-      this.minSearchInterval = 500; // Minimum 500ms between searches for same email
       this.searchInProgress = false; // Prevent multiple searches from running simultaneously
       this.activeSearches = new Map(); // Track active searches by email
       this.activeSearchAbortController = null; // OPTIMIZATION 4: Request cancellation
@@ -321,7 +311,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.05';
+    return 'vJS5.06';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -400,9 +390,9 @@ class MissWooApp {
       
       // Add debug methods to global scope for testing
       window.MissWooDebug = {
-        getPreloadedEmails: () => Array.from(this.preloadedConversations.keys()),
-        getSeenConversations: () => Array.from(this.seenConversationIds),
-        clearPreloaded: () => { this.preloadedConversations.clear(); console.log("Cleared preloaded data"); }
+        getCachedEmails: () => Array.from(this.emailCache.keys()),
+        getRecentlyOpenedConversations: () => Array.from(this.recentlyOpenedConversations.keys()),
+        clearCaches: () => { this.emailCache.clear(); this.recentlyOpenedConversations.clear(); console.log("Cleared caches"); }
       };
       // console.log("🔧 Debug methods available: window.MissWooDebug");
       
@@ -790,34 +780,6 @@ class MissWooApp {
     }
   }
 
-  async searchContactFormSubmissions(email) {
-    try {
-      console.log(`🔍 Searching contact form submissions for: ${email}`);
-      
-      // Search for contact form submissions in WordPress
-      const submissionsUrl = this.getAuthenticatedUrl('/contact-form-submissions', {
-        search: email,
-        per_page: 50
-      });
-      
-      const response = await this.makeRequest(submissionsUrl);
-      
-      if (Array.isArray(response)) {
-        console.log(`Found ${response.length} contact form submissions for ${email}`);
-        return response.map(submission => ({
-          ...submission,
-          type: 'contact_form',
-          source: 'Contact Form'
-        }));
-      }
-      
-      return [];
-    } catch (error) {
-      console.log(`No contact form submissions found for ${email}:`, error.message);
-      return [];
-    }
-  }
-
   // OPTIMIZATION: Early termination - stop once we have 5 matches (much faster)
   filterOrdersByEmail(orders, email) {
     const normalizedEmail = email.toLowerCase();
@@ -1127,51 +1089,12 @@ class MissWooApp {
 
 
   // Silent version of searchOrdersByEmail that doesn't set status messages
-  async searchOrdersByEmailSilent(email) {
-    try {
-      console.log(`Silent search for: ${email}`);
-      
-      // Check cache first
-      if (this.emailCache && this.emailCache.has(email) && this.isCacheValid(email, 'emailCache')) {
-        const cachedOrders = this.emailCache.get(email);
-        if (Array.isArray(cachedOrders)) {
-          console.log(`Silent cache hit for ${email}: ${cachedOrders.length} orders`);
-          return cachedOrders;
-        }
-      }
-      
-      // Perform actual search without setting status
-      const orderResults = await this.searchWooCommerceOrders(email);
-      
-      if (Array.isArray(orderResults)) {
-        // Process and cache results silently
-        const processedOrders = await this.processOrdersWithDetails(orderResults, email);
-        
-        // Cache the results
-        if (this.emailCache) {
-          this.emailCache.set(email, processedOrders);
-          this.setCacheExpiry(email, 'emailCache');
-          // OPTIMIZATION: Enforce cache size limit
-          this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
-          console.log(`Silent cached ${processedOrders.length} processed orders for ${email} in emailCache`);
-        }
-        
-        return processedOrders;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Silent search failed for ${email}:`, error);
-      return [];
-    }
-  }
-
   getPerformanceStats() {
     return {
       cacheHits: {
-        orders: this.orderCache ? this.orderCache.size : 0,
         katana: this.katanaOrderCache ? this.katanaOrderCache.size : 0,
-        serials: this.serialNumberCache ? this.serialNumberCache.size : 0
+        serials: this.serialNumberCache ? this.serialNumberCache.size : 0,
+        emails: this.emailCache ? this.emailCache.size : 0
       },
       pendingRequests: this.pendingRequests.size,
       cacheExpiryEntries: this.cacheExpiry.size
@@ -2124,23 +2047,6 @@ class MissWooApp {
 
   // Legacy Missive initialization removed - now handled by JS API integration
 
-  recheckMissiveEnvironment() {
-    // Re-check environment after a short delay
-    setTimeout(() => {
-      const wasMissive = this.isMissiveEnvironment;
-      this.isMissiveEnvironment = this.detectMissiveEnvironment();
-      
-      if (this.isMissiveEnvironment !== wasMissive) {
-        console.log(`Environment changed: ${wasMissive ? 'Missive' : 'Web'} -> ${this.isMissiveEnvironment ? 'Missive' : 'Web'}`);
-        this.autoSearchEnabled = this.isMissiveEnvironment;
-        this.updateUIForEnvironment();
-      }
-      
-      // Always clear loading state after re-check
-            this.hideLoading();
-    }, 1000);
-  }
-
   updateUIForEnvironment() {
     // console.log("🔧 === UI UPDATE DEBUG ===");
     console.log("Environment detection:", this.isMissiveEnvironment);
@@ -2217,7 +2123,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.05' : 'vJS5.05 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.06' : 'vJS5.06 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2230,16 +2136,6 @@ class MissWooApp {
   // Legacy tryGetCurrentEmail method removed - now handled by JS API integration
 
   // Legacy Missive event handlers removed - now handled by JS API integration
-
-  async extractAndSearchEmail(data) {
-    const email = this.extractEmailFromData(data);
-    if (email) {
-      console.log("Extracted email:", email);
-      await this.performAutoSearch(email);
-    } else {
-      console.log("No email found in data");
-    }
-  }
 
   extractEmailFromData(data) {
     console.log("🔍 Extracting email from data:", data);
@@ -2602,30 +2498,6 @@ class MissWooApp {
     return null;
   }
 
-  async getEmailFromMissiveAPI() {
-    try {
-      if (window.Missive && Missive.getCurrentEmail) {
-        const emailData = await Missive.getCurrentEmail();
-        return this.extractEmailFromData(emailData);
-      }
-    } catch (error) {
-      console.error("Error getting email from Missive API:", error);
-    }
-    return null;
-  }
-
-
-
-  cleanupCache() {
-    // DISABLED: Cache should persist until user navigates away
-    // Previous behavior: Limited cache to 10 entries to prevent memory issues
-    // New behavior: Keep all cached data during session, only clear on navigation
-    // Memory is managed by cache expiration times instead
-    console.log(`Cache size: ${this.emailCache.size} entries (persisting until navigation)`);
-  }
-
-  // Dynamic preloading system for Visible Conversations
-
   // Process a single clicked conversation - fetch and cache data
   async processClickedConversation(conversationId) {
     if (!Missive || !Missive.fetchConversations) {
@@ -2745,7 +2617,7 @@ class MissWooApp {
   // Update LRU cache for recently opened conversations (max 15)
   updateRecentlyOpenedCache(conversationId, email, processed) {
     // If cache is full, remove oldest entry (LRU)
-    if (this.recentlyOpenedConversations.size >= this.maxPreloadedConversations) {
+    if (this.recentlyOpenedConversations.size >= this.maxRecentlyOpenedConversations) {
       // Find oldest entry by timestamp
       let oldestId = null;
       let oldestTimestamp = Infinity;
@@ -2770,118 +2642,7 @@ class MissWooApp {
       processed: processed
     });
     
-    console.log(`💾 Cached conversation ${conversationId} (${this.recentlyOpenedConversations.size}/${this.maxPreloadedConversations} cached)`);
-  }
-
-  // Fetch and preload conversations from accumulated conversation IDs (DEPRECATED - no longer used)
-  async fetchAndPreloadAccumulatedConversations() {
-    // This method is deprecated - conversations are now processed individually on click
-    console.log("ℹ️ fetchAndPreloadAccumulatedConversations is deprecated - using per-click processing");
-    return;
-  }
-
-  // Fetch conversations by their IDs and preload all emails in background (DEPRECATED - now processes single conversation on click)
-  async fetchAndPreloadConversations(conversationIds) {
-    if (!conversationIds || conversationIds.length === 0) {
-      console.log("❌ No conversation IDs provided");
-      return;
-    }
-
-    // Process only the first conversation (the one user clicked on)
-    const clickedConversationId = conversationIds[0];
-    console.log(`📧 Processing clicked conversation: ${clickedConversationId}`);
-    await this.processClickedConversation(clickedConversationId);
-    return;
-  }
-
-  // Removed fetchConversationsOneByOne - was only used in disabled preloading code
-
-  async fetchVisibleConversations() {
-    try {
-      let conversations = [];
-      const conversationIds = new Set(); // Track unique conversation IDs
-      
-      // Try to get current conversation first
-      if (Missive.getCurrentConversation) {
-        try {
-          const currentConv = await Missive.getCurrentConversation();
-          if (currentConv && currentConv.id) {
-            conversations.push(currentConv);
-            conversationIds.add(currentConv.id);
-            console.log(`📧 Got current conversation: ${currentConv.id}`);
-          }
-        } catch (error) {
-          // console.log("❌ Failed to get current conversation:", error);
-        }
-      }
-      
-      // Always try to fetch more conversations (not just when conversations.length === 0)
-      if (Missive.fetchConversations) {
-        try {
-          console.log(`📧 Fetching up to ${this.maxPreloadedConversations} visible conversations...`);
-          // Use proper API format: { limit: number, sort: 'oldest' | 'newest' }
-          // Try fetching with limit first, fallback to array format if needed
-          let fetchedConversations = null;
-          
-          // Try object format first (correct API format)
-          if (typeof Missive.fetchConversations === 'function') {
-            try {
-              fetchedConversations = await Missive.fetchConversations({
-                limit: this.maxPreloadedConversations,
-                sort: 'oldest'
-              });
-            } catch (objError) {
-              // Fallback to array format if object format doesn't work
-              console.log(`⚠️ Object format failed (${objError.message}), trying array format...`);
-              try {
-                fetchedConversations = await Missive.fetchConversations([this.maxPreloadedConversations, 'oldest']);
-              } catch (arrayError) {
-                console.log(`⚠️ Array format also failed (${arrayError.message}), trying direct call...`);
-                // Last resort: try calling without parameters or with just limit
-                fetchedConversations = await Missive.fetchConversations(this.maxPreloadedConversations);
-              }
-            }
-          }
-          
-          if (Array.isArray(fetchedConversations)) {
-            // Add conversations that aren't already in the list
-            for (const conv of fetchedConversations) {
-              if (conv && conv.id && !conversationIds.has(conv.id)) {
-                conversations.push(conv);
-                conversationIds.add(conv.id);
-              }
-            }
-            console.log(`📧 Fetched ${fetchedConversations.length} conversations, total: ${conversations.length}`);
-          }
-        } catch (error) {
-          console.log("❌ fetchConversations failed:", error);
-        }
-      }
-      
-      // If we still don't have conversations, try a different approach
-      if (conversations.length === 0) {
-        console.log("📧 No conversations found, preloading will be triggered by events");
-        return [];
-      }
-      
-      console.log(`📧 Total conversations for preloading: ${conversations.length}`);
-      return conversations;
-    } catch (error) {
-      console.error("❌ Failed to fetch Team Inbox conversations:", error);
-      return [];
-    }
-  }
-
-  updateVisibleConversations(conversations) {
-    this.visibleConversationIds.clear();
-    
-    for (const conversation of conversations) {
-      if (conversation.id) {
-        this.visibleConversationIds.add(conversation.id);
-      }
-    }
-    
-    console.log(`📧 Updated visible conversations: ${this.visibleConversationIds.size} conversations`);
+    console.log(`💾 Cached conversation ${conversationId} (${this.recentlyOpenedConversations.size}/${this.maxRecentlyOpenedConversations} cached)`);
   }
 
   // Normalize email for consistent cache lookups (lowercase, trimmed)
@@ -2889,24 +2650,6 @@ class MissWooApp {
     if (!email || typeof email !== 'string') return null;
     return email.trim().toLowerCase();
   }
-
-  extractEmailsFromConversations(conversations) {
-    const emails = new Set();
-    
-    for (const conversation of conversations) {
-      const email = this.extractEmailFromData(conversation);
-      if (email && this.isValidEmailForSearch(email)) {
-        // Normalize email for consistent caching
-        const normalizedEmail = this.normalizeEmail(email);
-        if (normalizedEmail) {
-          emails.add(normalizedEmail);
-        }
-      }
-    }
-    
-    return Array.from(emails);
-  }
-
 
   // Load all customer details: order notes, Katana orders, and serial numbers
   async loadOrderDetails(orders) {
@@ -2943,40 +2686,19 @@ class MissWooApp {
       await this.batchGetSerialNumbers(orders);
       console.log(`✅ Loaded serial numbers for ${orders.length} orders`);
       
-      console.log(`✅ Completed preloading all details for ${orders.length} orders`);
+      console.log(`✅ Completed loading all details for ${orders.length} orders`);
     } catch (error) {
-      console.error(`❌ Error preloading order details:`, error);
-      // Don't throw - allow partial preloading to complete
+      console.error(`❌ Error loading order details:`, error);
+      // Don't throw - allow partial loading to complete
     }
   }
 
-  isPreloadedDataValid(email) {
-    // Normalize email for consistent cache lookups
-    const normalizedEmail = this.normalizeEmail(email);
-    if (!normalizedEmail) return false;
-    
-    // Check unified emailCache instead of separate preloadedConversations (use normalized email)
-    if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
-      return true;
-    }
-    
-    // Fallback to preloadedConversations for backward compatibility (use normalized email)
-    const preloadedData = this.preloadedConversations.get(normalizedEmail);
-    if (!preloadedData) return false;
-    
-    const now = Date.now();
-    const age = now - preloadedData.timestamp;
-    const maxAge = this.cacheConfig.preloadedCache;
-    
-    return age < maxAge;
-  }
-
-  // Unified cache lookup - consolidates all cache checks into single function
+  // Unified cache lookup - checks emailCache for cached orders
   // Returns cached orders array if found, null otherwise
   getCachedOrdersData(normalizedEmail) {
     if (!normalizedEmail) return null;
     
-    // Check emailCache first (primary cache)
+    // Check emailCache (primary and only cache)
     if (this.emailCache?.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
       const cached = this.emailCache.get(normalizedEmail);
       if (Array.isArray(cached) && cached.length > 0) {
@@ -2984,21 +2706,10 @@ class MissWooApp {
       }
     }
     
-    // Check preloadedConversations (fallback cache)
-    if (this.isPreloadedDataValid(normalizedEmail)) {
-      const preloaded = this.preloadedConversations.get(normalizedEmail);
-      if (preloaded?.orders && Array.isArray(preloaded.orders) && preloaded.orders.length > 0) {
-        return preloaded.orders;
-      }
-    }
-    
     return null;
   }
 
-  // Removed cleanupArchivedConversations - was just logging, does nothing
-  // Removed isEmailFromVisibleConversation - always returned true, redundant
-
-  // Enhanced preloading that uses preloaded data when available
+  // Auto-search triggered when user clicks on a conversation/email
   async performAutoSearch(email) {
     if (!email || !this.isValidEmailForSearch(email)) {
       // console.log("❌ Invalid email for search:", email);
@@ -3029,7 +2740,7 @@ class MissWooApp {
     // Always clear the display first when switching emails
     this.clearCurrentEmailData();
 
-    // OPTIMIZATION: Unified cache lookup - single function checks all cache sources
+    // OPTIMIZATION: Unified cache lookup
     console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
     const cachedOrders = this.getCachedOrdersData(normalizedEmail);
     if (cachedOrders) {
@@ -3041,32 +2752,8 @@ class MissWooApp {
       console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
     }
 
-    // IMPORTANT: Check if preloading is in progress for this email (use normalized email)
-    // If so, wait for it to complete and then check cache again
-    if (this.preloadingEmails.has(normalizedEmail)) {
-      console.log(`⏳ Preloading in progress for ${normalizedEmail}, waiting for completion...`);
-      this.setStatus(`Preloading data for ${normalizedEmail}...`);
-      
-      try {
-        // Wait for preloading to complete
-        await this.preloadingEmails.get(normalizedEmail);
-        
-        // OPTIMIZATION: Use unified cache lookup after preloading completes
-        const cachedOrdersAfterPreload = this.getCachedOrdersData(normalizedEmail);
-        if (cachedOrdersAfterPreload) {
-          console.log(`✅ Found cached data for ${normalizedEmail} after waiting for preload: ${cachedOrdersAfterPreload.length} orders`);
-          this.allOrders = cachedOrdersAfterPreload;
-          this.displayOrdersList();
-          return;
-        }
-      } catch (error) {
-        console.error(`❌ Error waiting for preloading to complete:`, error);
-        // Continue to API search if preloading failed
-      }
-    }
-
-    // Only proceed with API search if cache and preloading checks failed
-    console.log(`⚠️ No cached/preloaded data found for ${normalizedEmail}, performing API search...`);
+    // Only proceed with API search if cache check failed
+    console.log(`⚠️ No cached data found for ${normalizedEmail}, performing API search...`);
     // Set search in progress (use normalized email for tracking)
     this.searchInProgress = true;
     this.activeSearches.set(normalizedEmail, true);
@@ -3153,15 +2840,6 @@ class MissWooApp {
     console.log("✅ Current email data cleared");
   }
 
-  // Removed triggerDynamicPreloading - was empty, preloading disabled
-
-  // Initialize preloading on app start (DEPRECATED - no longer preloading)
-  // Removed initializePreloading - was just setting status, redundant
-
-  // Removed logPreloadingStatus - was only used in debug methods, removed to reduce code
-
-  // Removed triggerPreloading - was just logging that it's disabled
-
   cleanup() {
     // This method is called ONLY when user navigates away (via beforeunload event)
     // All caches are cleared at this point to free memory
@@ -3185,12 +2863,9 @@ class MissWooApp {
     this.visibleEmails.clear();
     }
     
-    // Clear preloading data
-    this.preloadedConversations.clear();
-    this.visibleConversationIds.clear();
+    // Clear conversation cache
     
     // Clear performance caches
-    this.orderCache = {};
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
     
@@ -3241,13 +2916,12 @@ class MissWooApp {
     // Cache persists during the session to ensure positive search results remain available
     // Called automatically by cleanup() on beforeunload event
     console.log('Clearing all performance caches...');
-    this.orderCache = {};
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
     this.emailCache.clear();
     this.cacheExpiry.clear();
-    this.preloadedConversations.clear();
-    console.log('Performance caches and preloaded data cleared');
+    this.recentlyOpenedConversations.clear();
+    console.log('Performance caches cleared');
   }
 
   isCacheValid(key, cacheType) {

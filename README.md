@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.05  
+**Version**: vJS5.06  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,15 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.05 (Current)
+### vJS5.06 (Current)
+- Performance: Parallelized notes + Katana fetching in loadOrderDetails()
+- Performance: Parallelized sales export data checking
+- Performance: Added loadOrderDetails() call in performAutoSearch() to fix missing data
+- Performance: Start loadOrderDetails() immediately (don't await displayOrdersList())
+- Code cleanup: Removed 326 lines of dead code (6 unused functions, 3 unused variables)
+- Code cleanup: Removed all preloading logic and comments
+
+### vJS5.05
 - Performance: Consolidated cache lookups into single unified function
 - Performance: Removed unused batching logic from disabled preloading code
 - Code cleanup: Removed 192 lines of dead code (fetchConversationsOneByOne, commented preloading code)

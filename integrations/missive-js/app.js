@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS5.05)
+// Missive JS API variant (vJS5.06)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-      // Force version badge to vJS5.05 immediately
-        this.setBadge('vJS5.05');
-    console.log('🔧 Set initial version badge to vJS5.05');
+      // Force version badge to vJS5.06 immediately
+        this.setBadge('vJS5.06');
+    console.log('🔧 Set initial version badge to vJS5.06');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -86,14 +86,14 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS5.05 once app updates header
-        setTimeout(() => this.setBadge('vJS5.05'), 300);
+        // Override version badge to vJS5.06 once app updates header
+        setTimeout(() => this.setBadge('vJS5.06'), 300);
         
         // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS5.05'), 1000);
-        setTimeout(() => this.setBadge('vJS5.05'), 2000);
-        setTimeout(() => this.setBadge('vJS5.05'), 3000);
-        setTimeout(() => this.setBadge('vJS5.05'), 5000);
+        setTimeout(() => this.setBadge('vJS5.06'), 1000);
+        setTimeout(() => this.setBadge('vJS5.06'), 2000);
+        setTimeout(() => this.setBadge('vJS5.06'), 3000);
+        setTimeout(() => this.setBadge('vJS5.06'), 5000);
         
         // Override MissWooApp's version setting by patching the method
         if (this.app && this.app.updateHeaderWithVersion) {
@@ -101,7 +101,7 @@ class MissiveJSBridge {
           this.app.updateHeaderWithVersion = () => {
             originalUpdateHeader();
             // Force our version after the app updates it
-            setTimeout(() => this.setBadge('vJS5.05'), 100);
+            setTimeout(() => this.setBadge('vJS5.06'), 100);
           };
         }
         
@@ -288,8 +288,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS5.05';
-          console.log('🧪 Forced version badge to vJS5.05');
+          el.textContent = 'vJS5.06';
+          console.log('🧪 Forced version badge to vJS5.06');
         }
         
         return {
@@ -460,7 +460,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS5.05');
+      this.setBadge('vJS5.06');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -470,7 +470,7 @@ class MissiveJSBridge {
     setTimeout(async () => {
       if (!this.isReady) {
         console.log('🔄 Missive ready event not received, trying fallback initialization...');
-        this.setBadge('vJS5.05');
+        this.setBadge('vJS5.06');
         if (this.app?.setStatus) this.app.setStatus('Ready (fallback)');
         await this.tryPrimeEmail();
       }
@@ -521,22 +521,21 @@ class MissiveJSBridge {
         return;
       }
       
-      // Handle conversation IDs array - pass all IDs to app for fetching and preloading
+      // Handle conversation IDs array - only process the clicked conversation (first ID)
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
         console.log(`📧 Received ${data.length} conversation IDs from change:conversations event`);
-        console.log(`📧 Conversation IDs: ${data.slice(0, 5).join(', ')}${data.length > 5 ? '...' : ''}`);
+        console.log(`📧 Processing clicked conversation: ${data[0]}`);
         
-        // Check if app has handleConversationChange method (it should now handle arrays)
+        // Check if app has handleConversationChange method
         if (this.app && typeof this.app.handleConversationChange === 'function') {
           try {
-            // Pass the array of conversation IDs directly to the app
-            // The app will fetch all conversations and preload all emails
-            console.log('📧 Passing conversation IDs to app for fetching and preloading...');
+            // Pass the array to the app - it will process only the clicked conversation (first ID)
+            console.log('📧 Passing conversation IDs to app for processing...');
             await this.app.handleConversationChange(data);
-            console.log('✅ App is now handling conversation preloading');
+            console.log('✅ App processed conversation');
           } catch (error) {
             console.error('❌ Error passing conversation IDs to app:', error);
-            if (this.app?.setStatus) this.app.setStatus('Error processing conversations', 'error');
+            if (this.app?.setStatus) this.app.setStatus('Error processing conversation', 'error');
           }
         } else {
           console.error('❌ App handleConversationChange method not available');
