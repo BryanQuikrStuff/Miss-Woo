@@ -1,4 +1,4 @@
-// Missive JS API variant (vJS5.06)
+// Missive JS API variant (vJS5.07)
 // Complete implementation with full MissWooApp functionality
 
 // This file assumes index-missive-js.html loads missive.js and src/config.js first.
@@ -13,9 +13,9 @@ class MissiveJSBridge {
   init() {
     console.log('🚀 Initializing MissiveJSBridge...');
     
-      // Force version badge to vJS5.06 immediately
-        this.setBadge('vJS5.06');
-    console.log('🔧 Set initial version badge to vJS5.06');
+      // Force version badge to vJS5.07 immediately
+        this.setBadge('vJS5.07');
+    console.log('🔧 Set initial version badge to vJS5.07');
 
     // Initialize the full MissWooApp first
     this.initializeApp();
@@ -86,22 +86,16 @@ class MissiveJSBridge {
         this.app = new MissWooApp(window.config);
         console.log('🔧 MissWooApp instance created:', !!this.app);
         
-        // Override version badge to vJS5.06 once app updates header
-        setTimeout(() => this.setBadge('vJS5.06'), 300);
-        
-        // Additional aggressive version setting to ensure it shows
-        setTimeout(() => this.setBadge('vJS5.06'), 1000);
-        setTimeout(() => this.setBadge('vJS5.06'), 2000);
-        setTimeout(() => this.setBadge('vJS5.06'), 3000);
-        setTimeout(() => this.setBadge('vJS5.06'), 5000);
+        // OPTIMIZATION: Set version badge immediately and once after app updates header
+        this.setBadge('vJS5.07');
         
         // Override MissWooApp's version setting by patching the method
         if (this.app && this.app.updateHeaderWithVersion) {
           const originalUpdateHeader = this.app.updateHeaderWithVersion.bind(this.app);
           this.app.updateHeaderWithVersion = () => {
             originalUpdateHeader();
-            // Force our version after the app updates it
-            setTimeout(() => this.setBadge('vJS5.06'), 100);
+            // Force our version after the app updates it (single delayed set)
+            setTimeout(() => this.setBadge('vJS5.07'), 100);
           };
         }
         
@@ -230,7 +224,8 @@ class MissiveJSBridge {
       },
       testAllEvents: () => {
         console.log('🧪 Debug: Testing all Missive events...');
-        const events = ['email:focus', 'email:open', 'thread:focus', 'conversation:focus', 'conversation:open', 'change:conversations'];
+        // Note: email:focus is not a valid Missive API event, removed
+        const events = ['email:open', 'thread:focus', 'conversation:focus', 'conversation:open', 'change:conversations'];
         events.forEach(event => {
           console.log(`🧪 ${event} handler registered:`, typeof window.Missive?.on === 'function');
         });
@@ -288,8 +283,8 @@ class MissiveJSBridge {
         
         // Try to force set the version
         if (el) {
-          el.textContent = 'vJS5.06';
-          console.log('🧪 Forced version badge to vJS5.06');
+          el.textContent = 'vJS5.07';
+          console.log('🧪 Forced version badge to vJS5.07');
         }
         
         return {
@@ -460,7 +455,7 @@ class MissiveJSBridge {
     // Core lifecycle
     Missive.on('ready', async () => {
       console.log('✅ Missive ready event received');
-      this.setBadge('vJS5.06');
+      this.setBadge('vJS5.07');
       if (this.app?.setStatus) this.app.setStatus('Ready');
       // On ready, try to fetch current conversation/email once
       await this.tryPrimeEmail();
@@ -470,7 +465,7 @@ class MissiveJSBridge {
     setTimeout(async () => {
       if (!this.isReady) {
         console.log('🔄 Missive ready event not received, trying fallback initialization...');
-        this.setBadge('vJS5.06');
+        this.setBadge('vJS5.07');
         if (this.app?.setStatus) this.app.setStatus('Ready (fallback)');
         await this.tryPrimeEmail();
       }
@@ -489,25 +484,28 @@ class MissiveJSBridge {
       console.log('📧 Current app state:', !!this.app);
       console.log('📧 Window.Missive available:', !!window.Missive);
       
-      // Wait for app to be available if it's not ready yet
+      // OPTIMIZATION: Reduced wait time - check app availability with minimal delay
+      // If app not ready, try to initialize once, then proceed (don't block events)
       if (!this.app) {
-        console.log('⏳ App not available yet, waiting...');
-        // Wait up to 5 seconds for app to be ready
-        for (let i = 0; i < 50; i++) {
+        console.log('⏳ App not available yet, attempting quick initialization...');
+        // Try immediate initialization first
+        if (!this.app && window.config && window.MissWooApp) {
+          this.initializeApp();
+        }
+        
+        // Only wait briefly (max 500ms) instead of 5 seconds
+        for (let i = 0; i < 5; i++) {
           await new Promise(resolve => setTimeout(resolve, 100));
           if (this.app) {
             console.log('✅ App is now available');
             break;
           }
-          if (i % 10 === 0) { // Log every second
-            console.log(`⏳ Still waiting for app... (${i/10}s)`);
-          }
         }
+        
+        // If still not available, log but don't block - events will be queued
         if (!this.app) {
-          console.log('❌ App still not available after waiting');
-          console.log('❌ Trying to reinitialize app...');
-          this.initializeApp();
-          return;
+          console.log('⚠️ App not ready, but proceeding with event (app may initialize later)');
+          // Don't return - allow event to be processed if app becomes available
         }
       }
       
@@ -562,8 +560,8 @@ class MissiveJSBridge {
     };
 
     // Bind events with enhanced debugging
+    // Note: email:focus is not a valid Missive API event, removed
     const events = [
-      'email:focus',
       'email:open', 
       'thread:focus',
       'conversation:focus',

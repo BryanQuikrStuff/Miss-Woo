@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.06  
+**Version**: vJS5.07  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,15 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.06 (Current)
+### vJS5.07 (Current)
+- Performance: Removed 300ms debounce from performAutoSearch() - searches start immediately
+- Performance: Removed 100ms debounce from conversation clicks - processes immediately
+- Performance: Reduced wait-for-app loop from 5s to 500ms max
+- Performance: Removed email:focus event binding (invalid API, was causing silent failures)
+- Performance: Cleaned up redundant version badge setTimeouts
+- Expected improvement: ~400ms faster per click-triggered search
+
+### vJS5.06
 - Performance: Parallelized notes + Katana fetching in loadOrderDetails()
 - Performance: Parallelized sales export data checking
 - Performance: Added loadOrderDetails() call in performAutoSearch() to fix missing data

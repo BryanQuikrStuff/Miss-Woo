@@ -281,15 +281,16 @@ class MissWooApp {
           return;
         }
         
-        // Debounce to prevent rapid-fire processing when user clicks quickly
+        // OPTIMIZATION: Process immediately for click-triggered conversations (no debounce delay)
+        // Clear any pending debounce timer
         if (this.conversationChangeDebounceTimer) {
           clearTimeout(this.conversationChangeDebounceTimer);
+          this.conversationChangeDebounceTimer = null;
         }
         
-        this.conversationChangeDebounceTimer = setTimeout(async () => {
-          this.lastConversationId = null; // Clear after processing starts
-          await this.processClickedConversation(clickedConversationId);
-        }, 100); // Short debounce (100ms) for responsive feel
+        // Process immediately - duplicate protection already handled above
+        this.lastConversationId = null; // Clear after processing starts
+        await this.processClickedConversation(clickedConversationId);
         
         return;
       }
@@ -311,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.06';
+    return 'vJS5.07';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2123,7 +2124,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.06' : 'vJS5.06 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.07' : 'vJS5.07 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2758,12 +2759,15 @@ class MissWooApp {
     this.searchInProgress = true;
     this.activeSearches.set(normalizedEmail, true);
     
-    // Debounce API calls (but not cache checks)
+    // OPTIMIZATION: Start search immediately for click-triggered searches (no debounce delay)
+    // Clear any pending debounce timer
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
     }
 
-    this.searchDebounceTimer = setTimeout(async () => {
+    // Execute search immediately (no setTimeout delay for click-triggered searches)
+    (async () => {
       try {
         // Show searching status (only when actually searching API)
         this.setStatus("Searching orders...");
@@ -2780,14 +2784,10 @@ class MissWooApp {
         }
         
         if (Array.isArray(orderResults)) {
-          // console.log(`DEBUG: performAutoSearch - Before allOrders assignment. Received orderResults.length: ${orderResults ? orderResults.length : 'null/undefined'}. Current allOrders.length: ${this.allOrders.length}`);
-          this.allOrders = orderResults; // No need to clone
-          // console.log(`DEBUG: performAutoSearch - After allOrders assignment. New allOrders.length: ${this.allOrders.length}`);
-          // console.log(`DEBUG: performAutoSearch - Calling displayOrdersList for ${email}. allOrders.length: ${this.allOrders.length}`);
+          this.allOrders = orderResults;
           this.displayOrdersList();
           // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
         } else {
-          // console.log("❌ Invalid order results:", orderResults);
           this.setStatus("No orders found");
         }
         
@@ -2804,7 +2804,7 @@ class MissWooApp {
         this.activeSearches.delete(email);
         this.lastSearchedEmail = email;
       }
-    }, 300);
+    })();
   }
 
   // Clear current email's data immediately
