@@ -146,7 +146,7 @@ class MissWooApp {
               cleanup();
               console.timeEnd('init:missive');
               resolve();
-              return;
+        return;
             }
           }
           script.addEventListener('load', onLoad);
@@ -173,7 +173,7 @@ class MissWooApp {
           }
         }, 2000); // Reduced from 3s to 2s for faster cold-start
       });
-
+      
       console.log("✅ Missive API detected");
       
       // Set up event listeners
@@ -226,10 +226,10 @@ class MissWooApp {
       
       // Create debounced handlers to avoid excessive event processing
       this.debouncedHandleConversationChange = this.debounce((data) => {
-        console.log("📧 Conversation changed:", data);
-        this.handleConversationChange(data);
+          console.log("📧 Conversation changed:", data);
+          this.handleConversationChange(data);
       }, 300);
-      
+        
       // Listen for conversation changes (only in non-Missive environments)
       if (Missive.on) {
         Missive.on('change:conversations', this.debouncedHandleConversationChange);
@@ -289,8 +289,8 @@ class MissWooApp {
         }
         
         // Process immediately - duplicate protection already handled above
-        this.lastConversationId = null; // Clear after processing starts
-        await this.processClickedConversation(clickedConversationId);
+          this.lastConversationId = null; // Clear after processing starts
+          await this.processClickedConversation(clickedConversationId);
         
         return;
       }
@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.07';
+    return 'vJS5.08';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -624,9 +624,34 @@ class MissWooApp {
       }
     }
     
+    // OPTIMIZATION: Set up timeout to prevent indefinite spinning (12 seconds)
+    // Only set timeout if we're actually going to make an API call (not using cache)
+    const SEARCH_TIMEOUT_MS = 12000;
+    let timeoutId = null;
+    
+    // Create AbortController if one doesn't exist (for timeout protection)
+    if (!this.activeSearchAbortController) {
+      this.activeSearchAbortController = new AbortController();
+    }
+    
+    timeoutId = setTimeout(() => {
+      if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
+        console.log("⏱️ Search timeout reached (12s), cancelling request");
+        this.activeSearchAbortController.abort();
+        this.allOrders = [];
+        this.hideLoading();
+      }
+    }, SEARCH_TIMEOUT_MS);
+    
     try {
       // Search WooCommerce orders only
       const orderResults = await this.searchWooCommerceOrders(email);
+      
+      // Clear timeout since search completed successfully
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       
       // OPTIMIZATION 4: Check if search was cancelled
       if (this.activeSearchAbortController?.signal.aborted) {
@@ -653,6 +678,12 @@ class MissWooApp {
         this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
       }
     } catch (error) {
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
       if (error.name === 'AbortError' || error.message === 'Search cancelled') {
         console.log("Search cancelled");
         throw error;
@@ -1394,7 +1425,7 @@ class MissWooApp {
           if (this._salesDataLoadingPromise) {
             await this._salesDataLoadingPromise;
           } else {
-            await this.loadSalesExportData();
+          await this.loadSalesExportData();
           }
         }
         
@@ -1778,7 +1809,7 @@ class MissWooApp {
         if (this._salesDataLoadingPromise) {
           await this._salesDataLoadingPromise;
         } else {
-          await this.loadSalesExportData();
+        await this.loadSalesExportData();
         }
       }
       
@@ -2124,7 +2155,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.07' : 'vJS5.07 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.08' : 'vJS5.08 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2745,10 +2776,10 @@ class MissWooApp {
     console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
     const cachedOrders = this.getCachedOrdersData(normalizedEmail);
     if (cachedOrders) {
-      console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
+        console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
       this.allOrders = cachedOrders;
-      this.displayOrdersList();
-      return;
+        this.displayOrdersList();
+        return;
     } else {
       console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
     }
@@ -2766,6 +2797,19 @@ class MissWooApp {
       this.searchDebounceTimer = null;
     }
 
+    // OPTIMIZATION: Set up timeout to prevent indefinite spinning (12 seconds)
+    const SEARCH_TIMEOUT_MS = 12000;
+    const timeoutId = setTimeout(() => {
+      if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
+        console.log("⏱️ Search timeout reached (12s), cancelling request");
+        this.activeSearchAbortController.abort();
+        this.setStatus("No orders found");
+        this.searchInProgress = false;
+        this.activeSearches.delete(normalizedEmail);
+        this.hideLoading();
+      }
+    }, SEARCH_TIMEOUT_MS);
+
     // Execute search immediately (no setTimeout delay for click-triggered searches)
     (async () => {
       try {
@@ -2776,6 +2820,9 @@ class MissWooApp {
         // but use normalized email for cache storage
         console.log(`🔍 Starting API search for: ${email} (normalized: ${normalizedEmail})`);
         const orderResults = await this.searchWooCommerceOrders(email);
+        
+        // Clear timeout since search completed successfully
+        clearTimeout(timeoutId);
         
         // OPTIMIZATION 4: Check if search was cancelled
         if (this.activeSearchAbortController?.signal.aborted) {
@@ -2792,6 +2839,9 @@ class MissWooApp {
         }
         
       } catch (error) {
+        // Clear timeout on error
+        clearTimeout(timeoutId);
+        
         // Don't log abort errors as errors
         if (error.name === 'AbortError' || error.message === 'Search cancelled') {
           console.log("Search cancelled");
@@ -2801,7 +2851,7 @@ class MissWooApp {
         this.setStatus("Search failed");
       } finally {
         this.searchInProgress = false;
-        this.activeSearches.delete(email);
+        this.activeSearches.delete(normalizedEmail);
         this.lastSearchedEmail = email;
       }
     })();

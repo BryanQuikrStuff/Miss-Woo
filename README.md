@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.07  
+**Version**: vJS5.08  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.07 (Current)
+### vJS5.08 (Current)
+- Performance: Added 12-second timeout to search operations to prevent indefinite spinning
+- UX: Search now shows "No orders found" after 12 seconds if API doesn't respond
+- Reliability: Prevents hanging searches when WooCommerce API is slow or unresponsive
+- Implementation: Timeout uses existing AbortController system for clean cancellation
+
+### vJS5.07
 - Performance: Removed 300ms debounce from performAutoSearch() - searches start immediately
 - Performance: Removed 100ms debounce from conversation clicks - processes immediately
 - Performance: Reduced wait-for-app loop from 5s to 500ms max
