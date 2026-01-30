@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.08  
+**Version**: vJS5.09  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.08 (Current)
+### vJS5.09 (Current)
+- Performance: Removed unnecessary fallback timers that were causing CPU usage even when idle
+- Resource efficiency: Integration now uses near-zero CPU when "No orders found" is displayed
+- Memory: Added proper AbortController cleanup to prevent memory leaks
+- Code quality: Eliminated redundant setTimeout calls from initialization
+
+### vJS5.08
 - Performance: Added 12-second timeout to search operations to prevent indefinite spinning
 - UX: Search now shows "No orders found" after 12 seconds if API doesn't respond
 - Reliability: Prevents hanging searches when WooCommerce API is slow or unresponsive

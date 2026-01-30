@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.08';
+    return 'vJS5.09';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -404,21 +404,8 @@ class MissWooApp {
       this.hideLoading();
     }
     
-    // Multiple fallbacks: Ensure loading is cleared after timeouts
-    setTimeout(() => {
-      console.log("Fallback 1: Clearing loading state after 1 second");
-      this.hideLoading();
-    }, 1000);
-    
-    setTimeout(() => {
-      console.log("Fallback 2: Clearing loading state after 3 seconds");
-      this.hideLoading();
-    }, 3000);
-    
-    setTimeout(() => {
-      console.log("Fallback 3: Clearing loading state after 5 seconds");
-      this.hideLoading();
-    }, 5000);
+    // OPTIMIZATION: Removed fallback timers - they were causing unnecessary CPU usage
+    // Loading state is now properly managed by search operations and displayOrdersList()
   }
 
   maybeAutoSearchFromUrl() {
@@ -638,8 +625,11 @@ class MissWooApp {
       if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
         console.log("⏱️ Search timeout reached (12s), cancelling request");
         this.activeSearchAbortController.abort();
+        // Set empty orders and display to show "No orders found"
         this.allOrders = [];
-        this.hideLoading();
+        this.displayOrdersList(); // This will set status to "No orders found" and hide loading
+        // Clean up AbortController to prevent memory leaks
+        this.activeSearchAbortController = null;
       }
     }, SEARCH_TIMEOUT_MS);
     
@@ -2155,7 +2145,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.08' : 'vJS5.08 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.09' : 'vJS5.09 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2726,14 +2716,15 @@ class MissWooApp {
   }
 
   // Unified cache lookup - checks emailCache for cached orders
-  // Returns cached orders array if found, null otherwise
+  // Returns cached orders array if found (including empty arrays), null if not cached
   getCachedOrdersData(normalizedEmail) {
     if (!normalizedEmail) return null;
     
     // Check emailCache (primary and only cache)
     if (this.emailCache?.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
       const cached = this.emailCache.get(normalizedEmail);
-      if (Array.isArray(cached) && cached.length > 0) {
+      if (Array.isArray(cached)) {
+        // Return cached array even if empty (to avoid redundant API calls)
         return cached;
       }
     }
@@ -2775,11 +2766,12 @@ class MissWooApp {
     // OPTIMIZATION: Unified cache lookup
     console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
     const cachedOrders = this.getCachedOrdersData(normalizedEmail);
-    if (cachedOrders) {
-        console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
+    if (cachedOrders !== null) {
+      // Cache hit (including empty arrays) - use cached data immediately
+      console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
       this.allOrders = cachedOrders;
-        this.displayOrdersList();
-        return;
+      this.displayOrdersList();
+      return;
     } else {
       console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
     }
@@ -2803,10 +2795,13 @@ class MissWooApp {
       if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
         console.log("⏱️ Search timeout reached (12s), cancelling request");
         this.activeSearchAbortController.abort();
-        this.setStatus("No orders found");
+        // Set empty orders and display to show "No orders found"
+        this.allOrders = [];
+        this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         this.searchInProgress = false;
         this.activeSearches.delete(normalizedEmail);
-        this.hideLoading();
+        // Clean up AbortController to prevent memory leaks
+        this.activeSearchAbortController = null;
       }
     }, SEARCH_TIMEOUT_MS);
 
