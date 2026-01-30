@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.09';
+    return 'vJS5.10';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2819,9 +2819,24 @@ class MissWooApp {
         // Clear timeout since search completed successfully
         clearTimeout(timeoutId);
         
+        // OPTIMIZATION: Cache results in background even if search was cancelled
+        // This allows faster loading if user returns to this email later
+        if (Array.isArray(orderResults)) {
+          // Cache the results even if cancelled (background caching)
+          if (this.emailCache) {
+            this.emailCache.set(normalizedEmail, orderResults);
+            this.setCacheExpiry(normalizedEmail, 'emailCache');
+            this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+            console.log(`💾 Background cached ${orderResults.length} orders for ${normalizedEmail} (search was cancelled)`);
+          }
+        }
+        
         // OPTIMIZATION 4: Check if search was cancelled
         if (this.activeSearchAbortController?.signal.aborted) {
-          console.log("Search was cancelled, ignoring results");
+          console.log("Search was cancelled, ignoring results for UI (but cached in background)");
+          // Don't update UI - search was cancelled (e.g., user clicked another email)
+          // The new search will handle the UI update
+          // Results are already cached above for future use
           return;
         }
         
@@ -2830,7 +2845,8 @@ class MissWooApp {
           this.displayOrdersList();
           // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
         } else {
-          this.setStatus("No orders found");
+          this.allOrders = [];
+          this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         }
         
       } catch (error) {
@@ -2840,10 +2856,13 @@ class MissWooApp {
         // Don't log abort errors as errors
         if (error.name === 'AbortError' || error.message === 'Search cancelled') {
           console.log("Search cancelled");
+          // Don't update UI - search was cancelled (e.g., user clicked another email)
+          // The new search will handle the UI update
           return;
         }
         console.error("❌ Search failed:", error);
         this.setStatus("Search failed");
+        this.hideLoading();
       } finally {
         this.searchInProgress = false;
         this.activeSearches.delete(normalizedEmail);

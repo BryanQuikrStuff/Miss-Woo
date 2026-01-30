@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.09  
+**Version**: vJS5.10  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.09 (Current)
+### vJS5.10 (Current)
+- Performance: Implemented background caching for cancelled searches
+- UX: Results are now cached even when user clicks away from email
+- Efficiency: Returning to previously searched emails loads instantly from cache
+- Bug fix: Fixed "No orders found" only showing when API returns empty array or times out
+- Bug fix: Fixed stuck "Searching orders..." spinner when searches are cancelled
+
+### vJS5.09
 - Performance: Removed unnecessary fallback timers that were causing CPU usage even when idle
 - Resource efficiency: Integration now uses near-zero CPU when "No orders found" is displayed
 - Memory: Added proper AbortController cleanup to prevent memory leaks
