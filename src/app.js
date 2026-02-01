@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.11';
+    return 'vJS5.12';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2144,7 +2144,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.11' : 'vJS5.11 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.12' : 'vJS5.12 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2615,6 +2615,9 @@ class MissWooApp {
           this.setCacheExpiry(normalizedEmail, 'emailCache');
           this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
         }
+        // CRITICAL: Always call displayOrdersList() to update UI, even when no orders found
+        // This ensures status changes from "Searching orders..." to "No orders found"
+        this.displayOrdersList();
       }
       
       // Mark as processed
