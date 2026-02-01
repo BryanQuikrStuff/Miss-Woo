@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.14';
+    return 'vJS5.15';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -972,6 +972,11 @@ class MissWooApp {
       }
       
       if (this.allOrders.length === 0) {
+        // CRITICAL: Clear results container to prevent showing stale data
+        const resultsContainer = document.getElementById("results");
+        if (resultsContainer) {
+          resultsContainer.innerHTML = "";
+        }
         this.hideLoading();
         // console.log("DEBUG: displayOrdersList - No orders in allOrders, setting 'No orders found'.");
         this.setStatus("No orders found");
@@ -2144,7 +2149,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.14' : 'vJS5.14 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.15' : 'vJS5.15 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2530,6 +2535,10 @@ class MissWooApp {
     const cached = this.recentlyOpenedConversations.get(conversationId);
     if (cached && cached.processed) {
       console.log(`✅ Conversation ${conversationId} already processed`);
+      // CRITICAL: Clear old data before showing cached data
+      // This prevents stale data from showing when clicking quickly
+      this.allOrders = [];
+      this.clearCurrentEmailData();
       if (cached.email && this.isValidEmailForSearch(cached.email)) {
         this.performAutoSearch(cached.email);
       }
@@ -2539,6 +2548,11 @@ class MissWooApp {
     try {
       // OPTIMIZATION: Mark as processing to prevent duplicate handling
       this.processingConversationId = conversationId;
+      
+      // CRITICAL: Clear old data immediately when starting new conversation
+      // This prevents stale data from showing when clicking quickly
+      this.allOrders = [];
+      this.clearCurrentEmailData();
       
       console.log(`📧 Processing clicked conversation: ${conversationId}`);
       

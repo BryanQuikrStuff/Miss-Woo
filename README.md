@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.14  
+**Version**: vJS5.15  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.14 (Current)
+### vJS5.15 (Current)
+- Bug fix: Fixed race condition where incorrect data shows up when clicking through emails quickly
+- Bug fix: Fixed issue where previous order data remained visible when "No orders found" is displayed
+- UX: Clear old data immediately when starting new conversation to prevent stale data display
+
+### vJS5.14
 - Performance: Removed background loading of order details when conversation is closed
 - Code cleanup: Removed dead code from background preloading (getPerformanceStats, logPerformanceStats)
 - Optimization: Background loading now stops immediately when user navigates away from conversation
