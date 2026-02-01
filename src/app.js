@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.13';
+    return 'vJS5.14';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -574,7 +574,8 @@ class MissWooApp {
       
       // Then load additional details in background (non-blocking)
       // This allows the UI to be responsive while data loads
-      this.loadOrderDetails(detailsForOrders).then(() => {
+      // OPTIMIZATION: Pass email to check if conversation is still active
+      this.loadOrderDetails(detailsForOrders, detailsForEmail).then(() => {
         // CRITICAL: Only update UI if this email is still the current one
         // Prevents race condition where user clicks another email while details are loading
         if (detailsForEmail) {
@@ -592,6 +593,11 @@ class MissWooApp {
         // Instead of re-rendering entire list, just update the cells that changed
         this.updateOrderDetailsUI(detailsForOrders);
       }).catch(error => {
+        // Don't log errors if conversation was closed (expected behavior)
+        if (error.message === 'Conversation closed') {
+          console.log(`⚠️ Background loading stopped - conversation closed for ${detailsForEmail || 'order'}`);
+          return;
+        }
         console.error(`❌ Error loading additional details:`, error);
       });
         } catch (error) {
@@ -1080,8 +1086,6 @@ class MissWooApp {
         trackingCell.textContent = "Loading...";
       }
     }
-    
-    // Removed startBackgroundProcessing - was unused
     } finally {
       this._displayInProgress = false;
       // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
@@ -1121,27 +1125,6 @@ class MissWooApp {
         trackingCell.textContent = "N/A";
       }
     }
-  }
-
-  // Removed startBackgroundProcessing - was unused
-
-
-  // Silent version of searchOrdersByEmail that doesn't set status messages
-  getPerformanceStats() {
-    return {
-      cacheHits: {
-        katana: this.katanaOrderCache ? this.katanaOrderCache.size : 0,
-        serials: this.serialNumberCache ? this.serialNumberCache.size : 0,
-        emails: this.emailCache ? this.emailCache.size : 0
-      },
-      pendingRequests: this.pendingRequests.size,
-      cacheExpiryEntries: this.cacheExpiry.size
-    };
-  }
-
-  logPerformanceStats() {
-    const stats = this.getPerformanceStats();
-    console.log('📊 Performance Stats:', stats);
   }
 
   createCustomerInfoSection() {
@@ -2161,7 +2144,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.13' : 'vJS5.13 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.14' : 'vJS5.14 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2610,7 +2593,8 @@ class MissWooApp {
         
         // Then load additional details in background (non-blocking)
         // This allows the UI to be responsive while data loads
-        this.loadOrderDetails(detailsForOrders).then(() => {
+        // OPTIMIZATION: Pass email to check if conversation is still active
+        this.loadOrderDetails(detailsForOrders, detailsForEmail).then(() => {
           // CRITICAL: Only update UI if this email is still the current one
           // Prevents race condition where user clicks another email while details are loading
           const currentNormalizedEmail = this.normalizeEmail(this.lastSearchedEmail);
@@ -2632,6 +2616,11 @@ class MissWooApp {
           // Instead of re-rendering entire list, just update the cells that changed
           this.updateOrderDetailsUI(detailsForOrders);
         }).catch(error => {
+          // Don't log errors if conversation was closed (expected behavior)
+          if (error.message === 'Conversation closed') {
+            console.log(`⚠️ Background loading stopped - conversation closed for ${detailsForEmail}`);
+            return;
+          }
           console.error(`❌ Error loading additional details:`, error);
           // Still cache basic orders even if details fail
           if (this.emailCache) {
@@ -2708,10 +2697,22 @@ class MissWooApp {
   }
 
   // Load all customer details: order notes, Katana orders, and serial numbers
-  async loadOrderDetails(orders) {
+  // If expectedEmail is provided, will stop loading if conversation is closed
+  async loadOrderDetails(orders, expectedEmail = null) {
     if (!orders || orders.length === 0) {
       return;
     }
+
+    // Helper function to check if conversation is still active
+    const isConversationActive = () => {
+      if (!expectedEmail) return true; // No email check, continue loading
+      // If lastSearchedEmail is null/empty, conversation was closed
+      if (!this.lastSearchedEmail) {
+        return false;
+      }
+      const currentEmail = this.normalizeEmail(this.lastSearchedEmail);
+      return currentEmail === expectedEmail;
+    };
 
     try {
       console.log(`📦 Loading details for ${orders.length} orders...`);
@@ -2719,6 +2720,11 @@ class MissWooApp {
       // Step 1: Fetch order notes in parallel for all orders
       const notesPromises = orders.map(async (order) => {
         try {
+          // Check if conversation is still active before each request
+          if (!isConversationActive()) {
+            throw new Error('Conversation closed');
+          }
+          
           // Only fetch if notes are not already present
           if (!order.notes || order.notes.length === 0) {
             const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
@@ -2726,6 +2732,9 @@ class MissWooApp {
             console.log(`✅ Loaded ${order.notes?.length || 0} notes for order #${order.number}`);
           }
         } catch (error) {
+          if (error.message === 'Conversation closed') {
+            throw error; // Re-throw to stop processing
+          }
           console.error(`❌ Failed to load notes for order ${order.id}:`, error);
           order.notes = [];
         }
@@ -2733,19 +2742,39 @@ class MissWooApp {
       
       await Promise.all(notesPromises);
       
+      // Check if conversation is still active after notes
+      if (!isConversationActive()) {
+        throw new Error('Conversation closed');
+      }
+      
       // Step 2: Batch fetch Katana orders for all WooCommerce orders
       const wooOrderNumbers = orders.map(o => o.number);
       await this.batchGetKatanaOrders(wooOrderNumbers);
+      
+      // Check if conversation is still active after Katana
+      if (!isConversationActive()) {
+        throw new Error('Conversation closed');
+      }
+      
       console.log(`✅ Loaded Katana orders for ${orders.length} WooCommerce orders`);
       
       // Step 3: Batch fetch serial numbers for all orders
       await this.batchGetSerialNumbers(orders);
-      console.log(`✅ Loaded serial numbers for ${orders.length} orders`);
       
+      // Check if conversation is still active after serial numbers
+      if (!isConversationActive()) {
+        throw new Error('Conversation closed');
+      }
+      
+      console.log(`✅ Loaded serial numbers for ${orders.length} orders`);
       console.log(`✅ Completed loading all details for ${orders.length} orders`);
     } catch (error) {
+      // Re-throw if conversation was closed (expected behavior)
+      if (error.message === 'Conversation closed') {
+        throw error;
+      }
       console.error(`❌ Error loading order details:`, error);
-      // Don't throw - allow partial loading to complete
+      // Don't throw - allow partial loading to complete for other errors
     }
   }
 

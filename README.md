@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.13  
+**Version**: vJS5.14  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.13 (Current)
+### vJS5.14 (Current)
+- Performance: Removed background loading of order details when conversation is closed
+- Code cleanup: Removed dead code from background preloading (getPerformanceStats, logPerformanceStats)
+- Optimization: Background loading now stops immediately when user navigates away from conversation
+
+### vJS5.13
 - Bug fix: Fixed stuck "Searching orders..." spinner when API returns empty array
 - Fix: processClickedConversation() now calls displayOrdersList() when no orders found
 - UX: Status now properly updates to "No orders found" instead of spinning indefinitely
