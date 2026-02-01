@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.10  
+**Version**: vJS5.11  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.10 (Current)
+### vJS5.11 (Current)
+- Debug: Added comprehensive logging to diagnose "Searching orders..." spinner issue
+- Debug: Added logs to track API search flow and displayOrdersList() calls
+- Fix: Improved handling of empty order arrays from WooCommerce API
+- Debug: Added visibility into when "No orders found" status is set
+
+### vJS5.10
 - Performance: Implemented background caching for cancelled searches
 - UX: Results are now cached even when user clicks away from email
 - Efficiency: Returning to previously searched emails loads instantly from cache

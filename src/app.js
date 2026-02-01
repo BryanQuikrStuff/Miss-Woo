@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.10';
+    return 'vJS5.11';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -830,9 +830,8 @@ class MissWooApp {
       }
     }
     
-    this.allOrders = orders;
-    
     // Cache the results with expiration (unified caching)
+    // Note: Don't set this.allOrders here - it will be set by the caller after displayOrdersList is called
     if (this.emailCache) {
       this.emailCache.set(email, orders);
       this.setCacheExpiry(email, 'emailCache');
@@ -2768,10 +2767,10 @@ class MissWooApp {
     const cachedOrders = this.getCachedOrdersData(normalizedEmail);
     if (cachedOrders !== null) {
       // Cache hit (including empty arrays) - use cached data immediately
-      console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
+        console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
       this.allOrders = cachedOrders;
-      this.displayOrdersList();
-      return;
+        this.displayOrdersList();
+        return;
     } else {
       console.log(`⚠️ Cache miss: Email ${normalizedEmail} not in cache or expired`);
     }
@@ -2842,9 +2841,11 @@ class MissWooApp {
         
         if (Array.isArray(orderResults)) {
           this.allOrders = orderResults;
+          console.log(`📊 API search completed: ${orderResults.length} orders found`);
           this.displayOrdersList();
           // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
         } else {
+          console.log(`⚠️ API search returned non-array result:`, orderResults);
           this.allOrders = [];
           this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         }
