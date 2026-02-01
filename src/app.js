@@ -312,7 +312,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.12';
+    return 'vJS5.13';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -568,12 +568,29 @@ class MissWooApp {
       // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
       await this.displayOrdersList();
       
+      // Store the email this loadOrderDetails call is for (to prevent race conditions)
+      const detailsForEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+      const detailsForOrders = [...this.allOrders]; // Clone orders array
+      
       // Then load additional details in background (non-blocking)
       // This allows the UI to be responsive while data loads
-      this.loadOrderDetails(this.allOrders).then(() => {
+      this.loadOrderDetails(detailsForOrders).then(() => {
+        // CRITICAL: Only update UI if this email is still the current one
+        // Prevents race condition where user clicks another email while details are loading
+        if (detailsForEmail) {
+          const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+          if (currentNormalizedEmail !== detailsForEmail) {
+            console.log(`⚠️ Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
+            return;
+          }
+        }
+        
+        // Update allOrders with enhanced data
+        this.allOrders = detailsForOrders;
+        
         // Update UI with enhanced data (tracking numbers, serial numbers, etc.)
         // Instead of re-rendering entire list, just update the cells that changed
-        this.updateOrderDetailsUI(this.allOrders);
+        this.updateOrderDetailsUI(detailsForOrders);
       }).catch(error => {
         console.error(`❌ Error loading additional details:`, error);
       });
@@ -2144,7 +2161,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.12' : 'vJS5.12 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.13' : 'vJS5.13 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2587,18 +2604,33 @@ class MissWooApp {
         // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
         this.displayOrdersList();
         
+        // Store the email this loadOrderDetails call is for (to prevent race conditions)
+        const detailsForEmail = normalizedEmail;
+        const detailsForOrders = [...this.allOrders]; // Clone orders array
+        
         // Then load additional details in background (non-blocking)
         // This allows the UI to be responsive while data loads
-        this.loadOrderDetails(this.allOrders).then(() => {
+        this.loadOrderDetails(detailsForOrders).then(() => {
+          // CRITICAL: Only update UI if this email is still the current one
+          // Prevents race condition where user clicks another email while details are loading
+          const currentNormalizedEmail = this.normalizeEmail(this.lastSearchedEmail);
+          if (currentNormalizedEmail !== detailsForEmail) {
+            console.log(`⚠️ Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
+            return;
+          }
+          
+          // Update allOrders with enhanced data
+          this.allOrders = detailsForOrders;
+          
           // Update cache with enhanced orders (includes notes, Katana data, serial numbers)
           if (this.emailCache) {
-            this.emailCache.set(normalizedEmail, [...this.allOrders]);
+            this.emailCache.set(normalizedEmail, [...detailsForOrders]);
             this.setCacheExpiry(normalizedEmail, 'emailCache');
             this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
           }
           // Update UI with enhanced data (tracking numbers, serial numbers, etc.)
           // Instead of re-rendering entire list, just update the cells that changed
-          this.updateOrderDetailsUI(this.allOrders);
+          this.updateOrderDetailsUI(detailsForOrders);
         }).catch(error => {
           console.error(`❌ Error loading additional details:`, error);
           // Still cache basic orders even if details fail

@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.12  
+**Version**: vJS5.13  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,7 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.12 (Current)
+### vJS5.13 (Current)
 - Bug fix: Fixed stuck "Searching orders..." spinner when API returns empty array
 - Fix: processClickedConversation() now calls displayOrdersList() when no orders found
 - UX: Status now properly updates to "No orders found" instead of spinning indefinitely
