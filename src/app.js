@@ -313,7 +313,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.16';
+    return 'vJS5.17';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2180,7 +2180,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.16' : 'vJS5.16 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.17' : 'vJS5.17 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2977,6 +2977,50 @@ class MissWooApp {
           this.activeDisplayEmail = normalizedEmail;
           this.displayOrdersList();
           // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
+          
+          // CRITICAL: Load additional details (notes, Katana orders, serial numbers) in background
+          // This matches the behavior in processClickedConversation() to ensure serial numbers and tracking load
+          if (this.allOrders.length > 0) {
+            const detailsForEmail = normalizedEmail;
+            const detailsForOrders = [...this.allOrders]; // Clone orders array
+            
+            // Load additional details in background (non-blocking)
+            this.loadOrderDetails(detailsForOrders, detailsForEmail).then(() => {
+              // CRITICAL: Only update UI if this email is still the current one
+              // Prevents race condition where user clicks another email while details are loading
+              const currentNormalizedEmail = this.normalizeEmail(this.lastSearchedEmail);
+              if (currentNormalizedEmail !== detailsForEmail || this.activeDisplayEmail !== detailsForEmail) {
+                console.log(`⚠️ Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
+                return;
+              }
+              
+              // Update allOrders with enhanced data
+              this.allOrders = detailsForOrders;
+              
+              // Update cache with enhanced orders (includes notes, Katana data, serial numbers)
+              if (this.emailCache) {
+                this.emailCache.set(normalizedEmail, [...detailsForOrders]);
+                this.setCacheExpiry(normalizedEmail, 'emailCache');
+                this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+              }
+              // Update UI with enhanced data (tracking numbers, serial numbers, etc.)
+              // Instead of re-rendering entire list, just update the cells that changed
+              this.updateOrderDetailsUI(detailsForOrders);
+            }).catch(error => {
+              // Don't log errors if conversation was closed (expected behavior)
+              if (error.message === 'Conversation closed') {
+                console.log(`⚠️ Background loading stopped - conversation closed for ${detailsForEmail}`);
+                return;
+              }
+              console.error(`❌ Error loading additional details:`, error);
+              // Still cache basic orders even if details fail
+              if (this.emailCache) {
+                this.emailCache.set(normalizedEmail, [...this.allOrders]);
+                this.setCacheExpiry(normalizedEmail, 'emailCache');
+                this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+              }
+            });
+          }
         } else {
           console.log(`⚠️ API search returned non-array result:`, orderResults);
           this.allOrders = [];

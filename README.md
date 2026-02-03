@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.16  
+**Version**: vJS5.17  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,11 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.16 (Current)
+### vJS5.17 (Current)
+- Bug fix: Fixed serial numbers and tracking info not loading when using cached conversation data with expired email cache
+- Bug fix: Added loadOrderDetails() call in performAutoSearch() to ensure background loading of order details
+
+### vJS5.16
 - Bug fix: Improved race condition handling by setting lastSearchedEmail early and improving display checks
 - Bug fix: Prevent duplicate processing when clicking the same email multiple times
 - Bug fix: Fixed _displayInProgress flag not being reset on early return
