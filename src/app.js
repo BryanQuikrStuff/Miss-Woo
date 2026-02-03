@@ -83,6 +83,7 @@ class MissWooApp {
       // Search state management
       this.allOrders = [];
       this.lastSearchedEmail = null;
+      this.activeDisplayEmail = null; // Track which email's data is currently displayed (prevents race conditions)
       this.searchDebounceTimer = null;
       this.searchInProgress = false; // Prevent multiple searches from running simultaneously
       this.activeSearches = new Map(); // Track active searches by email
@@ -312,7 +313,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.15';
+    return 'vJS5.16';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -565,6 +566,10 @@ class MissWooApp {
 
       this.allOrders = [order];
       
+      // Set active display email before displaying
+      const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+      this.activeDisplayEmail = currentNormalizedEmail;
+      
       // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
       await this.displayOrdersList();
       
@@ -580,7 +585,7 @@ class MissWooApp {
         // Prevents race condition where user clicks another email while details are loading
         if (detailsForEmail) {
           const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
-          if (currentNormalizedEmail !== detailsForEmail) {
+          if (currentNormalizedEmail !== detailsForEmail || this.activeDisplayEmail !== detailsForEmail) {
             console.log(`⚠️ Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
             return;
           }
@@ -650,6 +655,8 @@ class MissWooApp {
         this.activeSearchAbortController.abort();
         // Set empty orders and display to show "No orders found"
         this.allOrders = [];
+        // Set active display email before displaying
+        this.activeDisplayEmail = normalizedEmail;
         this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         // Clean up AbortController to prevent memory leaks
         this.activeSearchAbortController = null;
@@ -966,6 +973,17 @@ class MissWooApp {
     // console.log(`DEBUG: displayOrdersList called. _displayInProgress: ${this._displayInProgress}, allOrders.length: ${this.allOrders.length}`);
     
     try {
+      // CRITICAL: Check if this data is still relevant to the current active email
+      // This prevents race conditions where old search results overwrite new ones
+      const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+      // Only skip if we have an active display email set AND it doesn't match the current email
+      // If activeDisplayEmail is null, that means we're starting fresh, so allow the display
+      if (this.activeDisplayEmail !== null && currentNormalizedEmail !== null && this.activeDisplayEmail !== currentNormalizedEmail) {
+        console.log(`⚠️ Skipping display - email changed from ${this.activeDisplayEmail} to ${currentNormalizedEmail}`);
+        this._displayInProgress = false; // Reset flag before returning
+        return;
+      }
+      
       // Ensure allOrders is always an array
       if (!Array.isArray(this.allOrders)) {
         this.allOrders = [];
@@ -980,12 +998,17 @@ class MissWooApp {
         this.hideLoading();
         // console.log("DEBUG: displayOrdersList - No orders in allOrders, setting 'No orders found'.");
         this.setStatus("No orders found");
+        // Update active display email even for empty results
+        this.activeDisplayEmail = currentNormalizedEmail;
         return;
       }
   
       // Set correct status when orders are found
       this.setStatus(`Found ${this.allOrders.length} order(s)`);
       // console.log(`DEBUG: displayOrdersList - Setting status to 'Found ${this.allOrders.length} order(s)'.`);
+      
+      // Update active display email to match current search
+      this.activeDisplayEmail = currentNormalizedEmail;
 
     const resultsContainer = document.getElementById("results");
     if (!resultsContainer) {
@@ -1100,6 +1123,14 @@ class MissWooApp {
   // Update order details UI after loadOrderDetails completes (avoids re-rendering entire list)
   updateOrderDetailsUI(orders) {
     if (!orders || orders.length === 0) return;
+    
+    // CRITICAL: Check if this update is still relevant to the current active email
+    // This prevents race conditions where background loading completes after user navigated away
+    const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+    if (this.activeDisplayEmail !== null && this.activeDisplayEmail !== currentNormalizedEmail) {
+      console.log(`⚠️ Skipping updateOrderDetailsUI - email changed from ${this.activeDisplayEmail} to ${currentNormalizedEmail}`);
+      return;
+    }
     
     for (const order of orders) {
       // Update serial number
@@ -2149,7 +2180,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.15' : 'vJS5.15 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.16' : 'vJS5.16 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2531,28 +2562,30 @@ class MissWooApp {
       return;
     }
 
-    // Check if already processed and cached
-    const cached = this.recentlyOpenedConversations.get(conversationId);
-    if (cached && cached.processed) {
-      console.log(`✅ Conversation ${conversationId} already processed`);
-      // CRITICAL: Clear old data before showing cached data
-      // This prevents stale data from showing when clicking quickly
-      this.allOrders = [];
-      this.clearCurrentEmailData();
-      if (cached.email && this.isValidEmailForSearch(cached.email)) {
-        this.performAutoSearch(cached.email);
+      // Check if already processed and cached
+      const cached = this.recentlyOpenedConversations.get(conversationId);
+      if (cached && cached.processed) {
+        console.log(`✅ Conversation ${conversationId} already processed`);
+        // CRITICAL: Clear old data before showing cached data
+        // This prevents stale data from showing when clicking quickly
+        this.allOrders = [];
+        this.clearCurrentEmailData();
+        this.activeDisplayEmail = null; // Clear active display email to prevent race conditions
+        if (cached.email && this.isValidEmailForSearch(cached.email)) {
+          this.performAutoSearch(cached.email);
+        }
+        return;
       }
-      return;
-    }
 
-    try {
-      // OPTIMIZATION: Mark as processing to prevent duplicate handling
-      this.processingConversationId = conversationId;
-      
-      // CRITICAL: Clear old data immediately when starting new conversation
-      // This prevents stale data from showing when clicking quickly
-      this.allOrders = [];
-      this.clearCurrentEmailData();
+      try {
+        // OPTIMIZATION: Mark as processing to prevent duplicate handling
+        this.processingConversationId = conversationId;
+        
+        // CRITICAL: Clear old data immediately when starting new conversation
+        // This prevents stale data from showing when clicking quickly
+        this.allOrders = [];
+        this.clearCurrentEmailData();
+        this.activeDisplayEmail = null; // Clear active display email to prevent race conditions
       
       console.log(`📧 Processing clicked conversation: ${conversationId}`);
       
@@ -2598,6 +2631,8 @@ class MissWooApp {
       // OPTIMIZATION: Display basic order info immediately if orders found
       // This gives user instant feedback while we load additional details in background
       if (this.allOrders.length > 0) {
+        // Set active display email before displaying
+        this.activeDisplayEmail = normalizedEmail;
         // Display orders immediately with basic info (shows "Loading..." for serial/tracking)
         this.displayOrdersList();
         
@@ -2612,7 +2647,7 @@ class MissWooApp {
           // CRITICAL: Only update UI if this email is still the current one
           // Prevents race condition where user clicks another email while details are loading
           const currentNormalizedEmail = this.normalizeEmail(this.lastSearchedEmail);
-          if (currentNormalizedEmail !== detailsForEmail) {
+          if (currentNormalizedEmail !== detailsForEmail || this.activeDisplayEmail !== detailsForEmail) {
             console.log(`⚠️ Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
             return;
           }
@@ -2650,6 +2685,8 @@ class MissWooApp {
           this.setCacheExpiry(normalizedEmail, 'emailCache');
           this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
         }
+        // Set active display email before displaying
+        this.activeDisplayEmail = normalizedEmail;
         // CRITICAL: Always call displayOrdersList() to update UI, even when no orders found
         // This ensures status changes from "Searching orders..." to "No orders found"
         this.displayOrdersList();
@@ -2823,6 +2860,13 @@ class MissWooApp {
       return;
     }
 
+    // CRITICAL: Check if we're already displaying this email to prevent duplicate processing
+    // This prevents race conditions when clicking through emails quickly
+    if (this.activeDisplayEmail === normalizedEmail && this.allOrders.length > 0) {
+      console.log(`⏳ Already displaying data for ${normalizedEmail}, skipping duplicate search`);
+      return;
+    }
+
     // OPTIMIZATION 4: Cancel any previous search requests
     if (this.activeSearchAbortController) {
       console.log("Cancelling previous search requests");
@@ -2839,6 +2883,11 @@ class MissWooApp {
 
     // Always clear the display first when switching emails
     this.clearCurrentEmailData();
+    // Clear active display email to prevent race conditions
+    this.activeDisplayEmail = null;
+    
+    // CRITICAL: Set lastSearchedEmail early to ensure displayOrdersList() can verify the correct email
+    this.lastSearchedEmail = email;
 
     // OPTIMIZATION: Unified cache lookup
     console.log(`🔍 Checking cache for email: ${normalizedEmail} (original: ${email})`);
@@ -2847,6 +2896,8 @@ class MissWooApp {
       // Cache hit (including empty arrays) - use cached data immediately
         console.log(`✅ Found cached data for ${normalizedEmail}: ${cachedOrders.length} orders`);
       this.allOrders = cachedOrders;
+      // Set active display email before displaying
+      this.activeDisplayEmail = normalizedEmail;
         this.displayOrdersList();
         return;
     } else {
@@ -2874,6 +2925,8 @@ class MissWooApp {
         this.activeSearchAbortController.abort();
         // Set empty orders and display to show "No orders found"
         this.allOrders = [];
+        // Set active display email before displaying
+        this.activeDisplayEmail = normalizedEmail;
         this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         this.searchInProgress = false;
         this.activeSearches.delete(normalizedEmail);
@@ -2920,11 +2973,15 @@ class MissWooApp {
         if (Array.isArray(orderResults)) {
           this.allOrders = orderResults;
           console.log(`📊 API search completed: ${orderResults.length} orders found`);
+          // Set active display email before displaying
+          this.activeDisplayEmail = normalizedEmail;
           this.displayOrdersList();
           // Status is already set by displayOrdersList (handles both found and not found cases), no need to set again
         } else {
           console.log(`⚠️ API search returned non-array result:`, orderResults);
           this.allOrders = [];
+          // Set active display email before displaying
+          this.activeDisplayEmail = normalizedEmail;
           this.displayOrdersList(); // This will set status to "No orders found" and hide loading
         }
         

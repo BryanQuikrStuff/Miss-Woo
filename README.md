@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.15  
+**Version**: vJS5.16  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.15 (Current)
+### vJS5.16 (Current)
+- Bug fix: Improved race condition handling by setting lastSearchedEmail early and improving display checks
+- Bug fix: Prevent duplicate processing when clicking the same email multiple times
+- Bug fix: Fixed _displayInProgress flag not being reset on early return
+- Performance: Added check to skip duplicate searches when already displaying the same email
+
+### vJS5.15
 - Bug fix: Fixed race condition where incorrect data shows up when clicking through emails quickly
 - Bug fix: Fixed issue where previous order data remained visible when "No orders found" is displayed
 - UX: Clear old data immediately when starting new conversation to prevent stale data display
