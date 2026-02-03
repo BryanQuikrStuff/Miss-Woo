@@ -77,7 +77,9 @@ class MissWooApp {
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
         emailCache: 2 * 60 * 1000, // 2 minutes
-        maxCacheSize: 100 // Maximum number of entries in emailCache
+        maxCacheSize: 100, // Maximum number of entries in emailCache
+        maxKatanaCacheSize: 200, // Maximum number of entries in katanaOrderCache
+        maxSerialCacheSize: 200 // Maximum number of entries in serialNumberCache
       };
       
       // Search state management
@@ -313,7 +315,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.17';
+    return 'vJS5.18';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -1470,6 +1472,7 @@ class MissWooApp {
             console.log(`📝 Formatted result: "${result}"`);
             this.serialNumberCache.set(order.number, result);
             this.setCacheExpiry(order.number, 'serialCache');
+            this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
             return result;
           } else {
             console.log(`⚠️ Sales data found but no serial numbers (array length: ${salesData.serialNumbers?.length || 0})`);
@@ -1484,6 +1487,8 @@ class MissWooApp {
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
         this.serialNumberCache.set(order.number, "N/A");
+        this.setCacheExpiry(order.number, 'serialCache');
+        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
         return "N/A";
       }
 
@@ -1497,15 +1502,20 @@ class MissWooApp {
         const result = serialNumbers.join(', ');
         this.serialNumberCache.set(order.number, result);
         this.setCacheExpiry(order.number, 'serialCache');
+        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
         return result;
       } else {
         console.log(`No serial numbers found for order #${order.number}`);
         this.serialNumberCache.set(order.number, "N/A");
+        this.setCacheExpiry(order.number, 'serialCache');
+        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
         return "N/A";
       }
         } catch (error) {
       console.error('Error getting serial number:', error);
       this.serialNumberCache.set(order.number, "N/A");
+      this.setCacheExpiry(order.number, 'serialCache');
+      this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
       return "N/A";
     }
   }
@@ -1656,15 +1666,20 @@ class MissWooApp {
           console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
           this.katanaOrderCache.set(wooOrderNumber, fullOrder);
           this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+          this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
           return fullOrder;
         } else {
           console.log(`Could not get full order details, returning basic order`);
           this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
+          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+          this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
           return katanaOrder;
         }
       } else {
         console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
         this.katanaOrderCache.set(wooOrderNumber, null);
+        this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+        this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
         return null;
       }
     } catch (error) {
@@ -1674,6 +1689,8 @@ class MissWooApp {
       }
       console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
       this.katanaOrderCache.set(wooOrderNumber, null);
+      this.setCacheExpiry(wooOrderNumber, 'katanaCache');
+      this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
       return null;
         } finally {
           // Clean up in-flight request tracking
@@ -1862,6 +1879,7 @@ class MissWooApp {
           // Cache the result
           this.serialNumberCache.set(order.number, result);
           this.setCacheExpiry(order.number, 'serialCache');
+          this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
           cachedResults.set(order.number, result);
         } else {
           // No sales export data found, fall through to Katana API
@@ -1911,6 +1929,7 @@ class MissWooApp {
         // Cache the result
         this.serialNumberCache.set(order.number, result);
         this.setCacheExpiry(order.number, 'serialCache');
+        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
         cachedResults.set(order.number, result);
       }
       
@@ -2180,7 +2199,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.17' : 'vJS5.17 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.18' : 'vJS5.18 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

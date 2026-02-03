@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.17  
+**Version**: vJS5.18  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.17 (Current)
+### vJS5.18 (Current)
+- Performance: Added size limits to Katana and serial number caches (200 entries each) to prevent unbounded memory growth
+- Performance: Added LRU eviction for Katana and serial caches when size limits are reached
+- Memory: Improved memory management with size-based cache limits in addition to time-based expiration
+
+### vJS5.17
 - Bug fix: Fixed serial numbers and tracking info not loading when using cached conversation data with expired email cache
 - Bug fix: Added loadOrderDetails() call in performAutoSearch() to ensure background loading of order details
 
