@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.18  
+**Version**: vJS5.19  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,14 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.18 (Current)
+### vJS5.19 (Current)
+- Cleanup: Trimmed `integrations/missive-js/app.js` to the documented Missive JS API surface (~631 → ~167 lines)
+- Cleanup: Removed listeners that never fire (`ready`, `error`, `email:open`, `thread:focus`, `conversation:focus`, `conversation:open`) — only `change:conversations` is used, matching the public API
+- Cleanup: Removed undocumented method calls (`getCurrentConversation`, `getCurrentUser`, `getUsers`, `getTeams`, `getChannels`) and the `MissWooDebug` probes that referenced them
+- Reliability: Replaced the 25×200ms poll + 2s fallback init dance with a single script `onload` listener and a 100ms poll capped at 2s
+- Behavior preserved: `change:conversations` → `app.handleConversationChange` is unchanged
+
+### vJS5.18
 - Performance: Added size limits to Katana and serial number caches (200 entries each) to prevent unbounded memory growth
 - Performance: Added LRU eviction for Katana and serial caches when size limits are reached
 - Memory: Improved memory management with size-based cache limits in addition to time-based expiration
