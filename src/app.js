@@ -2258,6 +2258,26 @@ class MissWooApp {
       }
     }
 
+    if (data.cc_fields && Array.isArray(data.cc_fields)) {
+      console.log("✅ Found cc_fields array:", data.cc_fields);
+      for (const recipient of data.cc_fields) {
+        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
+          console.log("✅ Found valid email in cc_fields:", recipient.address);
+          return recipient.address;
+        }
+      }
+    }
+
+    if (data.bcc_fields && Array.isArray(data.bcc_fields)) {
+      console.log("✅ Found bcc_fields array:", data.bcc_fields);
+      for (const recipient of data.bcc_fields) {
+        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
+          console.log("✅ Found valid email in bcc_fields:", recipient.address);
+          return recipient.address;
+        }
+      }
+    }
+
     // Contact-centric shapes
     if (data.contact) {
       const c = data.contact;
@@ -2310,26 +2330,30 @@ class MissWooApp {
       }
     }
 
-    // Messages shape (conversation.messages or data.message)
-    if (Array.isArray(data.messages)) {
-      for (const msg of data.messages) {
-        const from = msg.from?.email || msg.from?.handle || msg.from?.address;
-        if (from && this.isValidEmailForSearch(from)) return from;
-        const toList = msg.to || [];
-        for (const t of toList) {
-          const addr = t.email || t.handle || t.address;
+    // Messages shape (conversation.messages or data.message). Checks the
+    // four documented header roles (FROM / TO / CC / BCC) on each message.
+    const pickFromMsg = (msg) => {
+      const from = msg.from?.email || msg.from?.handle || msg.from?.address;
+      if (from && this.isValidEmailForSearch(from)) return from;
+      const lists = [msg.to, msg.cc, msg.bcc];
+      for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const entry of list) {
+          const addr = entry?.email || entry?.handle || entry?.address;
           if (addr && this.isValidEmailForSearch(addr)) return addr;
         }
       }
+      return null;
+    };
+    if (Array.isArray(data.messages)) {
+      for (const msg of data.messages) {
+        const found = pickFromMsg(msg);
+        if (found) return found;
+      }
     }
     if (data.message) {
-      const from = data.message.from?.email || data.message.from?.handle || data.message.from?.address;
-      if (from && this.isValidEmailForSearch(from)) return from;
-      const toList = data.message.to || [];
-      for (const t of toList) {
-        const addr = t.email || t.handle || t.address;
-        if (addr && this.isValidEmailForSearch(addr)) return addr;
-      }
+      const found = pickFromMsg(data.message);
+      if (found) return found;
     }
     
     // Try to extract from text content (email body)
@@ -2384,7 +2408,9 @@ class MissWooApp {
       }
     }
     
-    // Check messages array for Missive message structure and body content
+    // Check messages array for Missive message structure and body content.
+    // The documented Conversation.messages[] shape mirrors latest_message:
+    // { from_field, to_fields, cc_fields, bcc_fields, reply_to_fields }.
     if (Array.isArray(data.messages)) {
       for (const msg of data.messages) {
         // Check Missive-specific message structure first
@@ -2394,17 +2420,21 @@ class MissWooApp {
             return msg.from_field.address;
           }
         }
-        
-        if (msg.to_fields && Array.isArray(msg.to_fields)) {
-          console.log("✅ Found message.to_fields array:", msg.to_fields);
-          for (const recipient of msg.to_fields) {
+
+        // TO / CC / BCC fields - all share the same Array<AddressField> shape.
+        const recipientFieldNames = ['to_fields', 'cc_fields', 'bcc_fields'];
+        for (const fieldName of recipientFieldNames) {
+          const field = msg[fieldName];
+          if (!Array.isArray(field)) continue;
+          console.log(`✅ Found message.${fieldName} array:`, field);
+          for (const recipient of field) {
             if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
-              console.log("✅ Found valid email in message.to_fields:", recipient.address);
+              console.log(`✅ Found valid email in message.${fieldName}:`, recipient.address);
               return recipient.address;
             }
           }
         }
-        
+
         // Check message body content
         if (msg.text) {
           const email = this.extractEmailFromString(msg.text);
@@ -2494,29 +2524,44 @@ class MissWooApp {
     return match ? match.address : null;
   }
 
+  /**
+   * Pick the first valid (non-internal) customer email from a participants
+   * array, preferring TO recipients, then FROM, then any other role.
+   *
+   * Important: iterates through ALL participants matching each predicate
+   * before falling through to the next. The previous version used
+   * `.find()` which only checked the first matching participant per role
+   * — meaning a 2nd or 3rd `to` participant whose email was valid for
+   * search but whose role-mate happened to be invalid would never be
+   * tried. That regression is fixed here.
+   */
   extractEmailFromParticipants(participants) {
-    if (!Array.isArray(participants)) return null;
-    // Prefer external recipients/senders over internal
-    const preferredOrder = [
-      (p) => p.role === 'to',
-      (p) => p.role === 'from',
-      () => true,
-    ];
-    for (const predicate of preferredOrder) {
-      const candidate = participants.find(predicate);
-      if (!candidate) continue;
-      const emailLike = candidate.email || candidate.handle || candidate.address || candidate?.contact?.email;
-      if (emailLike && this.isValidEmailForSearch(emailLike)) return emailLike;
-      if (Array.isArray(candidate?.contact?.emails)) {
-        const e = candidate.contact.emails.find((x) => this.isValidEmailForSearch(typeof x === 'string' ? x : x?.email));
-        if (typeof e === 'string' && this.isValidEmailForSearch(e)) return e;
-        if (e?.email && this.isValidEmailForSearch(e.email)) return e.email;
+    if (!Array.isArray(participants) || participants.length === 0) return null;
+
+    const pickFromParticipant = (p) => {
+      const direct = p?.email || p?.handle || p?.address || p?.contact?.email;
+      if (direct && this.isValidEmailForSearch(direct)) return direct;
+
+      if (Array.isArray(p?.contact?.emails)) {
+        for (const entry of p.contact.emails) {
+          const candidate = typeof entry === 'string' ? entry : entry?.email;
+          if (candidate && this.isValidEmailForSearch(candidate)) return candidate;
+        }
       }
-    }
-    // Try all participants
-    for (const p of participants) {
-      const emailLike = p.email || p.handle || p.address || p?.contact?.email;
-      if (emailLike && this.isValidEmailForSearch(emailLike)) return emailLike;
+      return null;
+    };
+
+    const tiers = [
+      participants.filter((p) => p?.role === 'to'),
+      participants.filter((p) => p?.role === 'from'),
+      participants.filter((p) => p?.role !== 'to' && p?.role !== 'from'),
+    ];
+
+    for (const tier of tiers) {
+      for (const p of tier) {
+        const found = pickFromParticipant(p);
+        if (found) return found;
+      }
     }
     return null;
   }
