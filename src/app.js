@@ -1996,7 +1996,17 @@ class MissWooApp {
    */
   getTrackingInfo(order) {
     if (!order) return null;
-    if (order._cachedTrackingInfo !== undefined) {
+    // Positive-only cache. We deliberately do NOT short-circuit on a
+    // previously-cached *null* result, because the order's notes are
+    // fetched async after the initial render: the first call to this
+    // function (from displayOrdersList) runs before notes have loaded
+    // and would cache null forever, so updateOrderDetailsUI's later
+    // call after the notes arrive would never get to scan them.
+    // Caching only truthy results means the worst case is re-running
+    // a cheap regex pass on each render — vs. the previous behavior
+    // of every order rendering "Not Shipped Yet" because of the
+    // poisoned cache.
+    if (order._cachedTrackingInfo) {
       return order._cachedTrackingInfo;
     }
 
@@ -2039,19 +2049,18 @@ class MissWooApp {
       // notes to scan. Surfaces a small content sample so a future
       // failure mode (notes formatted in a way the matcher misses)
       // can be diagnosed from a single user-shared console log without
-      // needing a code change to instrument it. Costs ~1 console line
-      // per orderless-tracking and zero on the happy path.
+      // needing a code change to instrument it.
       if (noteCount > 0) {
         const firstNoteText = String(order.notes[0]?.note || '').trim();
         const sample = firstNoteText.slice(0, 200).replace(/\s+/g, ' ');
         console.log(`ℹ️ No tracking match for #${orderRef} (notes=${noteCount}, meta=${metaCount}); first note sample: "${sample}${firstNoteText.length > 200 ? '…' : ''}"`);
       }
 
-      order._cachedTrackingInfo = null;
+      // Intentionally not caching the null result — see top-of-function
+      // comment.
       return null;
     } catch (error) {
       console.error('Error getting tracking info:', error);
-      order._cachedTrackingInfo = null;
       return null;
     }
   }
