@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.19  
+**Version**: vJS5.20  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,15 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.19 (Current)
+### vJS5.20 (Current)
+- Bug fix: Customer emails appearing only in CC or BCC fields now resolve correctly. The fallback parser previously checked only FROM and TO at both data and message-array levels; both now also check `cc_fields`/`bcc_fields` (long shape) and `msg.cc`/`msg.bcc` (short shape).
+- Bug fix: Fixed a regression in `extractEmailFromParticipants` where `participants.find((p) => p.role === 'to')` returned only the first match; if that participant's email failed the customer filter, the second-or-later TO participant was never checked. Rewritten to filter() each role into a tier and iterate the entire tier before falling through.
+- Feature: New `getCustomerEmailFromAPI()` uses the documented `Missive.getEmailAddresses(conversations)` (synchronous, returns `Array<AddressField>`) as the primary email-resolution path. The API already flattens FROM/TO/CC/BCC/reply_to across every message in the given conversations, so the first non-internal address is the customer. The shape-guessing parser is kept as a fallback for cached/offline payloads and older Missive clients.
+- Refactor: Extracted the seven email-extraction helpers from `MissWooApp` into a standalone UMD module at `src/email-extract.js`. The class methods are now thin delegators (~424 lines moved out of `app.js`). Same byte-equivalent logic, but unit-testable directly under jest in node.
+- Tests: New `__tests__/email-extract.test.js` with ~30 cases pinning behavior for all seven helpers, including dedicated regression tests for the CC-only, BCC-only, and multi-TO participant cases.
+- Logging: One log per `processClickedConversation` resolution naming the source (`getEmailAddresses` vs `extractEmailFromData`) so future triage can immediately tell which path produced the result.
+
+### vJS5.19
 - Cleanup: Trimmed `integrations/missive-js/app.js` to the documented Missive JS API surface (~631 → ~167 lines)
 - Cleanup: Removed listeners that never fire (`ready`, `error`, `email:open`, `thread:focus`, `conversation:focus`, `conversation:open`) — only `change:conversations` is used, matching the public API
 - Cleanup: Removed undocumented method calls (`getCurrentConversation`, `getCurrentUser`, `getUsers`, `getTeams`, `getChannels`) and the `MissWooDebug` probes that referenced them
