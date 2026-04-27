@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.20  
+**Version**: vJS5.21  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,17 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.20 (Current)
+### vJS5.21 (Current)
+- Bug fix: Tracking links no longer surface for orders that haven't shipped. `getTrackingInfo()` now gates strictly on `order.status === 'completed'` (per the operational convention "orders move to completed only after they ship") and returns null for any other status. Pending, processing, on-hold, cancelled, refunded, and failed orders are now guaranteed to skip extraction even when their notes contain tracking-shaped digits.
+- Bug fix: 10-digit numbers (customer phones, Unix timestamps, plugin numerics) no longer get classified as DHL tracking. `extractTrackingFromText()` dropped the stage-2 patterns that weren't shape-unique (`\b\d{10}\b -> DHL`, `\b\d{8,22}\b -> ''`, `\b\d{12}\b`/`\b\d{15}\b -> FedEx`). Carrier-shape-only fallbacks now keep just USPS `9[234]…{17–22}`, UPS `1Z…{16}`, and UPS `T\d{10}`. DHL Express AWBs (10 digits with no shape constraint) are now matched only when the carrier name "DHL" appears explicitly in the text.
+- Bug fix: `getCarrierTrackingUrl()` no longer auto-classifies any 10-digit input as DHL or defaults unknown providers to USPS. Returns null for unknown providers; callers treat that as "no tracking".
+- Bug fix: meta_data scan tightened. Was previously running the regex across every meta value (billing phones, payment intents, Stripe IDs). Now restricted to entries whose KEY contains "track" (case-insensitive), which covers WC Shipment Tracking / AfterShip / Ship Station style plugins without scanning unrelated values.
+- Feature: New "Not Shipped Yet" UI state. The order list's tracking column previously showed "Loading..." (initial render) or "N/A" (post-fetch) when tracking didn't resolve. Both are now replaced with an explicit "Not Shipped Yet" label. Non-completed orders skip the wait entirely and render the terminal state on first paint instead of sitting at "Loading..." for a fetch that will never produce tracking.
+- Refactor: Tracking-cell rendering is now centralized in a single `renderTrackingCell(cell, order, notesFetched)` helper. Both `displayOrdersList()` and `updateOrderDetailsUI()` delegate to it. Eliminates the copy-drift that produced the "Loading..." / "N/A" inconsistency in the first place.
+- Security: Carrier links now include `rel="noopener noreferrer"` (target="_blank" without it lets the carrier page navigate the original tab via window.opener).
+- Follow-up identified (not addressed in this release): `src/tracking.js` is dead code. Its functionality is duplicated and superseded inline in `src/app.js`, and its CommonJS Node-only imports prevent it from running in the browser bundle. Deferred to a later hygiene pass.
+
+### vJS5.20
 - Bug fix: Customer emails appearing only in CC or BCC fields now resolve correctly. The fallback parser previously checked only FROM and TO at both data and message-array levels; both now also check `cc_fields`/`bcc_fields` (long shape) and `msg.cc`/`msg.bcc` (short shape).
 - Bug fix: Fixed a regression in `extractEmailFromParticipants` where `participants.find((p) => p.role === 'to')` returned only the first match; if that participant's email failed the customer filter, the second-or-later TO participant was never checked. Rewritten to filter() each role into a tier and iterate the entire tier before falling through.
 - Feature: New `getCustomerEmailFromAPI()` uses the documented `Missive.getEmailAddresses(conversations)` (synchronous, returns `Array<AddressField>`) as the primary email-resolution path. The API already flattens FROM/TO/CC/BCC/reply_to across every message in the given conversations, so the first non-internal address is the customer. The shape-guessing parser is kept as a fallback for cached/offline payloads and older Missive clients.
