@@ -2213,447 +2213,62 @@ class MissWooApp {
 
   // Legacy Missive event handlers removed - now handled by JS API integration
 
+  // -------- Email-extraction delegators --------
+  // Thin wrappers that preserve the existing `this.foo(...)` call sites
+  // throughout MissWooApp while routing all logic to the pure helpers in
+  // `src/email-extract.js`. That module is loaded as a separate <script>
+  // tag BEFORE app.js in every entry-point HTML file, and it's also
+  // require()-able from jest in node — see `src/__tests__/email-extract.test.js`.
+  //
+  // Per the project rule "Fail loudly: throw errors when assumptions are
+  // violated", these throw a clear error if EmailExtract didn't load
+  // rather than silently no-oping. That makes a missing/404'd asset
+  // immediately visible in production triage.
+
+  _emailExtract() {
+    if (typeof window === 'undefined' || !window.EmailExtract) {
+      throw new Error(
+        'EmailExtract helpers not loaded. ' +
+        'Verify <script src="src/email-extract.js"> is loaded BEFORE src/app.js in the entry-point HTML.'
+      );
+    }
+    return window.EmailExtract;
+  }
+
   extractEmailFromData(data) {
-    console.log("🔍 Extracting email from data:", data);
-    console.log("🔍 Data type:", typeof data);
-    console.log("🔍 Data keys:", data ? Object.keys(data) : 'null/undefined');
-    
-    if (!data) {
-      console.log("❌ No data provided");
-      return null;
-    }
+    return this._emailExtract().extractEmailFromData(data);
+  }
 
-    // Handle arrays - if we receive an array of IDs, we can't extract email directly
-    if (Array.isArray(data)) {
-      console.log("🔍 Received array of data, cannot extract email directly from array");
-      console.log("🔍 Array contents:", data);
-      return null;
-    }
+  extractEmailFromParticipants(participants) {
+    return this._emailExtract().extractEmailFromParticipants(participants);
+  }
 
-    // console.log("🔍 Data keys:", Object.keys(data || {}));
-    if (data && typeof data === 'object') {
-      // console.log("🔍 Data structure:", JSON.stringify(data, null, 2));
-    }
-    
-    if (!data) {
-      // console.log("❌ No data provided");
-      return null;
-    }
+  isValidEmailForSearch(email) {
+    return this._emailExtract().isValidEmailForSearch(email);
+  }
 
-    // Missive-specific message structure (from documentation)
-    if (data.from_field && data.from_field.address) {
-      console.log("✅ Found email in data.from_field.address:", data.from_field.address);
-      if (this.isValidEmailForSearch(data.from_field.address)) {
-        return data.from_field.address;
-      }
-    }
-    
-    if (data.to_fields && Array.isArray(data.to_fields)) {
-      console.log("✅ Found to_fields array:", data.to_fields);
-      for (const recipient of data.to_fields) {
-        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
-          console.log("✅ Found valid email in to_fields:", recipient.address);
-          return recipient.address;
-        }
-      }
-    }
+  searchForEmailsRecursively(obj, path, maxDepth, currentDepth) {
+    return this._emailExtract().searchForEmailsRecursively(obj, path, maxDepth, currentDepth);
+  }
 
-    if (data.cc_fields && Array.isArray(data.cc_fields)) {
-      console.log("✅ Found cc_fields array:", data.cc_fields);
-      for (const recipient of data.cc_fields) {
-        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
-          console.log("✅ Found valid email in cc_fields:", recipient.address);
-          return recipient.address;
-        }
-      }
-    }
+  extractAllEmailsFromString(text) {
+    return this._emailExtract().extractAllEmailsFromString(text);
+  }
 
-    if (data.bcc_fields && Array.isArray(data.bcc_fields)) {
-      console.log("✅ Found bcc_fields array:", data.bcc_fields);
-      for (const recipient of data.bcc_fields) {
-        if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
-          console.log("✅ Found valid email in bcc_fields:", recipient.address);
-          return recipient.address;
-        }
-      }
-    }
-
-    // Contact-centric shapes
-    if (data.contact) {
-      const c = data.contact;
-      if (Array.isArray(c.emails) && c.emails.length > 0) {
-        const e = c.emails.find((x) => typeof x === 'string' ? this.isValidEmailForSearch(x) : this.isValidEmailForSearch(x?.email));
-        if (typeof e === 'string') return e;
-        if (e && e.email) return e.email;
-      }
-      if (c.email && this.isValidEmailForSearch(c.email)) return c.email;
-    }
-
-    // Try different data structures
-    if (data.email) {
-      console.log("✅ Found email in data.email:", data.email);
-      if (this.isValidEmailForSearch(data.email)) {
-        return data.email;
-      } else {
-        console.log("❌ Email in data.email is not valid for search:", data.email);
-      }
-    }
-    
-    if (data.recipient && (data.recipient.email || data.recipient.handle || data.recipient.address)) {
-      console.log("✅ Found email in data.recipient.email:", data.recipient.email);
-      const candidate = data.recipient.email || data.recipient.handle || data.recipient.address;
-      if (this.isValidEmailForSearch(candidate)) return candidate;
-    }
-    
-    if (data.thread && data.thread.participants) {
-      const emailFromParticipants = this.extractEmailFromParticipants(data.thread.participants);
-      if (emailFromParticipants) return emailFromParticipants;
-    }
-    
-    if (data.participants) {
-      const emailFromParticipants = this.extractEmailFromParticipants(data.participants);
-      if (emailFromParticipants) return emailFromParticipants;
-    }
-    
-    // Check email_addresses array (Missive conversation format)
-    if (Array.isArray(data.email_addresses) && data.email_addresses.length > 0) {
-      console.log("✅ Found email_addresses array:", data.email_addresses);
-      // Filter out @quikrstuff.com emails and get the first external email
-      const externalEmail = data.email_addresses.find(emailObj => {
-        const address = emailObj.address || emailObj.email;
-        return address && this.isValidEmailForSearch(address);
-      });
-      if (externalEmail) {
-        const email = externalEmail.address || externalEmail.email;
-        console.log("✅ Found external email in email_addresses:", email);
-        return email;
-      }
-    }
-
-    // Messages shape (conversation.messages or data.message). Checks the
-    // four documented header roles (FROM / TO / CC / BCC) on each message.
-    const pickFromMsg = (msg) => {
-      const from = msg.from?.email || msg.from?.handle || msg.from?.address;
-      if (from && this.isValidEmailForSearch(from)) return from;
-      const lists = [msg.to, msg.cc, msg.bcc];
-      for (const list of lists) {
-        if (!Array.isArray(list)) continue;
-        for (const entry of list) {
-          const addr = entry?.email || entry?.handle || entry?.address;
-          if (addr && this.isValidEmailForSearch(addr)) return addr;
-        }
-      }
-      return null;
-    };
-    if (Array.isArray(data.messages)) {
-      for (const msg of data.messages) {
-        const found = pickFromMsg(msg);
-        if (found) return found;
-      }
-    }
-    if (data.message) {
-      const found = pickFromMsg(data.message);
-      if (found) return found;
-    }
-    
-    // Try to extract from text content (email body)
-    if (data.text) {
-      const email = this.extractEmailFromString(data.text);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Found email in data.text (body):", email);
-        return email;
-      }
-    }
-    
-    if (data.content) {
-      const email = this.extractEmailFromString(data.content);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Found email in data.content (body):", email);
-        return email;
-      }
-    }
-    
-    if (data.body) {
-      const email = this.extractEmailFromString(data.body);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Found email in data.body:", email);
-        return email;
-      }
-    }
-    
-    if (data.html) {
-      const email = this.extractEmailFromString(data.html);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Found email in data.html:", email);
-        return email;
-      }
-    }
-    
-    if (data.subject) {
-      const email = this.extractEmailFromString(data.subject);
-      if (email && this.isValidEmailForSearch(email)) {
-        console.log("✅ Found email in data.subject:", email);
-        return email;
-      }
-    }
-    
-    // Try to extract from any string properties (including message content)
-    for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'string' && value.includes('@')) {
-        const email = this.extractEmailFromString(value);
-        if (email && this.isValidEmailForSearch(email)) {
-          console.log(`✅ Found email in data.${key}:`, email);
-          return email;
-        }
-      }
-    }
-    
-    // Check messages array for Missive message structure and body content.
-    // The documented Conversation.messages[] shape mirrors latest_message:
-    // { from_field, to_fields, cc_fields, bcc_fields, reply_to_fields }.
-    if (Array.isArray(data.messages)) {
-      for (const msg of data.messages) {
-        // Check Missive-specific message structure first
-        if (msg.from_field && msg.from_field.address) {
-          console.log("✅ Found email in message.from_field.address:", msg.from_field.address);
-          if (this.isValidEmailForSearch(msg.from_field.address)) {
-            return msg.from_field.address;
-          }
-        }
-
-        // TO / CC / BCC fields - all share the same Array<AddressField> shape.
-        const recipientFieldNames = ['to_fields', 'cc_fields', 'bcc_fields'];
-        for (const fieldName of recipientFieldNames) {
-          const field = msg[fieldName];
-          if (!Array.isArray(field)) continue;
-          console.log(`✅ Found message.${fieldName} array:`, field);
-          for (const recipient of field) {
-            if (recipient.address && this.isValidEmailForSearch(recipient.address)) {
-              console.log(`✅ Found valid email in message.${fieldName}:`, recipient.address);
-              return recipient.address;
-            }
-          }
-        }
-
-        // Check message body content
-        if (msg.text) {
-          const email = this.extractEmailFromString(msg.text);
-          if (email && this.isValidEmailForSearch(email)) {
-            console.log("✅ Found email in message.text:", email);
-            return email;
-          }
-        }
-        if (msg.content) {
-          const email = this.extractEmailFromString(msg.content);
-          if (email && this.isValidEmailForSearch(email)) {
-            console.log("✅ Found email in message.content:", email);
-            return email;
-          }
-        }
-        if (msg.body) {
-          const email = this.extractEmailFromString(msg.body);
-          if (email && this.isValidEmailForSearch(email)) {
-            console.log("✅ Found email in message.body:", email);
-            return email;
-          }
-        }
-        if (msg.html) {
-          const email = this.extractEmailFromString(msg.html);
-          if (email && this.isValidEmailForSearch(email)) {
-            console.log("✅ Found email in message.html:", email);
-            return email;
-          }
-        }
-      }
-    }
-
-    // Enhanced final fallback: search through ALL properties recursively for email patterns
-    console.log("🔍 Enhanced final fallback: searching ALL properties recursively for emails...");
-    const foundEmails = this.searchForEmailsRecursively(data, 'data');
-    
-    if (foundEmails.length > 0) {
-      console.log("🔍 Found emails in data:", foundEmails);
-      // Return the first valid email
-      for (const email of foundEmails) {
-        if (this.isValidEmailForSearch(email)) {
-          console.log(`✅ Found valid email:`, email);
-          return email;
-        }
-      }
-      console.log("❌ Found emails but none are valid for search:", foundEmails);
-    }
-    
-    console.log("❌ No email found in data structure");
-    return null;
+  extractEmailFromString(text) {
+    return this._emailExtract().extractEmailFromString(text);
   }
 
   /**
-   * Resolve the customer's email via the documented Missive JS API.
-   *
-   * `Missive.getEmailAddresses(conversations)` is synchronous, takes an
-   * array of Conversation objects, and returns Array<AddressField> where
-   * AddressField is `{ address: string, name?: string }`. The API already
-   * flattens FROM / TO / CC / BCC / reply_to across every message in the
-   * given conversations, so we don't have to detect roles ourselves.
-   *
-   * We pick the first address that passes `isValidEmailForSearch` — i.e.
-   * the first non-internal (non-@quikrstuff.com), well-formed address.
-   *
-   * Returns null when the API isn't available, the input is empty, or
-   * no address passes the customer filter. Callers should fall back to
-   * `extractEmailFromData` for cached or offline payloads.
+   * Primary customer-email resolver - uses the documented Missive JS API.
+   * See `src/email-extract.js` for the full contract; the host app
+   * provides `window.Missive` to the pure helper.
    *
    * @see https://missiveapp.com/docs/developers/ui-iframe-integrations/javascript-api#method-getEmailAddresses
    */
   getCustomerEmailFromAPI(conversations) {
-    if (!Array.isArray(conversations) || conversations.length === 0) return null;
-    if (typeof window === 'undefined' || !window.Missive) return null;
-    if (typeof window.Missive.getEmailAddresses !== 'function') return null;
-
-    let addresses;
-    try {
-      addresses = window.Missive.getEmailAddresses(conversations);
-    } catch (err) {
-      console.error('[email-extract] Missive.getEmailAddresses threw:', err);
-      return null;
-    }
-
-    if (!Array.isArray(addresses) || addresses.length === 0) return null;
-
-    const match = addresses.find((a) => a && this.isValidEmailForSearch(a.address));
-    return match ? match.address : null;
-  }
-
-  /**
-   * Pick the first valid (non-internal) customer email from a participants
-   * array, preferring TO recipients, then FROM, then any other role.
-   *
-   * Important: iterates through ALL participants matching each predicate
-   * before falling through to the next. The previous version used
-   * `.find()` which only checked the first matching participant per role
-   * — meaning a 2nd or 3rd `to` participant whose email was valid for
-   * search but whose role-mate happened to be invalid would never be
-   * tried. That regression is fixed here.
-   */
-  extractEmailFromParticipants(participants) {
-    if (!Array.isArray(participants) || participants.length === 0) return null;
-
-    const pickFromParticipant = (p) => {
-      const direct = p?.email || p?.handle || p?.address || p?.contact?.email;
-      if (direct && this.isValidEmailForSearch(direct)) return direct;
-
-      if (Array.isArray(p?.contact?.emails)) {
-        for (const entry of p.contact.emails) {
-          const candidate = typeof entry === 'string' ? entry : entry?.email;
-          if (candidate && this.isValidEmailForSearch(candidate)) return candidate;
-        }
-      }
-      return null;
-    };
-
-    const tiers = [
-      participants.filter((p) => p?.role === 'to'),
-      participants.filter((p) => p?.role === 'from'),
-      participants.filter((p) => p?.role !== 'to' && p?.role !== 'from'),
-    ];
-
-    for (const tier of tiers) {
-      for (const p of tier) {
-        const found = pickFromParticipant(p);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  isValidEmailForSearch(email) {
-    if (!email || typeof email !== 'string') {
-      return false;
-    }
-    
-    // Filter out @quikrstuff.com emails
-    if (email.toLowerCase().includes('@quikrstuff.com')) {
-      return false;
-    }
-    
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  searchForEmailsRecursively(obj, path = 'root', maxDepth = 5, currentDepth = 0) {
-    const emails = [];
-    
-    if (currentDepth >= maxDepth) {
-      console.log(`🔍 Max depth reached at ${path}`);
-      return emails;
-    }
-    
-    if (!obj || typeof obj !== 'object') {
-      return emails;
-    }
-    
-    try {
-      for (const [key, value] of Object.entries(obj)) {
-        const currentPath = `${path}.${key}`;
-        
-        if (typeof value === 'string') {
-          // Check if string contains @ symbol
-          if (value.includes('@')) {
-            console.log(`🔍 Found string with @ in ${currentPath}:`, value);
-            const extractedEmails = this.extractAllEmailsFromString(value);
-            emails.push(...extractedEmails);
-            console.log(`🔍 Extracted emails from ${currentPath}:`, extractedEmails);
-          }
-        } else if (Array.isArray(value)) {
-          // Recursively search array items
-          for (let i = 0; i < value.length; i++) {
-            const arrayEmails = this.searchForEmailsRecursively(value[i], `${currentPath}[${i}]`, maxDepth, currentDepth + 1);
-            emails.push(...arrayEmails);
-          }
-        } else if (value && typeof value === 'object') {
-          // Recursively search object properties
-          const objectEmails = this.searchForEmailsRecursively(value, currentPath, maxDepth, currentDepth + 1);
-          emails.push(...objectEmails);
-        }
-      }
-    } catch (error) {
-      console.log(`🔍 Error searching ${path}:`, error.message);
-    }
-    
-    return emails;
-  }
-
-  extractAllEmailsFromString(text) {
-    if (!text) return [];
-    
-    // More comprehensive email regex that handles various formats
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
-    const matches = text.match(emailRegex);
-    
-    if (!matches || matches.length === 0) return [];
-    
-    // Return all found emails
-    return matches;
-  }
-
-  extractEmailFromString(text) {
-    if (!text) return null;
-    
-    // More comprehensive email regex that handles various formats
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
-    const matches = text.match(emailRegex);
-    
-    if (!matches || matches.length === 0) return null;
-    
-    // Return the first valid email (filter out @quikrstuff.com)
-    for (const match of matches) {
-      if (this.isValidEmailForSearch(match)) {
-        return match;
-      }
-    }
-    
-    return null;
+    var missive = (typeof window !== 'undefined') ? window.Missive : null;
+    return this._emailExtract().getCustomerEmailFromAPI(conversations, missive);
   }
 
   // Process a single clicked conversation - fetch and cache data
