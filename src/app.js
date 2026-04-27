@@ -2001,12 +2001,16 @@ class MissWooApp {
     }
 
     try {
+      const orderRef = order.number ?? order.id ?? '?';
+      const noteCount = Array.isArray(order.notes) ? order.notes.length : 0;
+      const metaCount = Array.isArray(order.meta_data) ? order.meta_data.length : 0;
+
       if (Array.isArray(order.notes)) {
         for (const note of order.notes) {
           const noteContent = note?.note || '';
           const trackingMatch = this.extractTrackingFromText(noteContent);
           if (trackingMatch) {
-            console.log(`Found tracking number: ${trackingMatch.number} (${trackingMatch.provider})`);
+            console.log(`✅ Tracking #${orderRef}: ${trackingMatch.number} (${trackingMatch.provider}) [from note]`);
             order._cachedTrackingInfo = trackingMatch;
             return trackingMatch;
           }
@@ -2014,18 +2018,33 @@ class MissWooApp {
       }
 
       // Restrict meta scan to keys that look tracking-related. Prevents
-      // 10-digit billing-phone meta values from being matched as tracking.
+      // 10-digit billing-phone meta values from being matched as tracking
+      // — this is the actual fix for the original "DHL link on unshipped
+      // order" bug, since unshipped orders have no notes but DO have
+      // meta_data with billing phones / payment intents.
       if (Array.isArray(order.meta_data)) {
         for (const meta of order.meta_data) {
           if (!meta?.key || !meta?.value) continue;
           if (!/track/i.test(meta.key)) continue;
           const trackingMatch = this.extractTrackingFromText(String(meta.value));
           if (trackingMatch) {
-            console.log(`Found tracking number in meta '${meta.key}': ${trackingMatch.number} (${trackingMatch.provider})`);
+            console.log(`✅ Tracking #${orderRef}: ${trackingMatch.number} (${trackingMatch.provider}) [from meta '${meta.key}']`);
             order._cachedTrackingInfo = trackingMatch;
             return trackingMatch;
           }
         }
+      }
+
+      // Diagnostic logging when extraction fails on an order that has
+      // notes to scan. Surfaces a small content sample so a future
+      // failure mode (notes formatted in a way the matcher misses)
+      // can be diagnosed from a single user-shared console log without
+      // needing a code change to instrument it. Costs ~1 console line
+      // per orderless-tracking and zero on the happy path.
+      if (noteCount > 0) {
+        const firstNoteText = String(order.notes[0]?.note || '').trim();
+        const sample = firstNoteText.slice(0, 200).replace(/\s+/g, ' ');
+        console.log(`ℹ️ No tracking match for #${orderRef} (notes=${noteCount}, meta=${metaCount}); first note sample: "${sample}${firstNoteText.length > 200 ? '…' : ''}"`);
       }
 
       order._cachedTrackingInfo = null;
@@ -2040,22 +2059,31 @@ class MissWooApp {
   /**
    * Extract a tracking number + carrier from free-text content.
    *
-   * Two-stage matcher:
+   * Three-stage matcher (highest precision first):
    *
-   *   Stage 1 (preferred): a carrier name appears alongside a digit run,
-   *   e.g. "DHL 1234567890" or "USPS: 9400 1234 5678 9012 3456 78".
+   *   Stage 1: a carrier name appears alongside a digit run.
+   *   e.g. "DHL 1234567890", "USPS: 9400 1234 5678 9012 3456 78".
+   *   When this matches, the carrier is unambiguous.
    *
-   *   Stage 2 (carrier-shape-only): a digit run that *uniquely* identifies
-   *   a carrier by shape — USPS `9[234]…{17–22}`, UPS `1Z…{16}`, UPS
-   *   `T\d{10}`. These shapes don't collide with phone numbers, order IDs,
-   *   or Unix timestamps.
+   *   Stage 2: a digit run that *uniquely* identifies a carrier by
+   *   shape — USPS `9[234]…{17–22}`, UPS `1Z…{16}`, UPS `T\d{10}`.
+   *   These shapes don't collide with phone numbers or generic IDs.
    *
-   * Intentionally NOT in stage 2: bare `\d{10}`, `\d{12}`, `\d{15}`,
-   * `\d{8,22}`. The previous version classified any 10-digit number as
-   * DHL — which mis-tagged customer phone numbers, payment-intent
-   * numerics, and 10-digit Unix epochs as DHL tracking. DHL Express AWBs
-   * are 10 digits but indistinguishable from a US phone, so we only
-   * accept DHL when the carrier name is explicitly present in stage 1.
+   *   Stage 3: digit runs of carrier-typical length (FedEx `\d{12}`,
+   *   FedEx `\d{15}`, DHL `\d{10}`). These DO overlap with non-tracking
+   *   numbers (a 10-digit US phone is indistinguishable from a DHL
+   *   Express AWB), but in practice WooCommerce order *notes* are
+   *   free-text written by fulfillment systems and don't typically
+   *   contain customer phone numbers — those live in `meta_data`. We
+   *   keep stage 3 because QuikrStuff's tracking notes are commonly
+   *   bare 10-digit DHL AWBs without the "DHL" prefix.
+   *
+   * The original false-positive bug (an unshipped order rendering a
+   * "DHL" link from a 10-digit billing phone) is *not* fixed here in
+   * the regex; it's fixed at the call site in getTrackingInfo() by
+   * restricting `meta_data` scans to keys matching /track/i. So this
+   * function intentionally stays permissive for the notes path while
+   * the meta_data path stays narrow.
    */
   extractTrackingFromText(text) {
     if (!text) return null;
@@ -2077,14 +2105,19 @@ class MissWooApp {
       }
     }
 
-    // Stage 2: shape-unique fallbacks only.
-    const shapePatterns = [
+    // Stage 2 + 3: shape-anchored fallbacks. Order matters — shape-unique
+    // patterns (USPS 9[234]…, UPS 1Z…, UPS T+10) come first so they win
+    // over the more permissive bare-digit-length patterns below them.
+    const fallbackPatterns = [
       { regex: /\b9[234]\d{16,22}\b/, provider: 'USPS' },
       { regex: /\b1Z[A-Z0-9]{16}\b/, provider: 'UPS' },
       { regex: /\bT\d{10}\b/, provider: 'UPS' },
+      { regex: /\b\d{12}\b/, provider: 'FedEx' },
+      { regex: /\b\d{15}\b/, provider: 'FedEx' },
+      { regex: /\b\d{10}\b/, provider: 'DHL' }
     ];
 
-    for (const pattern of shapePatterns) {
+    for (const pattern of fallbackPatterns) {
       const match = text.match(pattern.regex);
       if (match) {
         const trackingNumber = match[0];
