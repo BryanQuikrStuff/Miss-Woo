@@ -255,7 +255,21 @@ class MissWooApp {
       // Check if data is an array of conversation IDs (from change:conversations event)
       // The first ID in the array is the currently clicked/opened conversation
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
-        const clickedConversationId = data[0]; // First ID is the one user clicked on
+        // Only act on a single-conversation focus. The Missive doc treats
+        // change:conversations as a *selection-changed* signal, not a click
+        // event — the array reflects the user's current selection in the
+        // inbox, which can be 0 (deselected), 1 (one conversation in focus),
+        // or N (shift/cmd-click batch operations like bulk labeling). Only
+        // length === 1 is unambiguously "look up this customer's orders";
+        // multi-select would otherwise spawn a full WooCommerce + Katana +
+        // serial-number pipeline against an arbitrary data[0] from a batch
+        // the user never asked us to look at.
+        if (data.length !== 1) {
+          console.log(`ℹ️ Ignoring change:conversations with ${data.length} ids (multi-select / deselect)`);
+          return;
+        }
+
+        const clickedConversationId = data[0];
         console.log(`📧 User clicked on conversation: ${clickedConversationId}`);
         
         // OPTIMIZATION: Prevent duplicate processing if already in progress
