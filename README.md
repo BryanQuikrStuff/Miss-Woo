@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.24  
+**Version**: vJS5.25  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.24 (Current)
+### vJS5.25 (Current)
+- Behavior: `handleConversationChange()` now bails out unless the inbound `change:conversations` event carries exactly one conversation ID. The Missive doc treats this event as a *selection-changed* signal, not a click event — the array reflects the current inbox selection (0 on deselect, 1 on focus, N on shift/cmd-click batch ops). Previously the handler gated only on `data.length > 0` and unconditionally took `data[0]`, which meant bulk-labeling 20 conversations triggered a full WooCommerce + Katana + serial-number pipeline against an arbitrary one of those 20 — wasted API quota and the occasional confusing "I selected a label group, why is the sidebar showing customer X?" outcome. Now: zero or multi-element arrays leave the previously-displayed lookup on screen (the right UX) and only single-focus events run the pipeline. Downstream debounce, dedup, and processing logic unchanged.
+
+### vJS5.24
 - Bug fix: Cache poisoning in `getTrackingInfo()` was the actual reason every order kept rendering "Not Shipped Yet" through vJS5.21–vJS5.23. The order render flow makes two passes: (1) `displayOrdersList()` runs immediately after search returns, when `order.notes = []` (notes are fetched lazily); the empty-notes pass found no tracking and wrote `order._cachedTrackingInfo = null`. (2) `loadOrderDetails()` then async-fetched notes and triggered `updateOrderDetailsUI()` → `getTrackingInfo()` again — but the function's first action was `if (order._cachedTrackingInfo !== undefined) return order._cachedTrackingInfo`, which short-circuited on the stale null cached during the pre-fetch pass. The freshly-loaded notes were never scanned. This also explains why the diagnostic logging added in vJS5.23 produced zero output: the function body was bypassed on the only call that had data to work with.
 - Behavior: cache check changed from "any non-undefined value" to "any truthy value". The field is only written when a real tracking match is found; null results are returned but not memoized, so the post-fetch render gets a fresh scan against the now-loaded notes. Performance impact is negligible (~500 regex evaluations per search, well under 1ms).
 - Diagnostic logging from vJS5.23 will now actually fire. If a shipped order still doesn't surface a tracking link, expect a single console line per order showing the first 200 chars of `note[0]`, telling us precisely what format the matcher is missing.
