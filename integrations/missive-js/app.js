@@ -1,4 +1,4 @@
-// Missive JS API bridge (vJS5.21)
+// Missive JS API bridge (vJS5.22)
 //
 // Thin adapter that:
 //   1. Boots the MissWooApp once `window.config` and `window.MissWooApp` exist.
@@ -15,7 +15,7 @@
 // methods like `getCurrentConversation`, `getCurrentUser`, `getUsers`,
 // `getTeams`, and `getChannels`. Those have been removed.
 
-const VERSION_BADGE_TEXT = 'vJS5.21';
+const VERSION_BADGE_TEXT = 'vJS5.22';
 const MISSIVE_SCRIPT_SELECTOR = 'script[src*="integrations.missiveapp.com/missive.js"]';
 const APP_BOOT_RETRY_MS = 500;
 const MISSIVE_POLL_INTERVAL_MS = 100;

@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.21  
+**Version**: vJS5.22  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,8 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.21 (Current)
-- Bug fix: Tracking links no longer surface for orders that haven't shipped. `getTrackingInfo()` now gates strictly on `order.status === 'completed'` (per the operational convention "orders move to completed only after they ship") and returns null for any other status. Pending, processing, on-hold, cancelled, refunded, and failed orders are now guaranteed to skip extraction even when their notes contain tracking-shaped digits.
+### vJS5.22 (Current)
+- Bug fix: Reverts the `order.status === 'completed'` gate added in vJS5.21. The gate caused every order in the list to render as "Not Shipped Yet" — including orders with valid tracking notes — because QuikrStuff's actual fulfillment flow keeps shipped orders at `processing` (with the tracking note added) rather than transitioning them to `completed`. The vJS5.21 docstring described the intended workflow, not the observable one.
+- Behavior: tracking-data presence is now the sole criterion. `getTrackingInfo()` returns the resolved tracking when notes/meta contain a carrier-named pattern, regardless of order status; `renderTrackingCell()` shows the carrier link when found, "Not Shipped Yet" when notes have been fetched and nothing matched, and "Loading..." while notes are still in flight. State machine collapses from four states to three.
+- Why the original DHL false-positive bug stays fixed: the false-positive prevention shipped in vJS5.21 (tightened `extractTrackingFromText` regexes — stage-2 fallbacks restricted to USPS `9[234]…{17–22}`, UPS `1Z…{16}`, UPS `T\d{10}`; `getCarrierTrackingUrl` returning null for unknown providers; `meta_data` scan limited to keys matching `/track/i`) does not depend on the status gate. A `processing` order with a 10-digit billing phone and no real tracking note still resolves to null and renders "Not Shipped Yet" — same outcome the gate was reaching for, without rejecting legitimately-shipped orders.
+
+### vJS5.21
+- Bug fix: Tracking links no longer surface for orders that haven't shipped. `getTrackingInfo()` now gates strictly on `order.status === 'completed'` (per the operational convention "orders move to completed only after they ship") and returns null for any other status. Pending, processing, on-hold, cancelled, refunded, and failed orders are now guaranteed to skip extraction even when their notes contain tracking-shaped digits. **(Reverted in vJS5.22 — the gate caused every order to render as "Not Shipped Yet" because QuikrStuff's flow keeps shipped orders at `processing`, not `completed`.)**
 - Bug fix: 10-digit numbers (customer phones, Unix timestamps, plugin numerics) no longer get classified as DHL tracking. `extractTrackingFromText()` dropped the stage-2 patterns that weren't shape-unique (`\b\d{10}\b -> DHL`, `\b\d{8,22}\b -> ''`, `\b\d{12}\b`/`\b\d{15}\b -> FedEx`). Carrier-shape-only fallbacks now keep just USPS `9[234]…{17–22}`, UPS `1Z…{16}`, and UPS `T\d{10}`. DHL Express AWBs (10 digits with no shape constraint) are now matched only when the carrier name "DHL" appears explicitly in the text.
 - Bug fix: `getCarrierTrackingUrl()` no longer auto-classifies any 10-digit input as DHL or defaults unknown providers to USPS. Returns null for unknown providers; callers treat that as "no tracking".
 - Bug fix: meta_data scan tightened. Was previously running the regex across every meta value (billing phones, payment intents, Stripe IDs). Now restricted to entries whose KEY contains "track" (case-insensitive), which covers WC Shipment Tracking / AfterShip / Ship Station style plugins without scanning unrelated values.
