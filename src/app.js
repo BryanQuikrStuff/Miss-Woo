@@ -1116,21 +1116,21 @@ class MissWooApp {
   /**
    * Render the contents of a single tracking cell.
    *
-   * Single source of truth for the four UI states the tracking column
+   * Single source of truth for the three UI states the tracking column
    * can be in. Both displayOrdersList() and updateOrderDetailsUI()
    * delegate here so the rendering logic stays consistent.
    *
    * States:
-   *   1. Order is not in "completed" status                -> "Not Shipped Yet"
-   *      (Quikr Stuff orders move to completed only after they ship,
-   *      so any other status definitionally has no tracking. We don't
-   *      bother waiting on notes — render the terminal state now.)
-   *   2. Tracking info successfully resolved              -> carrier link
-   *   3. Completed, notes already fetched, no tracking    -> "Not Shipped Yet"
-   *      (Edge case: completed without parseable tracking note. Per
-   *      product decision we surface this with the same copy as state 1
-   *      rather than introducing a third label.)
-   *   4. Completed, notes still being fetched             -> "Loading..."
+   *   1. Tracking info successfully resolved          -> carrier link
+   *   2. Notes fetched, no tracking found             -> "Not Shipped Yet" (terminal)
+   *   3. Notes still being fetched                    -> "Loading..." (transient)
+   *
+   * Tracking-data presence is the sole criterion. Earlier revisions
+   * also short-circuited on `order.status !== 'completed'`, but in
+   * QuikrStuff's actual fulfillment flow shipped orders sit at
+   * `processing` with the tracking note added — they never reach
+   * `completed` until WooCommerce's auto-complete fires (or never).
+   * Status-based gating made every order render as "Not Shipped Yet".
    *
    * @param {HTMLElement|null} cell        The <td> to populate.
    * @param {object} order                 The order under render.
@@ -1142,11 +1142,6 @@ class MissWooApp {
    */
   renderTrackingCell(cell, order, notesFetched) {
     if (!cell || !order) return;
-
-    if (order.status !== 'completed') {
-      cell.textContent = 'Not Shipped Yet';
-      return;
-    }
 
     const trackingInfo = this.getTrackingInfo(order);
     if (trackingInfo) {
@@ -1975,31 +1970,34 @@ class MissWooApp {
   /**
    * Resolve tracking info for an order, or null when none is available.
    *
-   * Gates strictly on `order.status === 'completed'`. Per the operational
-   * convention "Quikr Stuff orders move to completed only after they ship",
-   * any other status (`pending`, `processing`, `on-hold`, `cancelled`,
-   * `refunded`, `failed`) means no tracking exists yet — and even if a
-   * note contains digits that look tracking-shaped, we must not surface
-   * them as a tracking link.
+   * Tracking-data presence is the sole criterion — if we find a
+   * carrier-named pattern in the order notes (or in a tracking-keyed
+   * meta value), we return it; otherwise we return null. The UI layer
+   * surfaces null as "Not Shipped Yet".
    *
-   * For completed orders, scans:
+   * Note on order.status: an earlier revision (vJS5.21) gated this
+   * function on `order.status === 'completed'` based on a stated
+   * convention that QuikrStuff orders move to completed only after
+   * shipping. In practice, shipped orders are typically still at
+   * `processing` (with the tracking note added), and the `completed`
+   * transition either fires later via WooCommerce's auto-complete or
+   * not at all. Gating on status caused every order to render as "Not
+   * Shipped Yet" — even ones with valid tracking notes. The gate is
+   * removed here. False-positive prevention now relies entirely on the
+   * tightened regexes in extractTrackingFromText() and on the meta_data
+   * scan only inspecting keys that match /track/i.
+   *
+   * Scan order:
    *   1. `order.notes[].note` for carrier-named tracking patterns.
    *   2. `order.meta_data[]` entries whose KEY contains "track"
    *      (case-insensitive) — covers WC Shipment Tracking, AfterShip,
    *      and similar plugins. Random meta values (billing phone,
-   *      transaction IDs, etc.) are no longer scanned.
-   *
-   * Returns `null` for any order that hasn't shipped, or for completed
-   * orders where no carrier-named pattern is found.
+   *      transaction IDs, etc.) are not scanned.
    */
   getTrackingInfo(order) {
+    if (!order) return null;
     if (order._cachedTrackingInfo !== undefined) {
       return order._cachedTrackingInfo;
-    }
-
-    if (!order || order.status !== 'completed') {
-      order._cachedTrackingInfo = null;
-      return null;
     }
 
     try {
