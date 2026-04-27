@@ -316,6 +316,6 @@
 ---
 
 **Last Updated**: October 21, 2025
-**Version**: vJS5.23
+**Version**: vJS5.24
 **Maintainer**: Bryan (QuikrStuff)
 

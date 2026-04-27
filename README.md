@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.23  
+**Version**: vJS5.24  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,8 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.23 (Current)
-- Bug fix: Restores the loose digit-run fallbacks in `extractTrackingFromText()` that vJS5.21 had dropped — `\b\d{10}\b -> DHL`, `\b\d{12}\b -> FedEx`, `\b\d{15}\b -> FedEx`. Production logs from vJS5.22 (multiple test customers, multiple completed orders, 5–6 notes each) showed zero successful tracking matches, indicating that QuikrStuff fulfillment notes commonly contain bare 10-digit DHL Express AWBs without the literal "DHL" prefix. Stage 1 (carrier-named) and stage 2 (shape-unique: USPS 9[234]…, UPS 1Z…, UPS T+10) couldn't catch those, so every order rendered "Not Shipped Yet".
+### vJS5.24 (Current)
+- Bug fix: Cache poisoning in `getTrackingInfo()` was the actual reason every order kept rendering "Not Shipped Yet" through vJS5.21–vJS5.23. The order render flow makes two passes: (1) `displayOrdersList()` runs immediately after search returns, when `order.notes = []` (notes are fetched lazily); the empty-notes pass found no tracking and wrote `order._cachedTrackingInfo = null`. (2) `loadOrderDetails()` then async-fetched notes and triggered `updateOrderDetailsUI()` → `getTrackingInfo()` again — but the function's first action was `if (order._cachedTrackingInfo !== undefined) return order._cachedTrackingInfo`, which short-circuited on the stale null cached during the pre-fetch pass. The freshly-loaded notes were never scanned. This also explains why the diagnostic logging added in vJS5.23 produced zero output: the function body was bypassed on the only call that had data to work with.
+- Behavior: cache check changed from "any non-undefined value" to "any truthy value". The field is only written when a real tracking match is found; null results are returned but not memoized, so the post-fetch render gets a fresh scan against the now-loaded notes. Performance impact is negligible (~500 regex evaluations per search, well under 1ms).
+- Diagnostic logging from vJS5.23 will now actually fire. If a shipped order still doesn't surface a tracking link, expect a single console line per order showing the first 200 chars of `note[0]`, telling us precisely what format the matcher is missing.
+
+### vJS5.23
+- Bug fix: Restores the loose digit-run fallbacks in `extractTrackingFromText()` that vJS5.21 had dropped — `\b\d{10}\b -> DHL`, `\b\d{12}\b -> FedEx`, `\b\d{15}\b -> FedEx`. Production logs from vJS5.22 (multiple test customers, multiple completed orders, 5–6 notes each) showed zero successful tracking matches, indicating that QuikrStuff fulfillment notes commonly contain bare 10-digit DHL Express AWBs without the literal "DHL" prefix. Stage 1 (carrier-named) and stage 2 (shape-unique: USPS 9[234]…, UPS 1Z…, UPS T+10) couldn't catch those, so every order rendered "Not Shipped Yet". **(Note: this regex restoration was correct, but the actual reason matches still didn't surface in production was a separate cache-poisoning bug fixed in vJS5.24.)**
 - The original false-positive bug ("DHL link on unshipped orders") stays fixed by the meta_data restriction `/track/i.test(meta.key)` shipped in vJS5.21 and still in place. Unshipped orders have no tracking notes, so their fake "DHL" links came from `meta_data` values (billing phones, payment intents). Restricting meta_data to track-keyed entries cuts that off regardless of regex permissiveness on the notes path.
 - The truly broken `\b\d{8,22}\b` generic fallback stays deleted.
 - Feature: Diagnostic logging in `getTrackingInfo()`. Successful matches now log `✅ Tracking #29954: <number> (<carrier>) [from note|meta '<key>']`. Misses on orders that have notes log `ℹ️ No tracking match for #29954 (notes=6, meta=42); first note sample: "..."` with the first 200 chars whitespace-collapsed. Lets us diagnose future "every order is Not Shipped Yet" failure modes from a single user-shared console log without instrumenting the code on demand.
