@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.22  
+**Version**: vJS5.23  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.22 (Current)
+### vJS5.23 (Current)
+- Bug fix: Restores the loose digit-run fallbacks in `extractTrackingFromText()` that vJS5.21 had dropped — `\b\d{10}\b -> DHL`, `\b\d{12}\b -> FedEx`, `\b\d{15}\b -> FedEx`. Production logs from vJS5.22 (multiple test customers, multiple completed orders, 5–6 notes each) showed zero successful tracking matches, indicating that QuikrStuff fulfillment notes commonly contain bare 10-digit DHL Express AWBs without the literal "DHL" prefix. Stage 1 (carrier-named) and stage 2 (shape-unique: USPS 9[234]…, UPS 1Z…, UPS T+10) couldn't catch those, so every order rendered "Not Shipped Yet".
+- The original false-positive bug ("DHL link on unshipped orders") stays fixed by the meta_data restriction `/track/i.test(meta.key)` shipped in vJS5.21 and still in place. Unshipped orders have no tracking notes, so their fake "DHL" links came from `meta_data` values (billing phones, payment intents). Restricting meta_data to track-keyed entries cuts that off regardless of regex permissiveness on the notes path.
+- The truly broken `\b\d{8,22}\b` generic fallback stays deleted.
+- Feature: Diagnostic logging in `getTrackingInfo()`. Successful matches now log `✅ Tracking #29954: <number> (<carrier>) [from note|meta '<key>']`. Misses on orders that have notes log `ℹ️ No tracking match for #29954 (notes=6, meta=42); first note sample: "..."` with the first 200 chars whitespace-collapsed. Lets us diagnose future "every order is Not Shipped Yet" failure modes from a single user-shared console log without instrumenting the code on demand.
+
+### vJS5.22
 - Bug fix: Reverts the `order.status === 'completed'` gate added in vJS5.21. The gate caused every order in the list to render as "Not Shipped Yet" — including orders with valid tracking notes — because QuikrStuff's actual fulfillment flow keeps shipped orders at `processing` (with the tracking note added) rather than transitioning them to `completed`. The vJS5.21 docstring described the intended workflow, not the observable one.
 - Behavior: tracking-data presence is now the sole criterion. `getTrackingInfo()` returns the resolved tracking when notes/meta contain a carrier-named pattern, regardless of order status; `renderTrackingCell()` shows the carrier link when found, "Not Shipped Yet" when notes have been fetched and nothing matched, and "Loading..." while notes are still in flight. State machine collapses from four states to three.
 - Why the original DHL false-positive bug stays fixed: the false-positive prevention shipped in vJS5.21 (tightened `extractTrackingFromText` regexes — stage-2 fallbacks restricted to USPS `9[234]…{17–22}`, UPS `1Z…{16}`, UPS `T\d{10}`; `getCarrierTrackingUrl` returning null for unknown providers; `meta_data` scan limited to keys matching `/track/i`) does not depend on the status gate. A `processing` order with a 10-digit billing phone and no real tracking note still resolves to null and renders "Not Shipped Yet" — same outcome the gate was reaching for, without rejecting legitimately-shipped orders.
