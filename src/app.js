@@ -1942,60 +1942,96 @@ class MissWooApp {
     }
   }
 
+  /**
+   * Resolve tracking info for an order, or null when none is available.
+   *
+   * Gates strictly on `order.status === 'completed'`. Per the operational
+   * convention "Quikr Stuff orders move to completed only after they ship",
+   * any other status (`pending`, `processing`, `on-hold`, `cancelled`,
+   * `refunded`, `failed`) means no tracking exists yet — and even if a
+   * note contains digits that look tracking-shaped, we must not surface
+   * them as a tracking link.
+   *
+   * For completed orders, scans:
+   *   1. `order.notes[].note` for carrier-named tracking patterns.
+   *   2. `order.meta_data[]` entries whose KEY contains "track"
+   *      (case-insensitive) — covers WC Shipment Tracking, AfterShip,
+   *      and similar plugins. Random meta values (billing phone,
+   *      transaction IDs, etc.) are no longer scanned.
+   *
+   * Returns `null` for any order that hasn't shipped, or for completed
+   * orders where no carrier-named pattern is found.
+   */
   getTrackingInfo(order) {
-    // OPTIMIZATION: Cache tracking info on order object to avoid re-extraction
     if (order._cachedTrackingInfo !== undefined) {
       return order._cachedTrackingInfo;
     }
-    
+
+    if (!order || order.status !== 'completed') {
+      order._cachedTrackingInfo = null;
+      return null;
+    }
+
     try {
-      // Check order notes first
-      if (order.notes && Array.isArray(order.notes)) {
+      if (Array.isArray(order.notes)) {
         for (const note of order.notes) {
-          const noteContent = note.note || '';
-          // OPTIMIZATION: Only log when tracking is found to reduce console noise
-          
-          // Look for tracking patterns
+          const noteContent = note?.note || '';
           const trackingMatch = this.extractTrackingFromText(noteContent);
           if (trackingMatch) {
-            console.log(`Found tracking number: ${trackingMatch.number}`);
-            // Cache the result
+            console.log(`Found tracking number: ${trackingMatch.number} (${trackingMatch.provider})`);
             order._cachedTrackingInfo = trackingMatch;
             return trackingMatch;
           }
         }
       }
 
-      // Check meta_data as fallback
-      if (order.meta_data && Array.isArray(order.meta_data)) {
+      // Restrict meta scan to keys that look tracking-related. Prevents
+      // 10-digit billing-phone meta values from being matched as tracking.
+      if (Array.isArray(order.meta_data)) {
         for (const meta of order.meta_data) {
-          if (meta.key && meta.value) {
-            const metaValue = String(meta.value);
-            const trackingMatch = this.extractTrackingFromText(metaValue);
-            if (trackingMatch) {
-              console.log(`Found tracking number in meta: ${trackingMatch.number}`);
-              // Cache the result
-              order._cachedTrackingInfo = trackingMatch;
-              return trackingMatch;
-            }
+          if (!meta?.key || !meta?.value) continue;
+          if (!/track/i.test(meta.key)) continue;
+          const trackingMatch = this.extractTrackingFromText(String(meta.value));
+          if (trackingMatch) {
+            console.log(`Found tracking number in meta '${meta.key}': ${trackingMatch.number} (${trackingMatch.provider})`);
+            order._cachedTrackingInfo = trackingMatch;
+            return trackingMatch;
           }
         }
       }
-      
-      // Cache null result to avoid re-checking
-      order._cachedTrackingInfo = null;
 
+      order._cachedTrackingInfo = null;
       return null;
     } catch (error) {
       console.error('Error getting tracking info:', error);
+      order._cachedTrackingInfo = null;
       return null;
     }
   }
 
+  /**
+   * Extract a tracking number + carrier from free-text content.
+   *
+   * Two-stage matcher:
+   *
+   *   Stage 1 (preferred): a carrier name appears alongside a digit run,
+   *   e.g. "DHL 1234567890" or "USPS: 9400 1234 5678 9012 3456 78".
+   *
+   *   Stage 2 (carrier-shape-only): a digit run that *uniquely* identifies
+   *   a carrier by shape — USPS `9[234]…{17–22}`, UPS `1Z…{16}`, UPS
+   *   `T\d{10}`. These shapes don't collide with phone numbers, order IDs,
+   *   or Unix timestamps.
+   *
+   * Intentionally NOT in stage 2: bare `\d{10}`, `\d{12}`, `\d{15}`,
+   * `\d{8,22}`. The previous version classified any 10-digit number as
+   * DHL — which mis-tagged customer phone numbers, payment-intent
+   * numerics, and 10-digit Unix epochs as DHL tracking. DHL Express AWBs
+   * are 10 digits but indistinguishable from a US phone, so we only
+   * accept DHL when the carrier name is explicitly present in stage 1.
+   */
   extractTrackingFromText(text) {
     if (!text) return null;
 
-    // First, look for carrier names and extract tracking numbers that follow
     const carrierPatterns = [
       { name: 'USPS', regex: /USPS[^0-9]*(\d{10,22})/i },
       { name: 'FedEx', regex: /FedEx[^0-9]*(\d{10,15})/i },
@@ -2007,34 +2043,25 @@ class MissWooApp {
       const match = text.match(pattern.regex);
       if (match) {
         const trackingNumber = match[1];
-        console.log(`Found ${pattern.name} tracking number: ${trackingNumber}`);
         const url = this.getCarrierTrackingUrl(trackingNumber, pattern.name);
+        if (!url) continue;
         return { number: trackingNumber, url, provider: pattern.name };
       }
     }
 
-    // Fallback: Common tracking number patterns (if no carrier name found)
-    const patterns = [
-      // USPS - more flexible pattern to catch all USPS tracking numbers
+    // Stage 2: shape-unique fallbacks only.
+    const shapePatterns = [
       { regex: /\b9[234]\d{16,22}\b/, provider: 'USPS' },
-      // UPS
       { regex: /\b1Z[A-Z0-9]{16}\b/, provider: 'UPS' },
       { regex: /\bT\d{10}\b/, provider: 'UPS' },
-      // FedEx
-      { regex: /\b\d{12}\b/, provider: 'FedEx' },
-      { regex: /\b\d{15}\b/, provider: 'FedEx' },
-      // DHL
-      { regex: /\b\d{10}\b/, provider: 'DHL' },
-      // Generic tracking numbers (fallback)
-      { regex: /\b\d{8,22}\b/, provider: '' }
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of shapePatterns) {
       const match = text.match(pattern.regex);
       if (match) {
         const trackingNumber = match[0];
-        console.log(`Found tracking number: ${trackingNumber} (${pattern.provider})`);
         const url = this.getCarrierTrackingUrl(trackingNumber, pattern.provider);
+        if (!url) continue;
         return { number: trackingNumber, url, provider: pattern.provider };
       }
     }
@@ -2042,31 +2069,30 @@ class MissWooApp {
     return null;
   }
 
+  /**
+   * Map a tracking number + provider to a carrier-specific tracking URL.
+   * Returns `null` for unknown providers — callers must treat that as
+   * "no tracking" rather than guessing a URL. The previous behavior
+   * (default to USPS, plus auto-classifying any 10-digit input as DHL)
+   * produced false-positive carrier links.
+   */
   getCarrierTrackingUrl(trackingNumber, provider = '') {
-    const number = trackingNumber.trim();
-    
-    // USPS - updated pattern to match the new regex
-    if (provider === 'USPS' || /^9[234]\d{16,22}$/.test(number)) {
-      return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
+    if (!trackingNumber) return null;
+    const number = String(trackingNumber).trim();
+    if (!number) return null;
+
+    switch (provider) {
+      case 'USPS':
+        return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
+      case 'UPS':
+        return `https://www.ups.com/track?tracknum=${number}`;
+      case 'FedEx':
+        return `https://www.fedex.com/fedextrack/?trknbr=${number}`;
+      case 'DHL':
+        return `https://www.dhl.com/en/express/tracking.html?AWB=${number}`;
+      default:
+        return null;
     }
-    
-    // UPS
-    if (provider === 'UPS' || /^1Z[A-Z0-9]{16}$/.test(number) || /^T\d{10}$/.test(number)) {
-      return `https://www.ups.com/track?tracknum=${number}`;
-    }
-    
-    // FedEx
-    if (provider === 'FedEx' || /^\d{12}$/.test(number) || /^\d{15}$/.test(number)) {
-      return `https://www.fedex.com/fedextrack/?trknbr=${number}`;
-    }
-    
-    // DHL
-    if (provider === 'DHL' || /^\d{10}$/.test(number)) {
-      return `https://www.dhl.com/en/express/tracking.html?AWB=${number}`;
-    }
-    
-    // Generic - try USPS first
-    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${number}`;
   }
 
   async testConnection() {
