@@ -1098,28 +1098,69 @@ class MissWooApp {
         }
       }
       
-      // If notes are already loaded (from cache), extract tracking info immediately
+      // Initial render: notes may or may not be loaded yet. The helper
+      // treats "no tracking found" as transient ("Loading...") here and
+      // as terminal ("Not Shipped Yet") in updateOrderDetailsUI() below.
+      // Non-completed orders skip the wait entirely and render the
+      // terminal "Not Shipped Yet" state immediately.
       const trackingCell = document.getElementById(`tracking-${order.id}`);
-      if (trackingCell && order.notes && order.notes.length > 0) {
-        const trackingInfo = this.getTrackingInfo(order);
-        if (trackingInfo) {
-          const trackingLink = document.createElement("a");
-          trackingLink.href = trackingInfo.url;
-          trackingLink.target = "_blank";
-          trackingLink.textContent = trackingInfo.number;
-          trackingCell.innerHTML = "";
-          trackingCell.appendChild(trackingLink);
-        } else {
-          trackingCell.textContent = "Loading...";
-        }
-      } else if (trackingCell) {
-        trackingCell.textContent = "Loading...";
-      }
+      const notesFetched = Array.isArray(order.notes) && order.notes.length > 0;
+      this.renderTrackingCell(trackingCell, order, notesFetched);
     }
     } finally {
       this._displayInProgress = false;
       // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
     }
+  }
+
+  /**
+   * Render the contents of a single tracking cell.
+   *
+   * Single source of truth for the four UI states the tracking column
+   * can be in. Both displayOrdersList() and updateOrderDetailsUI()
+   * delegate here so the rendering logic stays consistent.
+   *
+   * States:
+   *   1. Order is not in "completed" status                -> "Not Shipped Yet"
+   *      (Quikr Stuff orders move to completed only after they ship,
+   *      so any other status definitionally has no tracking. We don't
+   *      bother waiting on notes — render the terminal state now.)
+   *   2. Tracking info successfully resolved              -> carrier link
+   *   3. Completed, notes already fetched, no tracking    -> "Not Shipped Yet"
+   *      (Edge case: completed without parseable tracking note. Per
+   *      product decision we surface this with the same copy as state 1
+   *      rather than introducing a third label.)
+   *   4. Completed, notes still being fetched             -> "Loading..."
+   *
+   * @param {HTMLElement|null} cell        The <td> to populate.
+   * @param {object} order                 The order under render.
+   * @param {boolean} notesFetched         True once async note loading
+   *                                       has run for this order — i.e.
+   *                                       the absence of tracking is now
+   *                                       a terminal answer rather than
+   *                                       a "still loading" state.
+   */
+  renderTrackingCell(cell, order, notesFetched) {
+    if (!cell || !order) return;
+
+    if (order.status !== 'completed') {
+      cell.textContent = 'Not Shipped Yet';
+      return;
+    }
+
+    const trackingInfo = this.getTrackingInfo(order);
+    if (trackingInfo) {
+      const link = document.createElement('a');
+      link.href = trackingInfo.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = trackingInfo.number;
+      cell.innerHTML = '';
+      cell.appendChild(link);
+      return;
+    }
+
+    cell.textContent = notesFetched ? 'Not Shipped Yet' : 'Loading...';
   }
 
   // Update order details UI after loadOrderDetails completes (avoids re-rendering entire list)
@@ -1145,23 +1186,12 @@ class MissWooApp {
         }
       }
       
-      // Update tracking info
+      // Post-fetch render: notes have been loaded for completed orders,
+      // so absence of tracking is now a terminal "Not Shipped Yet" state
+      // rather than transient "Loading...". The helper handles the full
+      // state matrix; we just signal that notes have been fetched.
       const trackingCell = document.getElementById(`tracking-${order.id}`);
-      if (trackingCell && order.notes && order.notes.length > 0) {
-        const trackingInfo = this.getTrackingInfo(order);
-        if (trackingInfo) {
-          const trackingLink = document.createElement("a");
-          trackingLink.href = trackingInfo.url;
-          trackingLink.target = "_blank";
-          trackingLink.textContent = trackingInfo.number;
-          trackingCell.innerHTML = "";
-          trackingCell.appendChild(trackingLink);
-        } else {
-          trackingCell.textContent = "N/A";
-        }
-      } else if (trackingCell) {
-        trackingCell.textContent = "N/A";
-      }
+      this.renderTrackingCell(trackingCell, order, true);
     }
   }
 
