@@ -215,34 +215,40 @@ class MissWooApp {
     }
   }
 
+  /**
+   * Subscribe directly to the documented `change:conversations` event.
+   *
+   * Previously this method bailed out whenever `isMissiveEnvironment` was
+   * true, on the assumption that `integrations/missive-js/app.js` (the
+   * bridge) would do the wiring. In production that always-true short-
+   * circuit meant the listener was *only* bound by the bridge — and the
+   * 300ms debounce wrapper in this method was permanently dead code.
+   *
+   * As of vJS5.26 the bridge no longer wraps `Missive.on`; the app owns
+   * the subscription directly. This collapses the previous two-layer
+   * architecture (bridge listens → bridge forwards → app handles) into
+   * a single layer (app listens → app handles), removing a class of
+   * "which file owns this?" debugging cycles.
+   *
+   * The vJS5.25 length-1 guard in `handleConversationChange` plus the
+   * existing dedup-by-ID checks (`processingConversationId`,
+   * `lastConversationId`) make the old debounce wrapper unnecessary —
+   * Missive doesn't fire `change:conversations` rapidly enough on a
+   * length-1-gated handler to need additional throttling.
+   */
   setupMissiveEventListeners() {
     console.log("🔧 Setting up Missive event listeners...");
-    
+
+    if (!window.Missive || typeof Missive.on !== 'function') {
+      console.log("ℹ️ Missive.on unavailable - skipping listener (web/dev mode)");
+      return;
+    }
+
     try {
-      // OPTIMIZATION: In Missive environment, MissiveJSBridge forwards events
-      // Only set up direct listeners if NOT using MissiveJSBridge (web/standalone mode)
-      if (this.isMissiveEnvironment) {
-        console.log("ℹ️ Missive environment detected - events will be forwarded by MissiveJSBridge");
-        console.log("✅ Skipping direct event listeners (handled by bridge)");
-        return;
-      }
-      
-      // Create debounced handlers to avoid excessive event processing
-      this.debouncedHandleConversationChange = this.debounce((data) => {
-          console.log("📧 Conversation changed:", data);
-          this.handleConversationChange(data);
-      }, 300);
-        
-      // Listen for conversation changes (only in non-Missive environments)
-      if (Missive.on) {
-        Missive.on('change:conversations', this.debouncedHandleConversationChange);
-        console.log("✅ change:conversations listener set up (debounced)");
-      }
-      
-      // Note: email:focus event doesn't exist in Missive API, removed per API review
-      
+      Missive.on('change:conversations', (ids) => this.handleConversationChange(ids));
+      console.log("✅ change:conversations listener bound");
     } catch (error) {
-      console.error("❌ Failed to set up Missive event listeners:", error);
+      console.error("❌ Failed to bind change:conversations listener:", error);
     }
   }
 
