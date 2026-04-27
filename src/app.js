@@ -2457,6 +2457,43 @@ class MissWooApp {
     return null;
   }
 
+  /**
+   * Resolve the customer's email via the documented Missive JS API.
+   *
+   * `Missive.getEmailAddresses(conversations)` is synchronous, takes an
+   * array of Conversation objects, and returns Array<AddressField> where
+   * AddressField is `{ address: string, name?: string }`. The API already
+   * flattens FROM / TO / CC / BCC / reply_to across every message in the
+   * given conversations, so we don't have to detect roles ourselves.
+   *
+   * We pick the first address that passes `isValidEmailForSearch` — i.e.
+   * the first non-internal (non-@quikrstuff.com), well-formed address.
+   *
+   * Returns null when the API isn't available, the input is empty, or
+   * no address passes the customer filter. Callers should fall back to
+   * `extractEmailFromData` for cached or offline payloads.
+   *
+   * @see https://missiveapp.com/docs/developers/ui-iframe-integrations/javascript-api#method-getEmailAddresses
+   */
+  getCustomerEmailFromAPI(conversations) {
+    if (!Array.isArray(conversations) || conversations.length === 0) return null;
+    if (typeof window === 'undefined' || !window.Missive) return null;
+    if (typeof window.Missive.getEmailAddresses !== 'function') return null;
+
+    let addresses;
+    try {
+      addresses = window.Missive.getEmailAddresses(conversations);
+    } catch (err) {
+      console.error('[email-extract] Missive.getEmailAddresses threw:', err);
+      return null;
+    }
+
+    if (!Array.isArray(addresses) || addresses.length === 0) return null;
+
+    const match = addresses.find((a) => a && this.isValidEmailForSearch(a.address));
+    return match ? match.address : null;
+  }
+
   extractEmailFromParticipants(participants) {
     if (!Array.isArray(participants)) return null;
     // Prefer external recipients/senders over internal
@@ -2617,15 +2654,28 @@ class MissWooApp {
       }
 
       const conversation = fetchedConversations[0];
-      
-      // Extract email from conversation
-      const email = this.extractEmailFromData(conversation);
+
+      // Primary path: documented API. Returns the first non-internal address
+      // across FROM/TO/CC/BCC/reply_to of the conversation in one call —
+      // no shape-guessing required.
+      let email = this.getCustomerEmailFromAPI(fetchedConversations);
+      let emailSource = 'getEmailAddresses';
+
+      // Fallback: parse the Conversation payload ourselves. Only hits when
+      // the documented method is unavailable (older client) or returns no
+      // valid match (e.g. all-internal thread).
+      if (!email) {
+        email = this.extractEmailFromData(conversation);
+        emailSource = 'extractEmailFromData';
+      }
+
       if (!email || !this.isValidEmailForSearch(email)) {
-        console.log(`⚠️ No valid email found in conversation ${conversationId}`);
+        console.log(`⚠️ No valid email found in conversation ${conversationId} (source: ${emailSource})`);
         // Still cache the conversation ID to avoid re-processing
         this.updateRecentlyOpenedCache(conversationId, null, false);
         return;
       }
+      console.log(`✅ Resolved customer email via ${emailSource}: ${email}`);
 
       const normalizedEmail = this.normalizeEmail(email);
       console.log(`📧 Extracted email from conversation: ${email} (normalized: ${normalizedEmail})`);
