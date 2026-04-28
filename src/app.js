@@ -224,7 +224,7 @@ class MissWooApp {
    * circuit meant the listener was *only* bound by the bridge — and the
    * 300ms debounce wrapper in this method was permanently dead code.
    *
-   * As of vJS5.28 the bridge no longer wraps `Missive.on`; the app owns
+   * As of vJS5.29 the bridge no longer wraps `Missive.on`; the app owns
    * the subscription directly. This collapses the previous two-layer
    * architecture (bridge listens → bridge forwards → app handles) into
    * a single layer (app listens → app handles), removing a class of
@@ -335,7 +335,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.28';
+    return 'vJS5.29';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2362,7 +2362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.28' : 'vJS5.28 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.29' : 'vJS5.29 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2740,11 +2740,26 @@ class MissWooApp {
 
   // Auto-search triggered when user clicks on a conversation/email
   clearManualSearchInputs() {
-    const searchInputA = document.getElementById("orderSearch");
-    const searchInputB = document.getElementById("searchInput");
+    const candidates = [
+      document.getElementById("orderSearch"),
+      document.getElementById("searchInput")
+    ].filter(Boolean);
 
-    if (searchInputA) searchInputA.value = '';
-    if (searchInputB) searchInputB.value = '';
+    for (const input of candidates) {
+      // Force-clear value and notify listeners so the visual value updates
+      // immediately even when focus is inside the Missive iframe input.
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Prevent Enter from re-triggering stale manual search while
+      // conversation-driven auto-search is already running.
+      if (document.activeElement === input && typeof input.blur === 'function') {
+        input.blur();
+      }
+    }
+
+    console.log('🧹 Cleared manual search input for auto-search');
   }
 
   async performAutoSearch(email, options = {}) {

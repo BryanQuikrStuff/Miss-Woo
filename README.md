@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.28  
+**Version**: vJS5.29  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.28 (Current)
+### vJS5.29 (Current)
+- Version bump across code and documentation to vJS5.29.
+
+### vJS5.28
 - Version bump across code and documentation to vJS5.28.
 
 ### vJS5.27
