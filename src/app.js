@@ -1268,6 +1268,52 @@ class MissWooApp {
     return parts.join(', ');
   }
 
+  /**
+   * Read persisted data from Missive storage when available, otherwise localStorage.
+   * This keeps web/dev mode functional while enabling cross-session Missive caching.
+   */
+  async getPersistentValue(key) {
+    if (this.isMissiveEnvironment && window.Missive && typeof Missive.storeGet === 'function') {
+      return await Missive.storeGet(key);
+    }
+
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(key);
+    if (raw === null) return null;
+
+    try {
+      return JSON.parse(raw);
+    } catch (_err) {
+      return raw;
+    }
+  }
+
+  /**
+   * Write persisted data to Missive storage when available, otherwise localStorage.
+   */
+  async setPersistentValue(key, value) {
+    if (this.isMissiveEnvironment && window.Missive && typeof Missive.storeSet === 'function') {
+      await Missive.storeSet(key, value);
+      return;
+    }
+
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  /**
+   * Remove persisted data from Missive storage when available, otherwise localStorage.
+   */
+  async removePersistentValue(key) {
+    if (this.isMissiveEnvironment && window.Missive && typeof Missive.storeSet === 'function') {
+      await Missive.storeSet(key, null);
+      return;
+    }
+
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(key);
+  }
+
   // Load sales export data from JSON file (with caching and Web Worker parsing)
   // OPTIMIZATION: This is now lazy-loaded - only loads when needed (orders <= 19769)
   async loadSalesExportData() {
@@ -1297,15 +1343,16 @@ class MissWooApp {
       const cacheTimestampKey = 'sales_export_timestamp';
       const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
       
-      // Check cache first
+      // Check persisted cache first (Missive store in integration mode; localStorage fallback in web/dev)
       try {
-        const cached = localStorage.getItem(cacheKey);
-        const cachedTimestamp = localStorage.getItem(cacheTimestampKey);
+        const cached = await this.getPersistentValue(cacheKey);
+        const cachedTimestamp = await this.getPersistentValue(cacheTimestampKey);
         
         if (cached && cachedTimestamp) {
-          const age = Date.now() - parseInt(cachedTimestamp, 10);
+          const parsedTimestamp = Number(cachedTimestamp);
+          const age = Date.now() - parsedTimestamp;
           if (age < CACHE_TTL) {
-            const cachedData = JSON.parse(cached);
+            const cachedData = typeof cached === 'string' ? JSON.parse(cached) : cached;
             // Restore the Map from cached data
             for (const [orderNo, record] of Object.entries(cachedData.idMap || {})) {
               this.salesExportData.set(orderNo, record);
@@ -1316,14 +1363,14 @@ class MissWooApp {
             return;
           } else {
             console.log('📦 Cache expired, fetching fresh data...');
-            localStorage.removeItem(cacheKey);
-            localStorage.removeItem(cacheTimestampKey);
+            await this.removePersistentValue(cacheKey);
+            await this.removePersistentValue(cacheTimestampKey);
           }
         }
       } catch (e) {
         console.warn('⚠️ Cache read failed, will fetch fresh:', e);
-        localStorage.removeItem(cacheKey);
-        localStorage.removeItem(cacheTimestampKey);
+        await this.removePersistentValue(cacheKey);
+        await this.removePersistentValue(cacheTimestampKey);
       }
       
       // Use Web Worker to parse JSON in background (doesn't block UI)
@@ -1331,7 +1378,7 @@ class MissWooApp {
         try {
           const worker = new Worker('worker/parse-sales-worker.js');
           const parsePromise = new Promise((resolve, reject) => {
-            worker.onmessage = (msg) => {
+            worker.onmessage = async (msg) => {
               const data = msg.data;
               if (data && data.success) {
                 // Restore the Map from worker result
@@ -1341,10 +1388,10 @@ class MissWooApp {
                 
                 // Cache the parsed index
                 try {
-                  localStorage.setItem(cacheKey, JSON.stringify({ idMap: data.idMap }));
-                  localStorage.setItem(cacheTimestampKey, String(Date.now()));
+                  await this.setPersistentValue(cacheKey, { idMap: data.idMap });
+                  await this.setPersistentValue(cacheTimestampKey, Date.now());
                 } catch (e) {
-                  console.warn('⚠️ Could not cache order index to localStorage:', e);
+                  console.warn('⚠️ Could not cache order index:', e);
                 }
                 
                 this.salesExportDataLoaded = true;
@@ -1398,10 +1445,10 @@ class MissWooApp {
           
           // Cache the parsed index
           try {
-            localStorage.setItem(cacheKey, JSON.stringify({ idMap }));
-            localStorage.setItem(cacheTimestampKey, String(Date.now()));
+            await this.setPersistentValue(cacheKey, { idMap });
+            await this.setPersistentValue(cacheTimestampKey, Date.now());
           } catch (e) {
-            console.warn('⚠️ Could not cache order index to localStorage:', e);
+            console.warn('⚠️ Could not cache order index:', e);
           }
         } else {
           console.log('⚠️ Sales export data is not an array:', typeof data);
