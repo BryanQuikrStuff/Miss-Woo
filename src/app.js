@@ -224,7 +224,7 @@ class MissWooApp {
    * circuit meant the listener was *only* bound by the bridge — and the
    * 300ms debounce wrapper in this method was permanently dead code.
    *
-   * As of vJS5.26 the bridge no longer wraps `Missive.on`; the app owns
+   * As of vJS5.28 the bridge no longer wraps `Missive.on`; the app owns
    * the subscription directly. This collapses the previous two-layer
    * architecture (bridge listens → bridge forwards → app handles) into
    * a single layer (app listens → app handles), removing a class of
@@ -299,7 +299,7 @@ class MissWooApp {
           console.log(`✅ Conversation ${clickedConversationId} already processed, using cached data`);
           // If we have cached email, trigger search with it
           if (cached.email && this.isValidEmailForSearch(cached.email)) {
-            this.performAutoSearch(cached.email);
+            this.performAutoSearch(cached.email, { clearSearchInput: true });
           }
           return;
         }
@@ -322,7 +322,7 @@ class MissWooApp {
       const email = this.extractEmailFromData(data);
       if (email && this.isValidEmailForSearch(email)) {
         console.log("✅ Extracted email from conversation:", email);
-        this.performAutoSearch(email);
+        this.performAutoSearch(email, { clearSearchInput: true });
       } else {
         console.log("❌ No valid email found in conversation data");
       }
@@ -335,7 +335,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.26';
+    return 'vJS5.28';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2362,7 +2362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.26' : 'vJS5.26 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.28' : 'vJS5.28 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2451,7 +2451,7 @@ class MissWooApp {
         this.clearCurrentEmailData();
         this.activeDisplayEmail = null; // Clear active display email to prevent race conditions
         if (cached.email && this.isValidEmailForSearch(cached.email)) {
-          this.performAutoSearch(cached.email);
+          this.performAutoSearch(cached.email, { clearSearchInput: true });
         }
         return;
       }
@@ -2507,7 +2507,7 @@ class MissWooApp {
       if (this.emailCache && this.emailCache.has(normalizedEmail) && this.isCacheValid(normalizedEmail, 'emailCache')) {
         console.log(`✅ Email ${normalizedEmail} already cached, using cached data`);
         this.updateRecentlyOpenedCache(conversationId, normalizedEmail, true);
-        this.performAutoSearch(email);
+        this.performAutoSearch(email, { clearSearchInput: true });
         return;
       }
 
@@ -2739,7 +2739,21 @@ class MissWooApp {
   }
 
   // Auto-search triggered when user clicks on a conversation/email
-  async performAutoSearch(email) {
+  clearManualSearchInputs() {
+    const searchInputA = document.getElementById("orderSearch");
+    const searchInputB = document.getElementById("searchInput");
+
+    if (searchInputA) searchInputA.value = '';
+    if (searchInputB) searchInputB.value = '';
+  }
+
+  async performAutoSearch(email, options = {}) {
+    const { clearSearchInput = false } = options;
+
+    if (clearSearchInput) {
+      this.clearManualSearchInputs();
+    }
+
     if (!email || !this.isValidEmailForSearch(email)) {
       // console.log("❌ Invalid email for search:", email);
       return;

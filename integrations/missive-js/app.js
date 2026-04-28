@@ -1,4 +1,4 @@
-// Missive JS API bridge (vJS5.26)
+// Missive JS API bridge (vJS5.28)
 //
 // Thin adapter that:
 //   1. Boots the MissWooApp once `window.config` and `window.MissWooApp` exist.
@@ -7,7 +7,7 @@
 //
 // Reference: https://missiveapp.com/docs/developers/ui-iframe-integrations/javascript-api
 //
-// As of vJS5.26 this bridge no longer subscribes to Missive events. The
+// As of vJS5.28 this bridge no longer subscribes to Missive events. The
 // `change:conversations` listener was moved into
 // `MissWooApp.setupMissiveEventListeners()` so the app owns its own
 // integration end-to-end. Earlier revisions of this file listened to
@@ -16,10 +16,10 @@
 // and called undocumented methods like `getCurrentConversation`,
 // `getCurrentUser`, `getUsers`, `getTeams`, `getChannels`. Those were
 // removed in vJS5.19; the remaining wait-for-Missive promise + bridge
-// `Missive.on` wrapper were removed in vJS5.26 since `src/app.js` has
+// `Missive.on` wrapper were removed in vJS5.28 since `src/app.js` has
 // always had its own equivalent wait machinery.
 
-const VERSION_BADGE_TEXT = 'vJS5.26';
+const VERSION_BADGE_TEXT = 'vJS5.28';
 const APP_BOOT_RETRY_MS = 500;
 
 class MissiveJSBridge {
