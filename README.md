@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.26  
+**Version**: vJS5.27  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,10 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.26 (Current)
+### vJS5.27 (Current)
+- Documentation-only version bump to keep all project docs aligned at vJS5.27.
+
+### vJS5.26
 - Refactor: Collapses the two-layer Missive event architecture down to one. Previously the `change:conversations` listener was bound in `integrations/missive-js/app.js` (the bridge) and forwarded to the app, while `src/app.js#setupMissiveEventListeners` had its own competing `Missive.on` binding wrapped in a 300ms debounce — but the latter short-circuited with `if (this.isMissiveEnvironment) return;` so in production the debounce path was permanently dead code. Two ownership layers, one of them dead, every conversation-focus debugging cycle had to ask "which file holds the listener?". Now `setupMissiveEventListeners` binds `Missive.on('change:conversations', ids => this.handleConversationChange(ids))` directly, guarded only by feature-detect on `Missive.on`. The dead `isMissiveEnvironment` short-circuit and the dead 300ms debounce wrapper are gone — the vJS5.25 length-1 guard plus the existing `processingConversationId`/`lastConversationId` dedup checks already cover what the debounce was nominally protecting against.
 - Refactor: Bridge trimmed from ~167 lines to ~95. Removed `bindMissiveEvents()`, the ~55-line `waitForMissive()` promise/poll/script-load machinery, and the `eventsBound` field. The bridge now does only what it should: pin the version badge, boot `MissWooApp` once `window.config` and `window.MissWooApp` exist, and wire the manual search button + Enter key. Removing the bridge's wait-for-Missive promise is purely deduplication — `src/app.js` already has its own equivalent at lines 140-178 (2s timeout + 100ms poll + load-event listener).
 - Boot ordering verified safe: `missive.js` is loaded synchronously in `<head>` of `index.html`, `index-web.html`, and `index-dev.html`, so `window.Missive` exists before any module script runs. The dev/standalone path (`index-dev.html`, no bridge) still works — the new feature-detect bails out cleanly when `Missive.on` is absent. No behavior change for users; pure mental-model consolidation that pays off the next time we touch conversation-focus logic.
