@@ -224,7 +224,7 @@ class MissWooApp {
    * circuit meant the listener was *only* bound by the bridge — and the
    * 300ms debounce wrapper in this method was permanently dead code.
    *
-   * As of vJS5.31 the bridge no longer wraps `Missive.on`; the app owns
+   * As of vJS5.32 the bridge no longer wraps `Missive.on`; the app owns
    * the subscription directly. This collapses the previous two-layer
    * architecture (bridge listens → bridge forwards → app handles) into
    * a single layer (app listens → app handles), removing a class of
@@ -335,7 +335,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.31';
+    return 'vJS5.32';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -514,6 +514,14 @@ class MissWooApp {
     // Create new AbortController for this search
     this.activeSearchAbortController = new AbortController();
 
+    // CRITICAL: Reset activeDisplayEmail so displayOrdersList() doesn't drop
+    // these (legitimate, user-initiated) results as "stale" because the
+    // previously-rendered conversation auto-search left activeDisplayEmail
+    // pointed at a different address. processClickedConversation and
+    // performAutoSearch already do this; handleSearch was missing the reset
+    // and the staleness guard silently swallowed manual-search renders.
+    this.activeDisplayEmail = null;
+
     // Clear previous results and errors
     this.clearPreviousResults();
 
@@ -665,7 +673,7 @@ class MissWooApp {
     // REST `?search=` parameter does a fuzzy text scan across multiple
     // billing/customer columns and can take 20-30+ seconds on large catalogs,
     // so a 12s budget was too aggressive and produced false "No orders found"
-    // states (see vJS5.30 changelog). 30s matches performAutoSearch (vJS5.31).
+    // states (see vJS5.30 changelog). 30s matches performAutoSearch (vJS5.32).
     const SEARCH_TIMEOUT_MS = 30000;
     let timeoutId = null;
 
@@ -2367,7 +2375,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.31' : 'vJS5.31 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.32' : 'vJS5.32 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
