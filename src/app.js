@@ -224,7 +224,7 @@ class MissWooApp {
    * circuit meant the listener was *only* bound by the bridge — and the
    * 300ms debounce wrapper in this method was permanently dead code.
    *
-   * As of vJS5.29 the bridge no longer wraps `Missive.on`; the app owns
+   * As of vJS5.30 the bridge no longer wraps `Missive.on`; the app owns
    * the subscription directly. This collapses the previous two-layer
    * architecture (bridge listens → bridge forwards → app handles) into
    * a single layer (app listens → app handles), removing a class of
@@ -335,7 +335,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.29';
+    return 'vJS5.30';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -2362,7 +2362,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.29' : 'vJS5.29 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.30' : 'vJS5.30 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2592,7 +2592,11 @@ class MissWooApp {
       
       console.log(`✅ Completed processing conversation ${conversationId} for email ${normalizedEmail}`);
     } catch (error) {
-      console.error(`❌ Error processing conversation ${conversationId}:`, error);
+      if (error && error.name === 'AbortError') {
+        console.log(`ℹ️ Auto-search cancelled for conversation ${conversationId}`);
+      } else {
+        console.error(`❌ Error processing conversation ${conversationId}:`, error);
+      }
       // Remove from cache on error so it can be retried
       this.recentlyOpenedConversations.delete(conversationId);
       // Clear processing flag on error
@@ -2838,17 +2842,21 @@ class MissWooApp {
       this.searchDebounceTimer = null;
     }
 
-    // OPTIMIZATION: Set up timeout to prevent indefinite spinning (12 seconds)
-    const SEARCH_TIMEOUT_MS = 12000;
+    // Set up timeout to prevent indefinite spinning. 12s was too aggressive
+    // for slower WooCommerce responses and could abort valid auto-searches
+    // mid-pagination (showing false "No orders found" states).
+    const SEARCH_TIMEOUT_MS = 30000;
     const timeoutId = setTimeout(() => {
       if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
-        console.log("⏱️ Search timeout reached (12s), cancelling request");
+        console.log(`⏱️ Search timeout reached (${SEARCH_TIMEOUT_MS / 1000}s), cancelling request`);
         this.activeSearchAbortController.abort();
-        // Set empty orders and display to show "No orders found"
-        this.allOrders = [];
-        // Set active display email before displaying
-        this.activeDisplayEmail = normalizedEmail;
-        this.displayOrdersList(); // This will set status to "No orders found" and hide loading
+
+        // Timeout is not equivalent to "no orders". Keep the current display
+        // and surface an explicit timeout status so users can retry manually
+        // without seeing a false empty-result state.
+        this.setStatus("Search timed out. Please retry or search by order number or email.", 'error');
+        this.hideLoading();
+
         this.searchInProgress = false;
         this.activeSearches.delete(normalizedEmail);
         // Clean up AbortController to prevent memory leaks
