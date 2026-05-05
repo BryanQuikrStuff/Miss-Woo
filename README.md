@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.30  
+**Version**: vJS5.31  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,12 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.30 (Current)
+### vJS5.31 (Current)
+- Bug fix: Auto-search and manual email search were timing out at 12s and falsely showing "No orders found" for emails that genuinely had orders in WooCommerce. Two separate timeouts existed in `src/app.js` — `performAutoSearch` (line ~2848) was correctly bumped to 30s in vJS5.30, but `searchOrdersByEmail` (line ~666, the path actually used by `processClickedConversation` and `handleSearch`) was overlooked and still firing at 12s. WooCommerce's REST `?search=email` parameter does a fuzzy text scan across `billing_email`, `billing_first_name`, `billing_last_name`, customer notes, and order line meta — on a 10K+ order catalog that scan reliably exceeds 12s, so the timeout was hard-cancelling valid searches mid-pagination.
+- Behavior: `searchOrdersByEmail` now uses the same 30s budget as `performAutoSearch`, derives the timeout-message duration from the constant (so the log can never lie about the actual timeout), and on timeout sets the explicit status `"Search timed out. Please retry or search by order number or email."` instead of the misleading "No orders found" that came from calling `displayOrdersList()` with an empty `allOrders` array. Empty results from a *completed* search still show "No orders found"; only the timeout branch was changed.
+- Known follow-up: even 30s is tight for `?search=email` on this catalog. The right long-term fix is to first hit `/customers?email=X` (indexed lookup, ~100ms) and then `/orders?customer=ID` (also indexed via foreign key) — that turns a multi-second fuzzy scan into two sub-second indexed queries. Tracked as a P1 in the API review canvas.
+
+### vJS5.30
 - Version bump across code and documentation to vJS5.30.
 
 ### vJS5.29

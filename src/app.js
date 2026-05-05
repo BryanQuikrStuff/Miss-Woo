@@ -224,7 +224,7 @@ class MissWooApp {
    * circuit meant the listener was *only* bound by the bridge — and the
    * 300ms debounce wrapper in this method was permanently dead code.
    *
-   * As of vJS5.30 the bridge no longer wraps `Missive.on`; the app owns
+   * As of vJS5.31 the bridge no longer wraps `Missive.on`; the app owns
    * the subscription directly. This collapses the previous two-layer
    * architecture (bridge listens → bridge forwards → app handles) into
    * a single layer (app listens → app handles), removing a class of
@@ -335,7 +335,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.30';
+    return 'vJS5.31';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -661,26 +661,31 @@ class MissWooApp {
       }
     }
     
-    // OPTIMIZATION: Set up timeout to prevent indefinite spinning (12 seconds)
-    // Only set timeout if we're actually going to make an API call (not using cache)
-    const SEARCH_TIMEOUT_MS = 12000;
+    // Set up a hard timeout to prevent indefinite spinning. WooCommerce's
+    // REST `?search=` parameter does a fuzzy text scan across multiple
+    // billing/customer columns and can take 20-30+ seconds on large catalogs,
+    // so a 12s budget was too aggressive and produced false "No orders found"
+    // states (see vJS5.30 changelog). 30s matches performAutoSearch (vJS5.31).
+    const SEARCH_TIMEOUT_MS = 30000;
     let timeoutId = null;
-    
-    // Create AbortController if one doesn't exist (for timeout protection)
+
     if (!this.activeSearchAbortController) {
       this.activeSearchAbortController = new AbortController();
     }
-    
+
     timeoutId = setTimeout(() => {
       if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
-        console.log("⏱️ Search timeout reached (12s), cancelling request");
+        console.log(`⏱️ Search timeout reached (${SEARCH_TIMEOUT_MS / 1000}s), cancelling request`);
         this.activeSearchAbortController.abort();
-        // Set empty orders and display to show "No orders found"
-        this.allOrders = [];
-        // Set active display email before displaying
-        this.activeDisplayEmail = normalizedEmail;
-        this.displayOrdersList(); // This will set status to "No orders found" and hide loading
-        // Clean up AbortController to prevent memory leaks
+
+        // Timeout is NOT equivalent to "no orders" - the API never finished.
+        // Surface an explicit timeout status instead of a misleading empty
+        // result so users can retry without thinking the customer has no orders.
+        this.setStatus(
+          "Search timed out. Please retry or search by order number or email.",
+          'error'
+        );
+        this.hideLoading();
         this.activeSearchAbortController = null;
       }
     }, SEARCH_TIMEOUT_MS);
@@ -2362,7 +2367,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.30' : 'vJS5.30 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.31' : 'vJS5.31 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
