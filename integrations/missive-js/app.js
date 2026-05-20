@@ -1,4 +1,4 @@
-// Missive JS API bridge (vJS5.34)
+// Missive JS API bridge (vJS5.35)
 //
 // Thin adapter that:
 //   1. Boots the MissWooApp once `window.config` and `window.MissWooApp` exist.
@@ -29,7 +29,7 @@
 // vJS5.33 name-search path because of its richer logging). The app's
 // search bindings are the single source of truth now.
 
-const VERSION_BADGE_TEXT = 'vJS5.34';
+const VERSION_BADGE_TEXT = 'vJS5.35';
 const APP_BOOT_RETRY_MS = 500;
 
 class MissiveJSBridge {

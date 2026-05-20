@@ -349,7 +349,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.34';
+    return 'vJS5.35';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -558,6 +558,12 @@ class MissWooApp {
       } else if (this.isValidEmailForSearch(searchTerm)) {
                 await this.searchOrdersByEmail(searchTerm);
             await this.displayOrdersList();
+        // searchOrdersByEmail leaves notes/serial/tracking unfetched - the
+        // auto-search callers (processClickedConversation, performAutoSearch)
+        // inline their own loadOrderDetails wiring, but the manual email
+        // branch never did. Pre-existing bug, surfaced more visibly in
+        // vJS5.34 by the new name-search flows; fixed here for all three.
+        this.loadDetailsAfterEmailSearch(this.normalizeEmail(searchTerm));
       } else {
         if (searchTerm.length < 3) {
           this.hideLoading();
@@ -1032,11 +1038,68 @@ class MissWooApp {
       this.activeSearchKind = 'orders';
       await this.searchOrdersByEmail(onlyEmail);
       await this.displayOrdersList();
+      // searchOrdersByEmail does not load notes/Katana/serial numbers - that
+      // happens in the background via this helper. Without this call the
+      // serial and tracking columns stay on "Loading..." forever (the bug
+      // surfaced in vJS5.34 once name-search actually drove the manual flow).
+      this.loadDetailsAfterEmailSearch(this.normalizeEmail(onlyEmail));
       return;
     }
 
     this.activeSearchKind = 'picker';
     this.renderCustomerPicker(customers, truncated, originalQuery);
+  }
+
+  /**
+   * Kick off the background detail-loading pass (notes, Katana orders,
+   * serial numbers, tracking) for whatever is currently in `this.allOrders`.
+   *
+   * `searchOrdersByEmail` deliberately does NOT fetch order details - that's
+   * the caller's job. The two auto-search callers (processClickedConversation
+   * and performAutoSearch) inline ~40 lines of `loadOrderDetails(...).then()`
+   * wiring; before vJS5.35 the manual-search callers (handleSearch's email
+   * branch, handleNameSearchResult's auto-pick, and handleCustomerPicked)
+   * silently skipped it, so fresh manual searches rendered "Loading..." in
+   * the serial/tracking columns forever. This helper centralizes that
+   * wiring so all five sites can use the same race-condition handling.
+   *
+   * Fire-and-forget: returns immediately. Background promise updates the UI
+   * via updateOrderDetailsUI once details land, guarded against staleness
+   * (activeDisplayEmail must still match) and against conversation closure
+   * (loadOrderDetails throws "Conversation closed" if expectedEmail no
+   * longer matches lastSearchedEmail).
+   */
+  loadDetailsAfterEmailSearch(normalizedEmail) {
+    if (!normalizedEmail || !Array.isArray(this.allOrders) || this.allOrders.length === 0) {
+      return;
+    }
+
+    const detailsForEmail = normalizedEmail;
+    const detailsForOrders = [...this.allOrders];
+
+    this.loadOrderDetails(detailsForOrders, detailsForEmail).then(() => {
+      const currentNormalizedEmail = this.lastSearchedEmail ? this.normalizeEmail(this.lastSearchedEmail) : null;
+      if (currentNormalizedEmail !== detailsForEmail || this.activeDisplayEmail !== detailsForEmail) {
+        console.log(`Skipping UI update - email changed from ${detailsForEmail} to ${currentNormalizedEmail}`);
+        return;
+      }
+
+      this.allOrders = detailsForOrders;
+
+      if (this.emailCache) {
+        this.emailCache.set(detailsForEmail, [...detailsForOrders]);
+        this.setCacheExpiry(detailsForEmail, 'emailCache');
+        this.enforceCacheSizeLimit(this.emailCache, 'emailCache', this.cacheConfig.maxCacheSize);
+      }
+
+      this.updateOrderDetailsUI(detailsForOrders);
+    }).catch(error => {
+      if (error && error.message === 'Conversation closed') {
+        console.log(`Background loading stopped - conversation closed for ${detailsForEmail}`);
+        return;
+      }
+      console.error('Error loading additional details:', error);
+    });
   }
 
   /**
@@ -1493,6 +1556,10 @@ class MissWooApp {
     try {
       await this.searchOrdersByEmail(email);
       await this.displayOrdersList();
+      // See loadDetailsAfterEmailSearch JSDoc - searchOrdersByEmail does not
+      // load notes/Katana/serial numbers, so we have to kick those off here
+      // or the picked customer's orders stay on "Loading..." indefinitely.
+      this.loadDetailsAfterEmailSearch(this.normalizeEmail(email));
     } catch (error) {
       if (error.name === 'AbortError' || error.message === 'Search cancelled') {
         console.log("Customer pick cancelled");
@@ -2732,7 +2799,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.34' : 'vJS5.34 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.35' : 'vJS5.35 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

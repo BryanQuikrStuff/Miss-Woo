@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.34  
+**Version**: vJS5.35  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,11 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.34 (Current)
+### vJS5.35 (Current)
+- Bug fix: Serial number and tracking columns stayed on "Loading..." forever after any manual search (whether email, name auto-pick, or customer picker click) that produced a cache miss in `searchOrdersByEmail`. Root cause: `searchOrdersByEmail` only fetches the orders themselves - it does NOT fetch order notes (which carry tracking info), Katana sales orders, or serial numbers. That second wave of fetches is `loadOrderDetails()`, and the two auto-search callers (`processClickedConversation`, `performAutoSearch`) each have ~40 lines of inline wiring that calls `loadOrderDetails().then(updateOrderDetailsUI)` with staleness guards. The three manual-search callers (`handleSearch`'s email branch, `handleNameSearchResult`'s single-customer auto-pick, and `handleCustomerPicked`) all silently skipped that step, so on a fresh fetch the placeholder cells were never replaced. The manual email-branch bug had been latent since at least vJS5.30 - it was masked because customer support agents usually open the email in Missive first (triggering auto-search and its `loadOrderDetails` pass), then only use the manual bar for already-cached customers. The vJS5.33 name-search flows surfaced it because they exercise the manual path on customers the agent may not have auto-searched yet.
+- Fix: Extracted the loadOrderDetails-and-then-update-UI block into a new `loadDetailsAfterEmailSearch(normalizedEmail)` helper modeled on `processClickedConversation`'s inline pattern (fire-and-forget, clones the orders array, refuses to update the UI if `lastSearchedEmail` or `activeDisplayEmail` changed in the meantime, updates the email cache with the enriched orders so a subsequent search hits the rich data). Called at the end of all three manual-search paths. The two auto-search callers were left alone to keep the blast radius small - they have a deeper integration with conversation-tracking state that wasn't worth disturbing for this fix.
+
+### vJS5.34
 - Bug fix: Manual search (button click + Enter key) was firing `handleSearch` twice per user action, and both invocations ended up awaiting the same already-aborted HTTP promise — search never actually completed. `integrations/missive-js/app.js` (the bridge) and `MissWooApp.setupMissiveEventListeners()` (the app) were both binding click + keypress handlers on `#searchBtn` / `#searchInput`, so every interaction triggered handler A and handler B back-to-back. Handler B's `handleSearch` cancelled handler A's `activeSearchAbortController` and started a fresh request, but `makeRequest`'s URL-keyed request-dedup (`${url}-${JSON.stringify(options)}` where `JSON.stringify(AbortSignal) === '{}'`) saw the in-flight key from handler A still in `pendingRequests` and returned A's promise to B. A's promise was then guaranteed to reject with `AbortError` (because B had just aborted it), and B got the same rejection — so the user saw an endless loop of "Cancelling previous search requests" + "Search cancelled" with no successful HTTP fetch. The pre-existing email/order-ID paths were affected by the same race but it was less visible because their logs are quieter and the timing-window for the dedup collision was narrower.
 - Root cause: vJS5.26 trimmed the bridge down but kept a `bindManualSearchEvents()` that duplicated bindings the app's `setupMissiveEventListeners` already owned (binds `searchBtn`/`searchInput` as `searchBtnA`/`searchInputB` to `boundHandleSearch`). The vJS5.32 cleanup ("the app owns its own integration end-to-end") missed this overlap.
 - Fix: Removed `bindManualSearchEvents()` from the bridge along with its call in `init()`. The bridge now does only what its file header advertises: pin the version badge and boot `MissWooApp`. The app's `setupMissiveEventListeners` is the single source of truth for manual-search bindings — no behavior change for any code path other than eliminating the double-invocation.
