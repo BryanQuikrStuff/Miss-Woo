@@ -1,4 +1,4 @@
-// Missive JS API bridge (vJS5.32)
+// Missive JS API bridge (vJS5.33)
 //
 // Thin adapter that:
 //   1. Boots the MissWooApp once `window.config` and `window.MissWooApp` exist.
@@ -19,7 +19,7 @@
 // `Missive.on` wrapper were removed in vJS5.32 since `src/app.js` has
 // always had its own equivalent wait machinery.
 
-const VERSION_BADGE_TEXT = 'vJS5.32';
+const VERSION_BADGE_TEXT = 'vJS5.33';
 const APP_BOOT_RETRY_MS = 500;
 
 class MissiveJSBridge {

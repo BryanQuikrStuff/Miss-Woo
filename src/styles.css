@@ -355,3 +355,51 @@ a:hover {
     border-left-color: #721c24;
   }
 }
+
+/* Customer picker (name-search disambiguation) */
+.customer-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.customer-picker-heading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 0.25rem;
+}
+
+.customer-picker-table tbody .customer-picker-row {
+  cursor: pointer;
+}
+
+.customer-picker-table tbody .customer-picker-row:hover {
+  background: #f0f4ff;
+}
+
+.customer-picker-table tbody .customer-picker-row:focus {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.customer-picker-footer {
+  font-size: 0.75rem;
+  color: #777;
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .customer-picker-heading {
+    color: #ccc;
+  }
+
+  .customer-picker-table tbody .customer-picker-row:hover {
+    background: #2a2f3a;
+  }
+
+  .customer-picker-footer {
+    color: #999;
+  }
+}

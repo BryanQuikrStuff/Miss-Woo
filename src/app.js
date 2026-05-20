@@ -55,6 +55,12 @@ class MissWooApp {
       this.katanaOrderCache = new Map();
       this.serialNumberCache = new Map();
       this.emailCache = new Map();
+      // nameCache stores grouped customer pickers for name-based searches.
+      // Separate from emailCache so the two key spaces (normalized email vs.
+      // normalized name) can't collide and so the picker payload (an array
+      // of {email, displayName, orderCount, ...}) doesn't get mixed up with
+      // the order arrays stored under emailCache.
+      this.nameCache = new Map();
       this.cacheExpiry = new Map();
       this.visibleEmails = new Set(); // Track visible emails for cleanup
       this.salesExportData = new Map(); // Historical sales export data (order_no -> records)
@@ -77,7 +83,9 @@ class MissWooApp {
         katanaCache: 10 * 60 * 1000, // 10 minutes  
         serialCache: 30 * 60 * 1000, // 30 minutes
         emailCache: 2 * 60 * 1000, // 2 minutes
+        nameCache: 2 * 60 * 1000, // 2 minutes - same TTL as emailCache
         maxCacheSize: 100, // Maximum number of entries in emailCache
+        maxNameCacheSize: 50, // Maximum number of entries in nameCache
         maxKatanaCacheSize: 200, // Maximum number of entries in katanaOrderCache
         maxSerialCacheSize: 200 // Maximum number of entries in serialNumberCache
       };
@@ -86,6 +94,12 @@ class MissWooApp {
       this.allOrders = [];
       this.lastSearchedEmail = null;
       this.activeDisplayEmail = null; // Track which email's data is currently displayed (prevents race conditions)
+      // What the results container is currently rendering. 'orders' is the
+      // default and matches every code path that existed before name-search
+      // was added. 'picker' means renderCustomerPicker() owns the container
+      // and displayOrdersList() should bail out early so a concurrent
+      // auto-search doesn't overwrite the picker before the user clicks.
+      this.activeSearchKind = 'orders';
       this.searchDebounceTimer = null;
       this.searchInProgress = false; // Prevent multiple searches from running simultaneously
       this.activeSearches = new Map(); // Track active searches by email
@@ -335,7 +349,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.32';
+    return 'vJS5.33';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -416,7 +430,7 @@ class MissWooApp {
       window.MissWooDebug = {
         getCachedEmails: () => Array.from(this.emailCache.keys()),
         getRecentlyOpenedConversations: () => Array.from(this.recentlyOpenedConversations.keys()),
-        clearCaches: () => { this.emailCache.clear(); this.recentlyOpenedConversations.clear(); console.log("Cleared caches"); }
+        clearCaches: () => { this.emailCache.clear(); this.nameCache.clear(); this.recentlyOpenedConversations.clear(); console.log("Cleared caches"); }
       };
       // console.log("🔧 Debug methods available: window.MissWooDebug");
       
@@ -502,7 +516,7 @@ class MissWooApp {
     const searchTerm = raw;
 
         if (!searchTerm) {
-      this.showError("Please enter a customer email or order ID");
+      this.showError("Please enter a name, email, or order ID");
             return;
         }
 
@@ -521,25 +535,40 @@ class MissWooApp {
     // performAutoSearch already do this; handleSearch was missing the reset
     // and the staleness guard silently swallowed manual-search renders.
     this.activeDisplayEmail = null;
+    // Default to the orders render mode. searchOrdersByName flips this to
+    // 'picker' when it decides to show a disambiguation list instead.
+    this.activeSearchKind = 'orders';
 
     // Clear previous results and errors
     this.clearPreviousResults();
 
         this.showLoading();
     console.log("Searching for:", searchTerm);
-        
+
         try {
       this.allOrders = [];
 
-            // Check if it's an order ID (numeric)
+      // Three-way classifier:
+      //   1. All-digits  -> order ID lookup
+      //   2. Valid email -> email path (existing, well-tested)
+      //   3. Otherwise   -> name search with customer-disambiguation picker
             if (/^\d+$/.test(searchTerm)) {
                 await this.getOrderById(searchTerm);
-            } else {
+        await this.displayOrdersList();
+      } else if (this.isValidEmailForSearch(searchTerm)) {
                 await this.searchOrdersByEmail(searchTerm);
-            }
-            
-            // Display the results after search completes
             await this.displayOrdersList();
+      } else {
+        if (searchTerm.length < 3) {
+          this.hideLoading();
+          this.showError("Please enter at least 3 characters of a name");
+          return;
+        }
+        await this.searchOrdersByName(searchTerm);
+        // searchOrdersByName owns its own rendering decision (picker vs.
+        // delegating to the email path), so we don't call displayOrdersList
+        // here.
+            }
         } catch (error) {
       // Don't log abort errors as errors
       if (error.name === 'AbortError' || error.message === 'Search cancelled') {
@@ -885,6 +914,193 @@ class MissWooApp {
     return matches;
   }
 
+  /**
+   * Name-search entry point: group WooCommerce orders matching `name` into
+   * distinct customers and either render a disambiguation picker (2+
+   * customers) or delegate straight to the email path (exactly 1 customer).
+   *
+   * Mirrors the shape of `searchOrdersByEmail`: same 30s timeout, same
+   * abort-controller wiring, same status/error semantics. The big
+   * difference is that `filterOrdersByEmail`'s exact-equality filter is
+   * NOT applied here - that filter is what causes raw name searches to
+   * return empty today even though WooCommerce returned matches.
+   */
+  async searchOrdersByName(name) {
+    if (!name || typeof name !== 'string') return;
+    const normalizedName = name.trim().toLowerCase();
+    if (!normalizedName) return;
+
+    // Cache hit - re-render the picker we built last time. Same 2-minute
+    // TTL as emailCache (see cacheConfig.nameCache).
+    if (this.nameCache?.has(normalizedName) && this.isCacheValid(normalizedName, 'nameCache')) {
+      const cached = this.nameCache.get(normalizedName);
+      if (cached && Array.isArray(cached.customers)) {
+        this.handleNameSearchResult(cached, name);
+        return;
+      }
+    }
+
+    // 30s matches searchOrdersByEmail (vJS5.32). WooCommerce's `?search=`
+    // fuzzy-scans billing/customer fields and can take 20-30s on large
+    // catalogs; a tighter budget produces false "no customers found".
+    const SEARCH_TIMEOUT_MS = 30000;
+    let timeoutId = null;
+
+    if (!this.activeSearchAbortController) {
+      this.activeSearchAbortController = new AbortController();
+    }
+
+    timeoutId = setTimeout(() => {
+      if (this.activeSearchAbortController && !this.activeSearchAbortController.signal.aborted) {
+        console.log(`Name search timeout reached (${SEARCH_TIMEOUT_MS / 1000}s), cancelling request`);
+        this.activeSearchAbortController.abort();
+        this.setStatus(
+          "Search timed out. Please retry or search by order number or email.",
+          'error'
+        );
+        this.hideLoading();
+        this.activeSearchAbortController = null;
+      }
+    }, SEARCH_TIMEOUT_MS);
+
+    try {
+      const rawOrders = await this.searchWooCommerceOrdersByName(name);
+
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+
+      if (this.activeSearchAbortController?.signal.aborted) {
+        console.log("Name search was cancelled");
+        throw new Error('Search cancelled');
+      }
+
+      if (!window.OrderGroup || typeof window.OrderGroup.groupOrdersByCustomer !== 'function') {
+        // Fail loudly per project rules: this means src/order-group.js
+        // wasn't loaded by the host HTML page.
+        throw new Error('OrderGroup module not loaded - check that src/order-group.js is included in index.html');
+      }
+
+      const grouped = window.OrderGroup.groupOrdersByCustomer(rawOrders);
+
+      if (this.nameCache) {
+        this.nameCache.set(normalizedName, grouped);
+        this.setCacheExpiry(normalizedName, 'nameCache');
+        this.enforceCacheSizeLimit(this.nameCache, 'nameCache', this.cacheConfig.maxNameCacheSize);
+      }
+
+      this.handleNameSearchResult(grouped, name);
+    } catch (error) {
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      if (error.name === 'AbortError' || error.message === 'Search cancelled') {
+        console.log("Name search cancelled");
+        throw error;
+      }
+      console.error("Name search error:", error);
+      this.showError(`Failed to search: ${error.message}`);
+    } finally {
+      this.searchInProgress = false;
+    }
+  }
+
+  /**
+   * Decide what to do with a grouped name-search result:
+   *   0 customers -> "No customers found" status, nothing rendered
+   *   1 customer  -> auto-pick: delegate to the email path so all the
+   *                  stabilized downstream logic (caching, staleness
+   *                  guards, conversation tracking) runs unchanged
+   *   2+ customers -> render the picker
+   */
+  async handleNameSearchResult(grouped, originalQuery) {
+    const customers = (grouped && grouped.customers) || [];
+    const truncated = !!(grouped && grouped.truncated);
+
+    if (customers.length === 0) {
+      this.hideLoading();
+      this.allOrders = [];
+      this.activeSearchKind = 'orders';
+      const resultsContainer = document.getElementById("results");
+      if (resultsContainer) resultsContainer.innerHTML = "";
+      this.setStatus(`No customers found matching "${originalQuery}"`);
+      return;
+    }
+
+    if (customers.length === 1) {
+      // Reuse the existing email path: same cache, same display, same
+      // staleness guards. No new code paths to maintain.
+      const onlyEmail = customers[0].email;
+      const searchInput = document.getElementById("searchInput") || document.getElementById("orderSearch");
+      if (searchInput) searchInput.value = onlyEmail;
+      this.activeSearchKind = 'orders';
+      await this.searchOrdersByEmail(onlyEmail);
+      await this.displayOrdersList();
+      return;
+    }
+
+    this.activeSearchKind = 'picker';
+    this.renderCustomerPicker(customers, truncated, originalQuery);
+  }
+
+  /**
+   * Issue the WooCommerce `?search=` call for a name query. Same pagination
+   * shape as searchWooCommerceOrders (3 pages * 100 = 300 orders max), but
+   * deliberately skips filterOrdersByEmail. Returns raw orders for
+   * downstream grouping.
+   */
+  async searchWooCommerceOrdersByName(name) {
+    let allOrders = [];
+    const maxPages = 3;
+
+    try {
+      const pageUrls = [];
+      for (let p = 1; p <= maxPages; p++) {
+        pageUrls.push(this.getAuthenticatedUrl('/orders', {
+          search: name,
+          per_page: 100,
+          page: p,
+          orderby: 'date',
+          order: 'desc'
+        }));
+      }
+
+      const firstPageData = await this.makeRequest(pageUrls[0], {
+        signal: this.activeSearchAbortController?.signal
+      });
+
+      if (!Array.isArray(firstPageData)) return [];
+      if (firstPageData.length === 0) return [];
+      allOrders = allOrders.concat(firstPageData);
+
+      // Fetch pages 2 and 3 in parallel only if page 1 was full (otherwise
+      // they're guaranteed empty). Mirrors the optimization in
+      // searchWooCommerceOrders.
+      if (firstPageData.length >= 100) {
+        const [page2Data, page3Data] = await Promise.all([
+          this.makeRequest(pageUrls[1], {
+            signal: this.activeSearchAbortController?.signal
+          }).catch(err => {
+            if (err.name === 'AbortError') throw err;
+            console.error("Error fetching name-search page 2:", err);
+            return [];
+          }),
+          this.makeRequest(pageUrls[2], {
+            signal: this.activeSearchAbortController?.signal
+          }).catch(err => {
+            if (err.name === 'AbortError') throw err;
+            console.error("Error fetching name-search page 3:", err);
+            return [];
+          })
+        ]);
+        if (Array.isArray(page2Data)) allOrders = allOrders.concat(page2Data);
+        if (Array.isArray(page3Data)) allOrders = allOrders.concat(page3Data);
+      }
+
+      return allOrders;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      console.error("Error in searchWooCommerceOrdersByName:", error);
+      return [];
+    }
+  }
+
   async processOrdersWithDetails(orders, email) {
     // OPTIMIZATION 3: Notes are now fetched lazily when needed for tracking extraction
     // This allows faster initial display of orders
@@ -997,6 +1213,17 @@ class MissWooApp {
   }
 
   async displayOrdersList() {
+    // The customer-picker render path owns the results container while the
+    // user disambiguates. If a concurrent auto-search fires between the
+    // moment we rendered the picker and the user's click, the auto-search
+    // would otherwise blow the picker away mid-decision. The activeSearchKind
+    // flag is reset back to 'orders' the moment the user clicks a picker row
+    // (renderCustomerPicker's row handler) or starts any new search.
+    if (this.activeSearchKind === 'picker') {
+      console.log("Skipping displayOrdersList - customer picker is active");
+      return;
+    }
+
     // Prevent multiple simultaneous calls
     if (this._displayInProgress) {
       console.log("⏳ Display already in progress, skipping...");
@@ -1143,6 +1370,136 @@ class MissWooApp {
     } finally {
       this._displayInProgress = false;
       // console.log("DEBUG: displayOrdersList finished. _displayInProgress set to false.");
+    }
+  }
+
+  /**
+   * Render the customer-disambiguation picker for a name-based search.
+   *
+   * Shown only when a name query matches 2+ distinct customers (by
+   * billing email). Each row delegates back to the existing email path,
+   * so all the stabilized downstream logic - caching, staleness guards,
+   * conversation tracking - is reused without copying.
+   *
+   * @param {Array<object>} customers Output of OrderGroup.groupOrdersByCustomer
+   * @param {boolean} truncated True when more than the per-search cap matched
+   * @param {string} originalQuery The raw search string (for the heading)
+   */
+  renderCustomerPicker(customers, truncated, originalQuery) {
+    const resultsContainer = document.getElementById("results");
+    if (!resultsContainer) {
+      this.hideLoading();
+      return;
+    }
+
+    resultsContainer.innerHTML = "";
+    this.hideLoading();
+    this.setStatus(`Found ${customers.length} customer(s) matching "${originalQuery}"`);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "customer-picker";
+
+    const heading = document.createElement("p");
+    heading.className = "customer-picker-heading";
+    heading.textContent = "Multiple customers matched. Select one to view their orders:";
+    wrapper.appendChild(heading);
+
+    const table = document.createElement("table");
+    table.className = "orders-table customer-picker-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    ["Name", "Email", "Orders", "Most Recent"].forEach(h => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    customers.forEach(customer => {
+      const row = document.createElement("tr");
+      row.className = "customer-picker-row";
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `View orders for ${customer.displayName || customer.email}`);
+
+      const nameCell = document.createElement("td");
+      nameCell.textContent = customer.displayName || "(no name on order)";
+      row.appendChild(nameCell);
+
+      const emailCell = document.createElement("td");
+      emailCell.textContent = customer.email;
+      row.appendChild(emailCell);
+
+      const countCell = document.createElement("td");
+      countCell.textContent = String(customer.orderCount);
+      row.appendChild(countCell);
+
+      const dateCell = document.createElement("td");
+      const date = customer.mostRecentDate ? new Date(customer.mostRecentDate) : null;
+      dateCell.textContent = date && !isNaN(date) ? date.toLocaleDateString() : "—";
+      row.appendChild(dateCell);
+
+      const pick = () => this.handleCustomerPicked(customer.email);
+      row.addEventListener("click", pick);
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          pick();
+        }
+      });
+
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+
+    if (truncated) {
+      const footer = document.createElement("p");
+      footer.className = "customer-picker-footer";
+      footer.textContent = `Showing ${customers.length} most recent customers. Refine your search for more.`;
+      wrapper.appendChild(footer);
+    }
+
+    resultsContainer.appendChild(wrapper);
+  }
+
+  /**
+   * Called when the user clicks a row in the customer picker.
+   *
+   * Sets the search input to the picked email so the user can see what
+   * was chosen, releases picker mode so displayOrdersList() can render,
+   * and re-enters the existing email-search path.
+   */
+  async handleCustomerPicked(email) {
+    if (!email) return;
+    const searchInput = document.getElementById("searchInput") || document.getElementById("orderSearch");
+    if (searchInput) searchInput.value = email;
+
+    this.activeSearchKind = 'orders';
+    this.activeDisplayEmail = null;
+    this.allOrders = [];
+
+    if (this.activeSearchAbortController) {
+      this.activeSearchAbortController.abort();
+    }
+    this.activeSearchAbortController = new AbortController();
+
+    this.clearPreviousResults();
+    this.showLoading();
+
+    try {
+      await this.searchOrdersByEmail(email);
+      await this.displayOrdersList();
+    } catch (error) {
+      if (error.name === 'AbortError' || error.message === 'Search cancelled') {
+        console.log("Customer pick cancelled");
+        return;
+      }
+      console.error("Customer pick error:", error);
+      this.showError(`Failed to load orders: ${error.message}`);
     }
   }
 
@@ -2375,7 +2732,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.32' : 'vJS5.32 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.33' : 'vJS5.33 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2786,6 +3143,11 @@ class MissWooApp {
       this.clearManualSearchInputs();
     }
 
+    // If the customer picker was up, leave that mode so this auto-search
+    // can render. The user navigating to a different conversation in
+    // Missive is an implicit "I'm done disambiguating".
+    this.activeSearchKind = 'orders';
+
     if (!email || !this.isValidEmailForSearch(email)) {
       // console.log("❌ Invalid email for search:", email);
       return;
@@ -3045,6 +3407,7 @@ class MissWooApp {
     
     // Clear cache (only on navigation away)
     this.emailCache.clear();
+    if (this.nameCache) this.nameCache.clear();
     if (this.visibleEmails) {
     this.visibleEmails.clear();
     }
@@ -3105,6 +3468,7 @@ class MissWooApp {
     this.katanaOrderCache = {};
     this.serialNumberCache = {};
     this.emailCache.clear();
+    if (this.nameCache) this.nameCache.clear();
     this.cacheExpiry.clear();
     this.recentlyOpenedConversations.clear();
     console.log('Performance caches cleared');

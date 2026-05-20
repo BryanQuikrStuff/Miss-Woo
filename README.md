@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.32  
+**Version**: vJS5.33  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.32 (Current)
+### vJS5.33 (Current)
+- Feature: Name-based customer search with a disambiguation picker. The manual search bar previously rejected anything that wasn't a numeric order ID or an exact billing email — name queries went out to WooCommerce's `?search=` (which does match `billing_first_name` / `billing_last_name`), but `filterOrdersByEmail` inside `searchWooCommerceOrders` discarded every result whose `billing.email` didn't string-equal the user input, so name searches always reported "No orders found." A name query now classifies as a third branch in `handleSearch()`, fetches matching orders (skipping the equality filter), and groups them by normalized billing email into distinct customers.
+- Behavior: zero customer matches → status `"No customers found matching '<query>'"`. One customer match → auto-pick: delegate straight to the existing `searchOrdersByEmail` path so caching, staleness guards, and conversation tracking are reused unchanged. Two-or-more customer matches → render `renderCustomerPicker()` with Name / Email / Orders / Most Recent columns; clicking a row populates the search input with the picked email and re-enters the email path. Capped at 5 customers, with a "refine your search" footer when more matched. Minimum query length is 3 chars (sub-3-char queries are useless on a 10K+ catalog and would always time out the 30s budget).
+- Race-condition handling: new `this.activeSearchKind` field (`'orders'` default, `'picker'` while disambiguating). `displayOrdersList()` early-returns when in `'picker'` mode, so a concurrent auto-search can't clobber the picker mid-decision. `performAutoSearch()` resets `activeSearchKind = 'orders'` at entry, so navigating to a different Missive conversation correctly displaces the picker (implicit "done disambiguating"). The existing email/order-ID code paths are unchanged when `activeSearchKind === 'orders'` (the default).
+- New module: `src/order-group.js` exposes `groupOrdersByCustomer(orders)` as a pure UMD function, mirroring the `src/email-extract.js` pattern. Loaded by all three `index*.html` entry points before `app.js`. Covered by 11 jest tests in `__tests__/order-group.test.js`. Separate `nameCache` (2-minute TTL, max 50 entries) keeps the picker-payload key space distinct from `emailCache`'s order-array key space — both clear together in `clearCaches()` and the debug `MissWooDebug.clearCaches()` hook.
+
+### vJS5.32
 - Bug fix: Manual email search would silently swallow valid results when the user had previously focused a conversation. The flow was: (1) auto-search runs for focused conversation X, finishes, `displayOrdersList()` writes `this.activeDisplayEmail = "X"` after rendering. (2) User types a different email Y in the search box and hits Enter. (3) `handleSearch()` runs, `searchOrdersByEmail` succeeds and caches results for Y (you can see `Cached 1 processed orders for Y in emailCache` in the log). (4) `displayOrdersList()` then hits its staleness guard at line 1008 — `activeDisplayEmail === "X"` ≠ `currentNormalizedEmail === "Y"` — and skips the render with `⚠️ Skipping display - email changed from X to Y`. UI stays frozen on the previous (or empty) state.
 - Root cause: `processClickedConversation` (line 2457/2472) and `performAutoSearch` (line 2817) both reset `activeDisplayEmail = null` before kicking off a search, which signals to the staleness guard "fresh start, render whatever comes back". `handleSearch` was missing this reset, so the guard treated user-initiated searches as if they were stale background results.
 - Fix: One line added to `handleSearch` — `this.activeDisplayEmail = null;` — placed right after the previous-search-cancel block, mirroring the pattern in the auto-search paths. The staleness guard's intent (don't let slow background results overwrite a newer rendered UI) is preserved for the actual race scenario; only manual searches now correctly bypass it.
