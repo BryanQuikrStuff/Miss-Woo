@@ -1,9 +1,8 @@
-// Missive JS API bridge (vJS5.33)
+// Missive JS API bridge (vJS5.34)
 //
 // Thin adapter that:
 //   1. Boots the MissWooApp once `window.config` and `window.MissWooApp` exist.
-//   2. Wires manual search controls (button click, Enter key) to the app.
-//   3. Pins the version badge in the iframe header.
+//   2. Pins the version badge in the iframe header.
 //
 // Reference: https://missiveapp.com/docs/developers/ui-iframe-integrations/javascript-api
 //
@@ -18,8 +17,19 @@
 // removed in vJS5.19; the remaining wait-for-Missive promise + bridge
 // `Missive.on` wrapper were removed in vJS5.32 since `src/app.js` has
 // always had its own equivalent wait machinery.
+//
+// As of vJS5.34 this bridge also no longer binds the manual search
+// button + Enter key. `MissWooApp.setupMissiveEventListeners()` already
+// binds those via `boundHandleSearch`, so the bridge's identical bindings
+// caused every click / Enter to fire `handleSearch` twice. The second
+// invocation aborted the first's request, and `makeRequest`'s URL-based
+// deduplication then made both invocations await the same already-aborted
+// promise - the race manifested as searches that perpetually cancelled
+// themselves before any HTTP call could complete (most visible on the
+// vJS5.33 name-search path because of its richer logging). The app's
+// search bindings are the single source of truth now.
 
-const VERSION_BADGE_TEXT = 'vJS5.33';
+const VERSION_BADGE_TEXT = 'vJS5.34';
 const APP_BOOT_RETRY_MS = 500;
 
 class MissiveJSBridge {
@@ -31,7 +41,6 @@ class MissiveJSBridge {
   init() {
     this.setBadge(VERSION_BADGE_TEXT);
     this.bootApp();
-    this.bindManualSearchEvents();
   }
 
   /** Pin the visible version badge in the iframe header. */
@@ -68,21 +77,6 @@ class MissiveJSBridge {
         originalUpdateHeader();
         this.setBadge(VERSION_BADGE_TEXT);
       };
-    }
-  }
-
-  /** Wire the in-iframe search input + button to the app's search handler. */
-  bindManualSearchEvents() {
-    const searchButton = document.getElementById('searchBtn');
-    if (searchButton) {
-      searchButton.addEventListener('click', () => this.app?.handleSearch?.());
-    }
-
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-      searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') this.app?.handleSearch?.();
-      });
     }
   }
 }

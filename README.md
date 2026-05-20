@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.33  
+**Version**: vJS5.34  
 **Status**: Active Development  
 **Last Updated**: January 2025
 
@@ -130,7 +130,13 @@ Open browser console to see detailed logs:
 
 ## 📝 Changelog
 
-### vJS5.33 (Current)
+### vJS5.34 (Current)
+- Bug fix: Manual search (button click + Enter key) was firing `handleSearch` twice per user action, and both invocations ended up awaiting the same already-aborted HTTP promise — search never actually completed. `integrations/missive-js/app.js` (the bridge) and `MissWooApp.setupMissiveEventListeners()` (the app) were both binding click + keypress handlers on `#searchBtn` / `#searchInput`, so every interaction triggered handler A and handler B back-to-back. Handler B's `handleSearch` cancelled handler A's `activeSearchAbortController` and started a fresh request, but `makeRequest`'s URL-keyed request-dedup (`${url}-${JSON.stringify(options)}` where `JSON.stringify(AbortSignal) === '{}'`) saw the in-flight key from handler A still in `pendingRequests` and returned A's promise to B. A's promise was then guaranteed to reject with `AbortError` (because B had just aborted it), and B got the same rejection — so the user saw an endless loop of "Cancelling previous search requests" + "Search cancelled" with no successful HTTP fetch. The pre-existing email/order-ID paths were affected by the same race but it was less visible because their logs are quieter and the timing-window for the dedup collision was narrower.
+- Root cause: vJS5.26 trimmed the bridge down but kept a `bindManualSearchEvents()` that duplicated bindings the app's `setupMissiveEventListeners` already owned (binds `searchBtn`/`searchInput` as `searchBtnA`/`searchInputB` to `boundHandleSearch`). The vJS5.32 cleanup ("the app owns its own integration end-to-end") missed this overlap.
+- Fix: Removed `bindManualSearchEvents()` from the bridge along with its call in `init()`. The bridge now does only what its file header advertises: pin the version badge and boot `MissWooApp`. The app's `setupMissiveEventListeners` is the single source of truth for manual-search bindings — no behavior change for any code path other than eliminating the double-invocation.
+- The `makeRequest` URL-based dedup is still latently risky (two concurrent searches with distinct abort signals can collide) but with the double-binding gone, the only remaining path that can hit it is a user double-clicking faster than a microtask. Tracked as a follow-up - the right fix is to either exclude the signal from the dedup key and refuse to share aborted promises, or drop the dedup entirely.
+
+### vJS5.33
 - Feature: Name-based customer search with a disambiguation picker. The manual search bar previously rejected anything that wasn't a numeric order ID or an exact billing email — name queries went out to WooCommerce's `?search=` (which does match `billing_first_name` / `billing_last_name`), but `filterOrdersByEmail` inside `searchWooCommerceOrders` discarded every result whose `billing.email` didn't string-equal the user input, so name searches always reported "No orders found." A name query now classifies as a third branch in `handleSearch()`, fetches matching orders (skipping the equality filter), and groups them by normalized billing email into distinct customers.
 - Behavior: zero customer matches → status `"No customers found matching '<query>'"`. One customer match → auto-pick: delegate straight to the existing `searchOrdersByEmail` path so caching, staleness guards, and conversation tracking are reused unchanged. Two-or-more customer matches → render `renderCustomerPicker()` with Name / Email / Orders / Most Recent columns; clicking a row populates the search input with the picked email and re-enters the email path. Capped at 5 customers, with a "refine your search" footer when more matched. Minimum query length is 3 chars (sub-3-char queries are useless on a 10K+ catalog and would always time out the 30s budget).
 - Race-condition handling: new `this.activeSearchKind` field (`'orders'` default, `'picker'` while disambiguating). `displayOrdersList()` early-returns when in `'picker'` mode, so a concurrent auto-search can't clobber the picker mid-decision. `performAutoSearch()` resets `activeSearchKind = 'orders'` at entry, so navigating to a different Missive conversation correctly displaces the picker (implicit "done disambiguating"). The existing email/order-ID code paths are unchanged when `activeSearchKind === 'orders'` (the default).
