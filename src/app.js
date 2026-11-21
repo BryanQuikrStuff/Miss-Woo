@@ -12,6 +12,9 @@ class MissWooApp {
       this.apiBaseUrl = String(config.api.baseUrl || '').replace(/\/+$/, '');
       this.apiToken = config.api.token || '';
       this.siteUrl = config.siteUrl || 'https://quikrstuff.com';
+      // Order statuses shown for customer lookups. 'pending' is kept because
+      // manual orders created by staff start as pending. Failed/cancelled are hidden.
+      this.visibleOrderStatuses = config.visibleOrderStatuses || ['processing', 'completed', 'pending'];
 
       if (!this.apiBaseUrl) {
         throw new Error('Missing Miss-Woo API address');
@@ -342,7 +345,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.35';
+    return 'vJS5.36';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -793,7 +796,10 @@ class MissWooApp {
         signal: this.activeSearchAbortController?.signal
       });
 
-      const orders = Array.isArray(data?.orders) ? data.orders : [];
+      // Only paid orders are useful to agents. The middleman already filters
+      // these; this is a backup in case an older middleman is deployed.
+      const orders = (Array.isArray(data?.orders) ? data.orders : [])
+        .filter(order => this.visibleOrderStatuses.includes(order?.status));
       for (const order of orders) {
         if (Array.isArray(order.notes)) order._notesFetched = true;
       }
@@ -2578,7 +2584,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.35' : 'vJS5.35 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.36' : 'vJS5.36 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }

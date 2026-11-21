@@ -13,6 +13,8 @@
  *   WC_BASE_URL         default https://quikrstuff.com/wp-json/wc/v3
  *   ALLOWED_ORIGINS     comma-separated sites allowed to call this from a browser
  *                       default https://bryanquikrstuff.github.io
+ *   ORDER_STATUSES      which WooCommerce order statuses customer lookups return
+ *                       default processing,completed,pending (hides failed/cancelled/on-hold etc.)
  *
  * Routes:
  *   GET /health                               no pass needed; shows it is running and which secrets are set
@@ -25,7 +27,7 @@
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.0.0';
+const VERSION = 'api-1.1.1';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -34,6 +36,7 @@ const TTL = {
 };
 const UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_ORDERS = 10;
+const DEFAULT_ORDER_STATUSES = 'processing,completed,pending';
 
 // Best-effort memory shared by requests that land on the same Cloudflare server.
 const memo = new Map();
@@ -83,7 +86,9 @@ export default {
         if (q.length < 2) return json({ error: 'bad_request', detail: 'Search text is too short.' }, 400, cors);
         const page = clampInt(url.searchParams.get('page'), 1, 10, 1);
         const data = await cached(`search:${q.toLowerCase()}:${page}`, TTL.search, fresh,
-          () => woo(env, '/orders', { search: q, per_page: 100, page, orderby: 'date', order: 'desc' }));
+          () => woo(env, '/orders', {
+            search: q, status: orderStatuses(env).join(','), per_page: 100, page, orderby: 'date', order: 'desc',
+          }));
         return json(data, 200, cors);
       }
 
@@ -129,7 +134,8 @@ async function ordersByEmail(env, email, withNotes) {
   if (Array.isArray(customers) && customers.length > 0) {
     customerId = customers[0].id;
     orders = await woo(env, '/orders', {
-      customer: customerId, per_page: MAX_ORDERS, orderby: 'date', order: 'desc',
+      customer: customerId, status: orderStatuses(env).join(','),
+      per_page: MAX_ORDERS, orderby: 'date', order: 'desc',
     });
     source = 'customer';
   }
@@ -137,12 +143,18 @@ async function ordersByEmail(env, email, withNotes) {
   // 2) Backup: no account with that email (e.g. old orders, or the customer used
   //    a different address on the order). One lighter WooCommerce search.
   if (!orders.length) {
-    const found = await woo(env, '/orders', { search: email, per_page: 25, orderby: 'date', order: 'desc' });
+    const found = await woo(env, '/orders', {
+      search: email, status: orderStatuses(env).join(','), per_page: 25, orderby: 'date', order: 'desc',
+    });
     orders = (Array.isArray(found) ? found : [])
       .filter((o) => normalizeEmail(o?.billing?.email) === email)
       .slice(0, MAX_ORDERS);
     if (orders.length) source = 'search';
   }
+
+  // Belt and braces: drop any status not on the list.
+  const allowed = orderStatuses(env);
+  orders = (Array.isArray(orders) ? orders : []).filter((o) => allowed.includes(o?.status));
 
   if (withNotes && orders.length) {
     await mapLimit(orders, 5, async (o) => {
@@ -280,6 +292,11 @@ function json(body, status, extraHeaders) {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders },
   });
+}
+
+function orderStatuses(env) {
+  return String(env.ORDER_STATUSES || DEFAULT_ORDER_STATUSES)
+    .split(',').map((s) => s.trim().toLowerCase().replace(/^wc-/, '')).filter(Boolean);
 }
 
 function normalizeEmail(value) {
