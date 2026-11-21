@@ -3,29 +3,21 @@
 class MissWooApp {
     constructor(config) {
     try {
-      // Configuration - handle both old flat structure and new nested structure
-      if (config && config.woocommerce) {
-        // New nested structure
-        this.apiBaseUrl = config.woocommerce.apiBaseUrl;
-        this.consumerKey = config.woocommerce.consumerKey;
-        this.consumerSecret = config.woocommerce.consumerSecret;
-        this.siteUrl = config.woocommerce.siteUrl;
-        this.katanaApiBaseUrl = config.katana?.apiBaseUrl;
-        this.katanaApiKey = config.katana?.apiKey;
-      } else if (config) {
-        // Old flat structure (backward compatibility)
-        this.apiBaseUrl = config.apiBaseUrl;
-        this.consumerKey = config.consumerKey;
-        this.consumerSecret = config.consumerSecret;
-        this.katanaApiBaseUrl = config.katanaApiBaseUrl;
-        this.katanaApiKey = config.katanaApiKey;
-      } else {
+      // Configuration. All WooCommerce and Katana requests go through the
+      // Miss-Woo API middleman (Cloudflare Worker), which holds the keys.
+      // The browser only knows the middleman's address and the access pass.
+      if (!config || !config.api) {
         throw new Error('Configuration object is required');
       }
-      
-      // Validate required configuration
-      if (!this.apiBaseUrl || !this.consumerKey || !this.consumerSecret) {
-        throw new Error('Missing required WooCommerce configuration');
+      this.apiBaseUrl = String(config.api.baseUrl || '').replace(/\/+$/, '');
+      this.apiToken = config.api.token || '';
+      this.siteUrl = config.siteUrl || 'https://quikrstuff.com';
+
+      if (!this.apiBaseUrl) {
+        throw new Error('Missing Miss-Woo API address');
+      }
+      if (!this.apiToken) {
+        throw new Error('Missing access pass: the integration link must end with ?token=YOUR_PASS');
       }
       
       // Environment detection
@@ -46,6 +38,7 @@ class MissWooApp {
       this.pendingRequests = new Set();
       this.cacheBuster = Date.now();
       this.inFlightKatanaRequests = new Map(); // Track in-flight Katana order requests to prevent duplicates
+      this.katanaSerialsByRow = new Map(); // Katana sales order row id -> serial numbers (filled by getKatanaOrder)
       this.corsHeaders = {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -626,8 +619,12 @@ class MissWooApp {
         return;
       }
 
-      // OPTIMIZATION 3: Initialize notes as empty array - notes will be fetched in displayOrdersList when needed
-      order.notes = [];
+      // The middleman returns the order with its notes already attached.
+      if (Array.isArray(order.notes)) {
+        order._notesFetched = true;
+      } else {
+        order.notes = [];
+      }
 
       this.allOrders = [order];
       
@@ -787,118 +784,32 @@ class MissWooApp {
   }
 
   async searchWooCommerceOrders(email) {
-    let allOrders = [];
-    const maxPages = 3; // Reduced from 5 to 3 pages for faster search
-    const maxMatchingOrders = 5; // Stop when we have enough matches
-
+    // One call to the middleman: it finds the customer's account by exact
+    // email, fetches their recent orders and attaches each order's notes.
+    // This replaces up to three parallel WooCommerce full-text searches.
     try {
-      // OPTIMIZATION 2: Fetch first page immediately to show results faster
-      const firstPageUrl = this.getAuthenticatedUrl('/orders', {
-        search: email,
-        per_page: 100,
-        page: 1,
-        orderby: 'date',
-        order: 'desc'
-      });
-      
-      const firstPageData = await this.makeRequest(firstPageUrl, {
+      const url = this.apiUrl('/api/orders/by-email', { email: this.normalizeEmail(email) });
+      const data = await this.makeRequest(url, {
         signal: this.activeSearchAbortController?.signal
       });
-      
-      // Ensure firstPageData is an array
-      if (!Array.isArray(firstPageData)) {
-        return [];
-      }
-      
-      if (firstPageData.length > 0) {
-        allOrders = allOrders.concat(firstPageData);
-        
-        // OPTIMIZATION 2: Check if we have enough exact matches after first page - early return
-        const matchingAfterFirstPage = this.filterOrdersByEmail(allOrders, email);
-        if (matchingAfterFirstPage.length >= maxMatchingOrders) {
-          // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
-          const processedOrders = await this.processOrdersWithDetails(matchingAfterFirstPage, email);
-          const results = Array.isArray(processedOrders) ? processedOrders : [];
-          this.cacheSearchResults(email, results);
-          return results;
-        }
-        
-        // OPTIMIZATION 2: Fetch pages 2 and 3 in parallel for faster results
-        const page2Url = this.getAuthenticatedUrl('/orders', {
-          search: email,
-          per_page: 100,
-          page: 2,
-          orderby: 'date',
-          order: 'desc'
-        });
-        
-        const page3Url = this.getAuthenticatedUrl('/orders', {
-          search: email,
-          per_page: 100,
-          page: 3,
-          orderby: 'date',
-          order: 'desc'
-        });
-        
-        // Fetch pages 2 and 3 in parallel
-        const [page2Data, page3Data] = await Promise.all([
-          this.makeRequest(page2Url, {
-            signal: this.activeSearchAbortController?.signal
-          }).catch(err => {
-            if (err.name === 'AbortError') throw err;
-            console.error("Error fetching page 2:", err);
-            return [];
-          }),
-          this.makeRequest(page3Url, {
-            signal: this.activeSearchAbortController?.signal
-          }).catch(err => {
-            if (err.name === 'AbortError') throw err;
-            console.error("Error fetching page 3:", err);
-            return [];
-          })
-        ]);
-        
-        // Add page 2 results if valid
-        if (Array.isArray(page2Data) && page2Data.length > 0) {
-          allOrders = allOrders.concat(page2Data);
-          
-          // OPTIMIZATION 2: Check if we have enough matches after page 2 - early return
-          const matchingAfterPage2 = this.filterOrdersByEmail(allOrders, email);
-          if (matchingAfterPage2.length >= maxMatchingOrders) {
-            // OPTIMIZATION: Early return - no need to slice, filterOrdersByEmail already returns max 5
-            const processedOrders = await this.processOrdersWithDetails(matchingAfterPage2, email);
-            const results = Array.isArray(processedOrders) ? processedOrders : [];
-            this.cacheSearchResults(email, results);
-            return results;
-          }
-        }
-        
-        // Add page 3 results if valid
-        if (Array.isArray(page3Data) && page3Data.length > 0) {
-          allOrders = allOrders.concat(page3Data);
-        }
-      }
 
-      // OPTIMIZATION: Filter for exact email matches (filterOrdersByEmail already returns max 5)
-      const matchingOrders = this.filterOrdersByEmail(allOrders, email);
-
-      // OPTIMIZATION 3: Process order details (without notes - notes fetched later)
-      const processedOrders = await this.processOrdersWithDetails(matchingOrders, email);
+      const orders = Array.isArray(data?.orders) ? data.orders : [];
+      for (const order of orders) {
+        if (Array.isArray(order.notes)) order._notesFetched = true;
+      }
+      const processedOrders = await this.processOrdersWithDetails(orders, email);
       const results = Array.isArray(processedOrders) ? processedOrders : [];
-      
-      // Memoize results
       this.cacheSearchResults(email, results);
-      
       return results;
-      
     } catch (error) {
-      // Don't log abort errors as errors
       if (error.name === 'AbortError') {
         console.log("Search cancelled");
         throw error;
       }
+      // Re-throw so the caller shows a real error instead of a misleading
+      // "No orders found".
       console.error("Error in searchWooCommerceOrders:", error);
-      return [];
+      throw error;
     }
   }
 
@@ -1188,35 +1099,39 @@ class MissWooApp {
     return orders;
   }
 
-  // OPTIMIZATION: Cache base URL construction to avoid repeated string operations
-  getAuthenticatedUrl(endpoint, params = {}) {
-    // Ensure we have a valid base URL
+  // Builds a Miss-Woo API (middleman) URL. No keys are ever added here; the
+  // access pass travels in the X-MissWoo-Token header (see makeRequest).
+  apiUrl(path, params = {}) {
     if (!this.apiBaseUrl) {
       throw new Error("API base URL is not configured");
     }
-    
-    // OPTIMIZATION: Cache base URL normalization
-    if (!this._cachedBaseUrl) {
-      this._cachedBaseUrl = this.apiBaseUrl.endsWith('/') ? this.apiBaseUrl : this.apiBaseUrl + '/';
-    }
-    
-    const fullUrl = this._cachedBaseUrl + endpoint.replace(/^\//, ''); // Remove leading slash if present
-    
-    try {
-      const url = new URL(fullUrl);
-      url.searchParams.set('consumer_key', this.consumerKey);
-      url.searchParams.set('consumer_secret', this.consumerSecret);
-      
-      // Add additional parameters
-      Object.entries(params).forEach(([key, value]) => {
+    const url = new URL(this.apiBaseUrl + '/' + path.replace(/^\//, ''));
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
         url.searchParams.set(key, value);
-      });
-      
-      return url.toString();
-    } catch (error) {
-      console.error("Failed to construct URL:", error);
-      throw new Error(`Invalid URL construction: ${error.message}`);
+      }
+    });
+    return url.toString();
+  }
+
+  // Translates the WooCommerce-style endpoints used throughout this file
+  // into the matching middleman routes.
+  getAuthenticatedUrl(endpoint, params = {}) {
+    const path = '/' + endpoint.replace(/^\//, '');
+    let m;
+    if ((m = path.match(/^\/orders\/(\d+)\/notes$/))) {
+      return this.apiUrl(`/api/orders/${m[1]}/notes`);
     }
+    if ((m = path.match(/^\/orders\/(\d+)$/))) {
+      return this.apiUrl(`/api/orders/${m[1]}`);
+    }
+    if (path === '/orders' && params.search) {
+      return this.apiUrl('/api/orders/search', { q: params.search, page: params.page });
+    }
+    if (path === '/orders') {
+      return this.apiUrl('/api/ping');
+    }
+    throw new Error(`Unsupported endpoint: ${endpoint}`);
   }
 
   async makeRequest(url, options = {}) {
@@ -1235,15 +1150,17 @@ class MissWooApp {
     // Create promise for this request
     const requestPromise = (async () => {
       try {
+        const { headers: _ignoredHeaders, ...fetchOptions } = options;
         const response = await fetch(cacheBustedUrl, {
+          ...fetchOptions,
           mode: 'cors',
           credentials: 'omit', // Don't send cookies for CORS
           headers: {
             ...this.corsHeaders,
-            ...options.headers
+            ...options.headers,
+            'X-MissWoo-Token': this.apiToken
           },
-          signal: options.signal, // OPTIMIZATION 4: Support request cancellation
-          ...options
+          signal: options.signal // OPTIMIZATION 4: Support request cancellation
         });
 
         if (!response.ok) {
@@ -2041,10 +1958,9 @@ class MissWooApp {
         return "N/A";
       }
         } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      // Not cached, so the next look at this order retries.
       console.error('Error getting serial number:', error);
-      this.serialNumberCache.set(order.number, "N/A");
-      this.setCacheExpiry(order.number, 'serialCache');
-      this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
       return "N/A";
     }
   }
@@ -2085,195 +2001,53 @@ class MissWooApp {
     }
   }
 
+  // Serial numbers now arrive together with the Katana order from the
+  // middleman (one request per order instead of one per product line).
   async getSerialNumbersForRow(rowId) {
-    // OPTIMIZATION: Request deduplication - reuse in-flight requests
-    if (this.inFlightSerialRequests && this.inFlightSerialRequests.has(rowId)) {
-      console.log(`⏳ Reusing in-flight request for serial numbers row ID: ${rowId}`);
-      return await this.inFlightSerialRequests.get(rowId);
-    }
-    
-    // Create a new request promise
-    const requestPromise = (async () => {
-      try {
-        console.log(`Fetching serial numbers for row ID: ${rowId}`);
-        // Use the row ID as resource_id to get serial numbers
-        const url = `${this.katanaApiBaseUrl}/serial_numbers?resource_id=${rowId}&resource_type=SalesOrderRow`;
-        const response = await fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${this.katanaApiKey}`,
-            'Accept': 'application/json'
-          },
-          signal: this.activeSearchAbortController?.signal
-        });
-
-        if (!response.ok) {
-          console.log(`No serial numbers found for row ID ${rowId}: ${response.status}`);
-          return [];
-        }
-
-        const data = await response.json();
-        console.log(`Serial numbers data for row ID ${rowId}:`, data);
-        
-        if (data.data && Array.isArray(data.data)) {
-          // Extract the actual serial_number values from each object
-          const serialNumbers = data.data
-            .map(item => item.serial_number)
-            .filter(Boolean);
-          console.log(`Found ${serialNumbers.length} serial numbers for row ID ${rowId}:`, serialNumbers);
-          return serialNumbers;
-        }
-        
-        return [];
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          console.log("Serial numbers fetch cancelled");
-          throw error;
-        }
-        console.error(`Error fetching serial numbers for row ID ${rowId}:`, error);
-        return [];
-      } finally {
-        // Remove from tracking when done
-        if (this.inFlightSerialRequests) {
-          this.inFlightSerialRequests.delete(rowId);
-        }
-      }
-    })();
-    
-    // Track the promise
-    if (this.inFlightSerialRequests) {
-      this.inFlightSerialRequests.set(rowId, requestPromise);
-    }
-    
-    return requestPromise;
+    return this.katanaSerialsByRow.get(String(rowId)) || [];
   }
 
   async getKatanaOrder(wooOrderNumber) {
-    try {
-      // Check cache first with expiration
-      if (this.katanaOrderCache && this.katanaOrderCache.has(wooOrderNumber) && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
-        console.log(`Using cached Katana order for #${wooOrderNumber}`);
-        return this.katanaOrderCache.get(wooOrderNumber);
-      }
-      
-      // Check if there's already an in-flight request for this order
-      if (this.inFlightKatanaRequests && this.inFlightKatanaRequests.has(wooOrderNumber)) {
-        console.log(`⏳ Reusing in-flight request for Katana order #${wooOrderNumber}`);
-        return await this.inFlightKatanaRequests.get(wooOrderNumber);
-      }
-      
-      // Create a new request promise
-      const requestPromise = (async () => {
-        try {
-          console.log(`Getting Katana order for WooCommerce order #${wooOrderNumber}`);
-      
-      const url = `${this.katanaApiBaseUrl}/sales_orders?order_no=${wooOrderNumber}`;
-      console.log(`Fetching Katana order for WooCommerce order #${wooOrderNumber}:`, url);
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        },
-        signal: this.activeSearchAbortController?.signal
-      });
-      console.log(`Katana API response status for order #${wooOrderNumber}:`, response.status);
+    // Check cache first with expiration
+    if (this.katanaOrderCache.has(wooOrderNumber) && this.isCacheValid(wooOrderNumber, 'katanaCache')) {
+      return this.katanaOrderCache.get(wooOrderNumber);
+    }
 
-      if (!response.ok) {
-        throw new Error(`Katana API error: ${response.status}`);
-      }
+    // Reuse an in-flight request for the same order
+    if (this.inFlightKatanaRequests.has(wooOrderNumber)) {
+      return this.inFlightKatanaRequests.get(wooOrderNumber);
+    }
 
-      const data = await response.json();
-      console.log(`Katana order data for order #${wooOrderNumber}:`, data);
-      
-      const katanaOrder = data.data?.[0] || null;
-      if (katanaOrder) {
-        console.log(`Found Katana order ID ${katanaOrder.id} for WooCommerce order #${wooOrderNumber}`);
-        
-        // Try to get the full sales order with line items
-        console.log(`Attempting to get full order details for ID ${katanaOrder.id}...`);
-        const fullOrder = await this.getKatanaOrderDetails(katanaOrder.id);
-        if (fullOrder) {
-          console.log(`Got full Katana order details for #${wooOrderNumber}:`, fullOrder);
-          this.katanaOrderCache.set(wooOrderNumber, fullOrder);
-          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
-          this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
-          return fullOrder;
-        } else {
-          console.log(`Could not get full order details, returning basic order`);
-          this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
-          this.setCacheExpiry(wooOrderNumber, 'katanaCache');
-          this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
-          return katanaOrder;
+    const requestPromise = (async () => {
+      try {
+        const url = this.apiUrl('/api/katana/order', { order_no: wooOrderNumber });
+        const data = await this.makeRequest(url, {
+          signal: this.activeSearchAbortController?.signal
+        });
+
+        const katanaOrder = data?.katana_order || null;
+        for (const [rowId, serials] of Object.entries(data?.serials_by_row || {})) {
+          this.katanaSerialsByRow.set(String(rowId), Array.isArray(serials) ? serials : []);
         }
-      } else {
-        console.log(`No Katana order found for WooCommerce order #${wooOrderNumber}`);
-        this.katanaOrderCache.set(wooOrderNumber, null);
+
+        // Only successful answers are cached ("no Katana order" is a real answer).
+        this.katanaOrderCache.set(wooOrderNumber, katanaOrder);
         this.setCacheExpiry(wooOrderNumber, 'katanaCache');
         this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
-        return null;
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Katana order fetch cancelled");
+        return katanaOrder;
+      } catch (error) {
+        if (error.name === 'AbortError') throw error;
+        // Do NOT cache failures: a temporary error should not hide serial
+        // numbers for the next 10 minutes.
+        console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
         throw error;
-      }
-      console.error(`Error fetching Katana order for #${wooOrderNumber}:`, error);
-      this.katanaOrderCache.set(wooOrderNumber, null);
-      this.setCacheExpiry(wooOrderNumber, 'katanaCache');
-      this.enforceCacheSizeLimit(this.katanaOrderCache, 'katanaCache', this.cacheConfig.maxKatanaCacheSize);
-      return null;
-        } finally {
-          // Clean up in-flight request tracking
-          if (this.inFlightKatanaRequests) {
-            this.inFlightKatanaRequests.delete(wooOrderNumber);
-          }
-        }
-      })();
-      
-      // Store the in-flight request
-      if (this.inFlightKatanaRequests) {
-        this.inFlightKatanaRequests.set(wooOrderNumber, requestPromise);
-      }
-      
-      return await requestPromise;
-    } catch (error) {
-      if (error.name === 'AbortError') throw error;
-      // Clean up on error
-      if (this.inFlightKatanaRequests) {
+      } finally {
         this.inFlightKatanaRequests.delete(wooOrderNumber);
       }
-      throw error;
-    }
-  }
+    })();
 
-  async getKatanaOrderDetails(katanaOrderId) {
-    try {
-      const url = `${this.katanaApiBaseUrl}/sales_orders/${katanaOrderId}`;
-      console.log(`Fetching full Katana order details for ID ${katanaOrderId}:`, url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.katanaApiKey}`,
-          'Accept': 'application/json'
-        },
-        signal: this.activeSearchAbortController?.signal
-      });
-
-      if (!response.ok) {
-        console.log(`Could not get full order details for ${katanaOrderId}, status: ${response.status}`);
-        return null;
-      }
-
-      const data = await response.json();
-      console.log(`Full Katana order details for ID ${katanaOrderId}:`, data);
-      return data;
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Katana order details fetch cancelled");
-        throw error;
-      }
-      console.error(`Error fetching full Katana order details for ${katanaOrderId}:`, error);
-      return null;
-    }
+    this.inFlightKatanaRequests.set(wooOrderNumber, requestPromise);
+    return requestPromise;
   }
 
   // OPTIMIZATION 1: Batch fetch all Katana orders in parallel for multiple WooCommerce orders
@@ -2303,7 +2077,8 @@ class MissWooApp {
         } catch (error) {
           if (error.name === 'AbortError') throw error;
           console.error(`Error in batch fetch for order ${orderNumber}:`, error);
-          return { orderNumber, katanaOrder: null };
+          // undefined = lookup failed (retry later); null = no Katana order exists
+          return { orderNumber, katanaOrder: undefined };
         }
       });
       
@@ -2455,10 +2230,12 @@ class MissWooApp {
           ? orderSerialNumbers.join(', ')
           : "N/A";
         
-        // Cache the result
-        this.serialNumberCache.set(order.number, result);
-        this.setCacheExpiry(order.number, 'serialCache');
-        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        // Cache the result, unless the Katana lookup failed (then retry next time)
+        if (katanaOrdersMap.get(order.number) !== undefined) {
+          this.serialNumberCache.set(order.number, result);
+          this.setCacheExpiry(order.number, 'serialCache');
+          this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        }
         cachedResults.set(order.number, result);
       }
       
@@ -2671,13 +2448,15 @@ class MissWooApp {
 
   async testConnection() {
     try {
-      console.log("Testing WooCommerce connection...");
-      const url = this.getAuthenticatedUrl('/orders', { per_page: 1 });
-      await this.makeRequest(url);
-      console.log("✅ WooCommerce connection successful");
+      console.log("Testing Miss-Woo API connection...");
+      const result = await this.makeRequest(this.apiUrl('/api/ping'));
+      if (result?.woocommerce !== 'ok' || result?.katana !== 'ok') {
+        throw new Error(`WooCommerce: ${result?.woocommerce}, Katana: ${result?.katana}`);
+      }
+      console.log("✅ Miss-Woo API connection successful");
     } catch (error) {
-      console.error("❌ WooCommerce connection failed:", error);
-      this.showError("Failed to connect to WooCommerce: " + error.message);
+      console.error("❌ Miss-Woo API connection failed:", error);
+      this.showError("Failed to connect to the Miss-Woo API: " + error.message);
     }
   }
 
@@ -3110,9 +2889,10 @@ class MissWooApp {
           }
           
           // Only fetch if notes are not already present
-          if (!order.notes || order.notes.length === 0) {
+          if (!order._notesFetched && (!order.notes || order.notes.length === 0)) {
             const notesUrl = this.getAuthenticatedUrl(`/orders/${order.id}/notes`);
             order.notes = await this.makeRequest(notesUrl);
+            order._notesFetched = true;
             console.log(`✅ Loaded ${order.notes?.length || 0} notes for order #${order.number}`);
           }
         } catch (error) {
@@ -3124,16 +2904,13 @@ class MissWooApp {
         }
       });
       
-      await Promise.all(notesPromises);
-      
-      // Check if conversation is still active after notes
-      if (!isConversationActive()) {
-        throw new Error('Conversation closed');
-      }
-      
-      // Step 2: Batch fetch Katana orders for all WooCommerce orders
+      // Step 2: Batch fetch Katana orders at the same time as the notes
+      // (they don't depend on each other)
       const wooOrderNumbers = orders.map(o => o.number);
-      await this.batchGetKatanaOrders(wooOrderNumbers);
+      await Promise.all([
+        Promise.all(notesPromises),
+        this.batchGetKatanaOrders(wooOrderNumbers)
+      ]);
       
       // Check if conversation is still active after Katana
       if (!isConversationActive()) {
