@@ -19,7 +19,7 @@
  * Routes:
  *   GET /health                               no pass needed; shows it is running and which secrets are set
  *   GET /api/ping                             checks WooCommerce + Katana keys work
- *   GET /api/orders/by-email?email=           a customer's recent orders, with notes (fast account lookup)
+ *   GET /api/orders/by-email?email=a,b        recent orders for one or more customer emails (up to 4), with notes
  *   GET /api/orders/search?q=&page=           name/free-text search (slow, WooCommerce search)
  *   GET /api/orders/:id                       one order, with notes
  *   GET /api/orders/:id/notes                 an order's notes
@@ -27,7 +27,7 @@
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.1.1';
+const VERSION = 'api-1.2.0';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -36,6 +36,7 @@ const TTL = {
 };
 const UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_ORDERS = 10;
+const MAX_EMAILS = 4; // a conversation can include several customer addresses
 const DEFAULT_ORDER_STATUSES = 'processing,completed,pending';
 
 // Best-effort memory shared by requests that land on the same Cloudflare server.
@@ -73,11 +74,12 @@ export default {
       if (parts[1] === 'ping') return json(await ping(env), 200, cors);
 
       if (parts[1] === 'orders' && parts[2] === 'by-email') {
-        const email = normalizeEmail(url.searchParams.get('email'));
-        if (!email) return json({ error: 'bad_request', detail: 'A valid email is required.' }, 400, cors);
+        const emails = [...new Set(String(url.searchParams.get('email') || '')
+          .split(',').map(normalizeEmail).filter(Boolean))].slice(0, MAX_EMAILS);
+        if (!emails.length) return json({ error: 'bad_request', detail: 'A valid email is required.' }, 400, cors);
         const withNotes = url.searchParams.get('notes') !== '0';
-        const data = await cached(`email:${email}:${withNotes}`, TTL.orders, fresh,
-          () => ordersByEmail(env, email, withNotes));
+        const data = await cached(`email:${emails.join(',')}:${withNotes}`, TTL.orders, fresh,
+          () => ordersByEmail(env, emails, withNotes));
         return json(data, 200, cors);
       }
 
@@ -124,37 +126,39 @@ export default {
 
 // ---------- WooCommerce ----------
 
-async function ordersByEmail(env, email, withNotes) {
-  // 1) Fast path: every QuikrStuff customer has an account, so find it by exact email.
-  const customers = await woo(env, '/customers', { email, role: 'all', per_page: 5 });
-  let orders = [];
-  let source = 'none';
-  let customerId = null;
+async function ordersByEmail(env, emails, withNotes) {
+  const statuses = orderStatuses(env).join(',');
+  const emailSet = new Set(emails);
 
-  if (Array.isArray(customers) && customers.length > 0) {
-    customerId = customers[0].id;
-    orders = await woo(env, '/orders', {
-      customer: customerId, status: orderStatuses(env).join(','),
-      per_page: MAX_ORDERS, orderby: 'date', order: 'desc',
-    });
-    source = 'customer';
-  }
+  // 1) Fast path: find each address's customer account by exact email (in parallel).
+  const customerLists = await Promise.all(
+    emails.map((email) => woo(env, '/customers', { email, role: 'all', per_page: 5 }).catch(() => []))
+  );
+  const customerIds = [...new Set(customerLists.flat().map((c) => c?.id).filter(Boolean))];
 
-  // 2) Backup: no account with that email (e.g. old orders, or the customer used
-  //    a different address on the order). One lighter WooCommerce search.
+  const orderLists = await Promise.all(customerIds.map((customer) => woo(env, '/orders', {
+    customer, status: statuses, per_page: MAX_ORDERS, orderby: 'date', order: 'desc',
+  })));
+  let orders = orderLists.flat();
+  let source = orders.length ? 'customer' : 'none';
+
+  // 2) Backup: no account orders for these addresses (old orders, or a different
+  //    address typed on the order). One lighter WooCommerce search per address.
   if (!orders.length) {
-    const found = await woo(env, '/orders', {
-      search: email, status: orderStatuses(env).join(','), per_page: 25, orderby: 'date', order: 'desc',
-    });
-    orders = (Array.isArray(found) ? found : [])
-      .filter((o) => normalizeEmail(o?.billing?.email) === email)
-      .slice(0, MAX_ORDERS);
+    const found = await Promise.all(emails.map((email) => woo(env, '/orders', {
+      search: email, status: statuses, per_page: 25, orderby: 'date', order: 'desc',
+    }).catch(() => [])));
+    orders = found.flat().filter((o) => emailSet.has(normalizeEmail(o?.billing?.email)));
     if (orders.length) source = 'search';
   }
 
-  // Belt and braces: drop any status not on the list.
+  // Remove duplicates, keep allowed statuses only, newest first.
   const allowed = orderStatuses(env);
-  orders = (Array.isArray(orders) ? orders : []).filter((o) => allowed.includes(o?.status));
+  const byId = new Map();
+  for (const o of orders) if (o && allowed.includes(o.status)) byId.set(o.id, o);
+  orders = [...byId.values()]
+    .sort((a, b) => String(b.date_created || '').localeCompare(String(a.date_created || '')))
+    .slice(0, MAX_ORDERS);
 
   if (withNotes && orders.length) {
     await mapLimit(orders, 5, async (o) => {
@@ -162,7 +166,14 @@ async function ordersByEmail(env, email, withNotes) {
     });
   }
 
-  return { email, source, customer_id: customerId, orders };
+  return {
+    email: emails[0],
+    emails,
+    source,
+    customer_id: customerIds[0] || null,
+    customer_ids: customerIds,
+    orders,
+  };
 }
 
 async function woo(env, path, params = {}) {

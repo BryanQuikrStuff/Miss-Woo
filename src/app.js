@@ -41,6 +41,7 @@ class MissWooApp {
       this.pendingRequests = new Set();
       this.cacheBuster = Date.now();
       this.inFlightKatanaRequests = new Map(); // Track in-flight Katana order requests to prevent duplicates
+      this.conversationEmails = new Map(); // primary email -> every customer email in that conversation
       this.katanaSerialsByRow = new Map(); // Katana sales order row id -> serial numbers (filled by getKatanaOrder)
       this.corsHeaders = {
         'Accept': 'application/json',
@@ -345,7 +346,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.36';
+    return 'vJS5.37';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -791,7 +792,10 @@ class MissWooApp {
     // email, fetches their recent orders and attaches each order's notes.
     // This replaces up to three parallel WooCommerce full-text searches.
     try {
-      const url = this.apiUrl('/api/orders/by-email', { email: this.normalizeEmail(email) });
+      // Look up every customer address in the conversation, not just the first
+      const primary = this.normalizeEmail(email);
+      const allEmails = this.conversationEmails.get(primary) || [primary];
+      const url = this.apiUrl('/api/orders/by-email', { email: allEmails.join(',') });
       const data = await this.makeRequest(url, {
         signal: this.activeSearchAbortController?.signal
       });
@@ -2584,7 +2588,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.36' : 'vJS5.36 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.37' : 'vJS5.37 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
@@ -2721,6 +2725,15 @@ class MissWooApp {
         return;
       }
       console.log(`✅ Resolved customer email via ${emailSource}: ${email}`);
+
+      // Remember the other customer addresses in this conversation, so the
+      // lookup also finds orders placed under a spouse's or second account.
+      const allCustomerEmails = this._emailExtract().getCustomerEmailsFromAPI
+        ? this._emailExtract().getCustomerEmailsFromAPI(fetchedConversations, window.Missive)
+        : [];
+      const primaryEmail = this.normalizeEmail(email);
+      const emailList = [primaryEmail, ...allCustomerEmails.filter(e => e !== primaryEmail)].slice(0, 4);
+      this.conversationEmails.set(primaryEmail, emailList);
 
       const normalizedEmail = this.normalizeEmail(email);
       console.log(`📧 Extracted email from conversation: ${email} (normalized: ${normalizedEmail})`);
