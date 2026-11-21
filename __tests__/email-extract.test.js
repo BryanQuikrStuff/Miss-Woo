@@ -296,3 +296,28 @@ function makeMissive(addressesToReturn) {
     getEmailAddresses: jest.fn(() => addressesToReturn),
   };
 }
+
+describe('getCustomerEmailsFromAPI', () => {
+  const missiveWith = (addresses) => ({ getEmailAddresses: () => addresses });
+
+  test('returns every customer address, skipping internal ones and duplicates', () => {
+    const missive = missiveWith([
+      { address: 'Sales@QuikrStuff.com' },
+      { address: 'partner.one@example.com' },
+      { address: 'Partner.Two@example.com' },
+      { address: 'partner.two@example.com' },
+    ]);
+    expect(EmailExtract.getCustomerEmailsFromAPI([{}], missive))
+      .toEqual(['partner.one@example.com', 'partner.two@example.com']);
+  });
+
+  test('caps the list', () => {
+    const missive = missiveWith(['a@x.com', 'b@x.com', 'c@x.com'].map((address) => ({ address })));
+    expect(EmailExtract.getCustomerEmailsFromAPI([{}], missive, 2)).toEqual(['a@x.com', 'b@x.com']);
+  });
+
+  test('returns [] without conversations or Missive API', () => {
+    expect(EmailExtract.getCustomerEmailsFromAPI([], missiveWith([]))).toEqual([]);
+    expect(EmailExtract.getCustomerEmailsFromAPI([{}], null)).toEqual([]);
+  });
+});

@@ -1,7 +1,7 @@
 
 # Miss-Woo Integration
 
-**Version**: vJS5.36  
+**Version**: vJS5.37  
 **Status**: Active Development  
 **Last Updated**: January 2025
 

@@ -342,8 +342,38 @@
     return null;
   }
 
+  /**
+   * Like getCustomerEmailFromAPI, but returns every customer address in the
+   * conversation (deduplicated, lower-cased, at most `max`). A conversation
+   * can include several customers, e.g. a husband and wife, and the order
+   * may be under either one's account.
+   */
+  function getCustomerEmailsFromAPI(conversations, missive, max) {
+    var limit = max || 4;
+    if (!Array.isArray(conversations) || conversations.length === 0) return [];
+    if (!missive || typeof missive.getEmailAddresses !== 'function') return [];
+
+    var addresses;
+    try {
+      addresses = missive.getEmailAddresses(conversations);
+    } catch (_err) {
+      return [];
+    }
+    if (!Array.isArray(addresses)) return [];
+
+    var result = [];
+    for (var i = 0; i < addresses.length && result.length < limit; i++) {
+      var a = addresses[i];
+      if (!a || !isValidEmailForSearch(a.address)) continue;
+      var email = String(a.address).trim().toLowerCase();
+      if (result.indexOf(email) === -1) result.push(email);
+    }
+    return result;
+  }
+
   return {
     isValidEmailForSearch: isValidEmailForSearch,
+    getCustomerEmailsFromAPI: getCustomerEmailsFromAPI,
     extractAllEmailsFromString: extractAllEmailsFromString,
     extractEmailFromString: extractEmailFromString,
     searchForEmailsRecursively: searchForEmailsRecursively,
