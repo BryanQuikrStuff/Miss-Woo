@@ -12,8 +12,9 @@ class MissWooApp {
       this.apiBaseUrl = String(config.api.baseUrl || '').replace(/\/+$/, '');
       this.apiToken = config.api.token || '';
       this.siteUrl = config.siteUrl || 'https://quikrstuff.com';
-      // Order statuses shown for customer lookups (failed/pending/cancelled are hidden)
-      this.visibleOrderStatuses = config.visibleOrderStatuses || ['processing', 'completed'];
+      // Order statuses shown for customer lookups. 'pending' is kept because
+      // manual orders created by staff start as pending. Failed/cancelled are hidden.
+      this.visibleOrderStatuses = config.visibleOrderStatuses || ['processing', 'completed', 'pending'];
 
       if (!this.apiBaseUrl) {
         throw new Error('Missing Miss-Woo API address');

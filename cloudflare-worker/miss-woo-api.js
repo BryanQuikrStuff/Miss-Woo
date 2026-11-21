@@ -14,7 +14,7 @@
  *   ALLOWED_ORIGINS     comma-separated sites allowed to call this from a browser
  *                       default https://bryanquikrstuff.github.io
  *   ORDER_STATUSES      which WooCommerce order statuses customer lookups return
- *                       default processing,completed (hides failed/pending/cancelled)
+ *                       default processing,completed,pending (hides failed/cancelled/on-hold etc.)
  *
  * Routes:
  *   GET /health                               no pass needed; shows it is running and which secrets are set
@@ -27,7 +27,7 @@
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.1.0';
+const VERSION = 'api-1.1.1';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -36,7 +36,7 @@ const TTL = {
 };
 const UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_ORDERS = 10;
-const DEFAULT_ORDER_STATUSES = 'processing,completed';
+const DEFAULT_ORDER_STATUSES = 'processing,completed,pending';
 
 // Best-effort memory shared by requests that land on the same Cloudflare server.
 const memo = new Map();
