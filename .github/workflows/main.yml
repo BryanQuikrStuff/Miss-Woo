@@ -36,11 +36,6 @@ jobs:
     
     - name: Run tests
       run: npm test
-      env:
-        WOOCOMMERCE_CONSUMER_KEY: ${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}
-        WOOCOMMERCE_CONSUMER_SECRET: ${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}
-        WOOCOMMERCE_SITE_URL: ${{ secrets.WOOCOMMERCE_SITE_URL }}
-        KATANA_API_KEY: ${{ secrets.KATANA_API_KEY }}
 
   build:
     needs: test
@@ -63,24 +58,15 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Create production config
+    # Keys are NOT written into the site. WooCommerce and Katana keys live
+    # only in the Miss-Woo API (Cloudflare Worker); src/config.js holds no secrets.
+    - name: Check that no keys are published
       run: |
-        cat > src/config.js << EOL
-        const config = {
-            woocommerce: {
-                apiBaseUrl: "https://quikrstuff.com/wp-json/wc/v3",
-                consumerKey: "${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}",
-                consumerSecret: "${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}",
-                siteUrl: "${{ secrets.WOOCOMMERCE_SITE_URL }}"
-            },
-            katana: {
-                apiBaseUrl: "https://api.katanamrp.com/v1",
-                apiKey: "${{ secrets.KATANA_API_KEY }}"
-            }
-        };
-        window.config = config;
-        EOL
-    
+        if grep -rEn "(ck|cs)_[0-9a-f]{30,}|Bearer [A-Za-z0-9]{20,}" src/ index.html index-web.html integrations/; then
+          echo "::error::Something that looks like an API key is in the files to be published."
+          exit 1
+        fi
+
     - name: Create production build
       run: |
         mkdir -p dist

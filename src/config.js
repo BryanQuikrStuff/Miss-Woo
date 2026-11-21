@@ -1,17 +1,20 @@
-// Configuration - API keys are injected by GitHub Actions during build
-// For local development, replace placeholders with your actual keys
-const config = {
-    woocommerce: {
-        apiBaseUrl: "https://quikrstuff.com/wp-json/wc/v3",
-        consumerKey: "YOUR_WOOCOMMERCE_CONSUMER_KEY_HERE", // Replaced by GitHub Actions: ${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}
-        consumerSecret: "YOUR_WOOCOMMERCE_CONSUMER_SECRET_HERE", // Replaced by GitHub Actions: ${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}
-        siteUrl: "https://quikrstuff.com" // Replaced by GitHub Actions: ${{ secrets.WOOCOMMERCE_SITE_URL }}
-    },
-    katana: {
-        apiBaseUrl: "https://api.katanamrp.com/v1",
-        apiKey: "YOUR_KATANA_API_KEY_HERE" // Replaced by GitHub Actions: ${{ secrets.KATANA_API_KEY }}
-    }
-};
+// Miss-Woo configuration. Contains NO keys.
+// WooCommerce and Katana keys live only in the Miss-Woo API (Cloudflare Worker).
+// The access pass comes from the Missive integration link, e.g.
+//   https://bryanquikrstuff.github.io/Miss-Woo/?token=YOUR_PASS
+(function () {
+  let token = '';
+  try {
+    token = new URLSearchParams(window.location.search).get('token') || '';
+  } catch (e) {
+    token = '';
+  }
 
-// Make config available globally
-window.config = config;
+  window.config = {
+    api: {
+      baseUrl: "https://miss-woo-api.bryan-df4.workers.dev",
+      token: token
+    },
+    siteUrl: "https://quikrstuff.com"
+  };
+})();
