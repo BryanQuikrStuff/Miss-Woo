@@ -12,7 +12,7 @@
  * Optional plain-text variables:
  *   WC_BASE_URL         default https://quikrstuff.com/wp-json/wc/v3
  *   ALLOWED_ORIGINS     comma-separated sites allowed to call this from a browser
- *                       default https://bryanquikrstuff.github.io
+ *                       default https://quikrstuff.github.io
  *   ORDER_STATUSES      which WooCommerce order statuses customer lookups return
  *                       default processing,completed,pending (hides failed/cancelled/on-hold etc.)
  *
@@ -350,7 +350,7 @@ async function isAuthorized(request, url, env) {
 }
 
 function corsHeaders(request, env) {
-  const allowed = (env.ALLOWED_ORIGINS || 'https://bryanquikrstuff.github.io')
+  const allowed = (env.ALLOWED_ORIGINS || 'https://quikrstuff.github.io')
     .split(',').map((s) => s.trim()).filter(Boolean);
   const origin = request.headers.get('Origin') || '';
   const headers = {
