@@ -1,7 +1,7 @@
 // Miss-Woo configuration. Contains NO keys.
 // WooCommerce and Katana keys live only in the Miss-Woo API (Cloudflare Worker).
 // The access pass comes from the Missive integration link, e.g.
-//   https://bryanquikrstuff.github.io/Miss-Woo/?token=YOUR_PASS
+//   https://quikrstuff.github.io/Miss-Woo/?token=YOUR_PASS
 (function () {
   let token = '';
   try {
