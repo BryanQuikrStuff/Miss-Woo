@@ -1,219 +1,73 @@
-# Setup and Deployment Guide
+# Setup and deployment
 
-## 🎯 Quick Answer
+## 1. Sidebar (GitHub Pages)
 
-**To run this code and push changes, you need:**
+- Published automatically from `main` by the **CI Pipeline** action (`.github/workflows/main.yml`).
+- To change it: edit on a branch, open a pull request, merge. Check **Actions** for a green run (about 1 minute), then reload the sidebar in Missive.
+- The repo needs **no GitHub secrets**.
 
-1. ✅ **GitHub Desktop** (you already have this!)
-2. ✅ **Node.js** (you already have this!)
-3. ✅ **Git** (usually comes with GitHub Desktop)
+**Missive integration URL** (Missive → Settings → Integrations):
 
----
-
-## 📋 Step-by-Step Setup
-
-### **Step 1: Verify Node.js Installation** ✅
-
-Since you already have Node.js installed, let's verify it works:
-
-1. Open PowerShell or Command Prompt
-2. Run: `node --version` (should show a version number)
-3. Run: `npm --version` (should show a version number)
-
-If both commands work, you're all set! ✅
-
-### **Step 2: Install Project Dependencies**
-
-1. Open PowerShell or Command Prompt
-2. Navigate to your project folder:
-   ```powershell
-   cd "C:\Users\tkoch\Documents\GitHub\Miss-Woo"
-   ```
-3. Install dependencies:
-   ```powershell
-   npm install
-   ```
-   This will create a `node_modules/` folder with all required packages.
-
-### **Step 3: Test Locally** (Optional but Recommended)
-
-1. **Option A: Simple Test (No Server)**
-   - Just double-click `index-dev.html` to open in your browser
-   - This works for basic testing
-
-2. **Option B: Full Development Server**
-   - In PowerShell, run:
-     ```powershell
-     npx http-server -p 3000 --cors
-     ```
-   - Open browser to: `http://localhost:3000/index-dev.html`
-   - Press `Ctrl+C` to stop the server when done
-
-3. **Run Tests** (Optional):
-   ```powershell
-   npm test
-   ```
-
----
-
-## 🚀 Making Changes and Pushing to GitHub
-
-### **Using GitHub Desktop** (Recommended for you)
-
-1. **Make Your Changes**
-   - Edit files in `src/` folder (e.g., `src/app.js`, `src/config.js`)
-   - Test locally using `index-dev.html`
-
-2. **Commit Changes in GitHub Desktop**
-   - Open GitHub Desktop
-   - You should see your changes listed
-   - Write a commit message following conventional commits:
-     - `feat: add new feature`
-     - `fix: fix bug description`
-     - `chore: update dependencies`
-   - Click **"Commit to main"** (or create a new branch first)
-
-3. **Push to GitHub**
-   - Click **"Push origin"** button in GitHub Desktop
-   - This uploads your changes to GitHub
-
-4. **Automatic Deployment**
-   - GitHub Actions will automatically:
-     - Run tests
-     - Build production files
-     - Deploy to GitHub Pages
-   - Check deployment status: Go to your repo → **Actions** tab
-   - Your changes will be live at: https://bryanquikrstuff.github.io/Miss-Woo/
-
----
-
-## 📝 Using Command Line (Alternative to GitHub Desktop)
-
-If you prefer command line:
-
-```powershell
-# Navigate to project
-cd "C:\Users\tkoch\Documents\GitHub\Miss-Woo"
-
-# Check status
-git status
-
-# Add all changes
-git add .
-
-# Commit with message
-git commit -m "feat: your change description"
-
-# Push to GitHub
-git push origin main
+```
+https://quikrstuff.github.io/Miss-Woo/?token=<ACCESS_TOKEN>
 ```
 
----
+The pass is stored in the team password manager. Never paste it into GitHub, chat or email.
 
-## 🔍 What Gets Deployed Automatically?
+## 2. Middleman (Cloudflare Worker `miss-woo-api`)
 
-When you push to `main` branch:
+URL: `https://miss-woo-api.bryan-df4.workers.dev`
 
-1. ✅ **Tests run** (via GitHub Actions)
-2. ✅ **Production files built** (copies `src/` to `dist/`)
-3. ✅ **Deployed to GitHub Pages** (live at the URL above)
+**Deploy a new version**
 
-**No manual steps needed!** Just commit and push.
+1. Merge the change to `cloudflare-worker/miss-woo-api.js` on GitHub.
+2. In Cloudflare, open **Workers & Pages → miss-woo-api → Edit code**.
+3. Replace all the code with the new file and click **Deploy**.
+4. Open `/health` and check the version and that every secret shows `true`.
 
----
+**Settings** (Worker → Settings → Variables and Secrets)
 
-## ⚠️ Important Notes
+| Name | Type | What it is |
+|---|---|---|
+| `WC_CONSUMER_KEY` / `WC_CONSUMER_SECRET` | Secret | WooCommerce REST key, **Read** permission only |
+| `KATANA_API_KEY` | Secret | Katana API key |
+| `ACCESS_TOKEN` | Secret | The pass the sidebar sends |
+| `ALLOWED_ORIGINS` | Text | `https://quikrstuff.github.io` (the site allowed to call the middleman) |
+| `ORDER_STATUSES` | Text, optional | Default `processing,completed,pending` |
 
-### **Files You Should NOT Commit:**
-- `node_modules/` (already in `.gitignore`)
-- `.env` files (already in `.gitignore`)
-- Personal notes or temporary files
+Cloudflare may show a notice about updating a Wrangler configuration. This project doesn't use Wrangler, so you can ignore it.
 
-### **Files You SHOULD Commit:**
-- `src/` folder (your code)
-- `index.html` and `index-dev.html`
-- `package.json` and `package-lock.json`
-- Documentation files (`.md` files)
+**Routes**
 
-### **Before Pushing:**
-1. ✅ Test your changes locally
-2. ✅ Make sure tests pass (`npm test`)
-3. ✅ Verify API keys are not hardcoded (use placeholders in `config.js`, actual keys stored in GitHub Secrets)
+| Route | What it does |
+|---|---|
+| `GET /health` | No pass needed. Shows the version and which secrets are set. |
+| `GET /api/ping` | Checks the WooCommerce and Katana keys work. |
+| `GET /api/orders/by-email?email=a,b` | Recent orders (with notes) for up to 4 customer emails. |
+| `GET /api/orders/search?q=&page=` | Name / free-text search (slow). |
+| `GET /api/orders/:id` | One order, with notes. |
+| `GET /api/orders/:id/notes` | An order's notes. |
+| `GET /api/katana/order?order_no=` | Katana sales order and serial numbers for a Woo order number. |
 
----
+Results are cached for 5 minutes (Katana: 15). The Worker logs timings only (routes, durations, statuses), never customer details.
 
-## 🐛 Troubleshooting
+## 3. Fast lookup add-on (optional, WordPress)
 
-### **"npm: command not found"**
-- Node.js is not installed or not in PATH
-- Reinstall Node.js and restart your terminal
+`wordpress/miss-woo-fast-lookup.php` is a read-only must-use plugin. It lets the middleman get a customer's orders and notes in one request instead of three or more. The web developer uploads it to `wp-content/mu-plugins/` on quikrstuff.com. The middleman finds it automatically and falls back to the normal lookup if it's missing. When it's working, the Worker logs show `source: fast`.
 
-### **"git: command not found"**
-- Git is not installed
-- GitHub Desktop includes Git, but you may need to add it to PATH
-- Or just use GitHub Desktop GUI instead
+## 4. Rotating keys
 
-### **"Permission denied" when pushing**
-- Check that you're authenticated in GitHub Desktop
-- Go to GitHub Desktop → File → Options → Accounts
-- Make sure you're signed in
+1. Create the new key (WooCommerce: **Read** permission only; or Katana; or a new long random pass).
+2. Paste it into Cloudflare → Worker → Settings → Variables and Secrets (edit the existing secret) and deploy.
+3. Check `/health`, then click a customer conversation in Missive.
+4. Revoke the old key in WooCommerce or Katana.
+5. If you changed the `ACCESS_TOKEN`, update the Missive integration URL and the password manager.
 
-### **GitHub Actions failing**
-- Check the **Actions** tab in your GitHub repo
-- Look at the error logs
-- Common issues:
-  - Tests failing (fix the code)
-  - Missing GitHub Secrets (add them in repo Settings → Secrets)
+## 5. Troubleshooting
 
----
-
-## 📚 Quick Reference Commands
-
-```powershell
-# Install dependencies
-npm install
-
-# Run local server
-npx http-server -p 3000 --cors
-
-# Run tests
-npm test
-
-# Check git status
-git status
-
-# View recent commits
-git log --oneline -5
-```
-
----
-
-## ✅ Checklist Before Your First Push
-
-- [x] Node.js installed (`node --version` works) ✅ **You're done with this!**
-- [ ] Dependencies installed (`npm install` completed) ← **Do this next**
-- [ ] Can open `index-dev.html` in browser
-- [ ] GitHub Desktop connected to your repo
-- [ ] Made a test change and verified it works
-- [ ] Ready to commit and push!
-
----
-
-## 🎉 You're Ready!
-
-Once you've completed the setup:
-1. Make your code changes
-2. Test locally
-3. Commit in GitHub Desktop
-4. Push to GitHub
-5. Wait for automatic deployment (check Actions tab)
-6. View your changes live at: https://bryanquikrstuff.github.io/Miss-Woo/
-
-**That's it!** The deployment is fully automated. 🚀
-
----
-
-**Last Updated**: January 2025  
-**Project**: Miss-Woo  
-**Repository**: https://github.com/BryanQuikrStuff/Miss-Woo
-
+| Symptom | Likely cause |
+|---|---|
+| Sidebar says "Missing access pass" | The Missive integration URL is missing `?token=…` |
+| Sidebar loads but no orders, browser shows a CORS error | `ALLOWED_ORIGINS` in Cloudflare doesn't match the sidebar's address |
+| `/health` shows a secret as `false` | That secret is missing in Cloudflare |
+| Lookups slow (2–7 s) | Normal without the fast lookup add-on; WooCommerce itself is the bottleneck |
