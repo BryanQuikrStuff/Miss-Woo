@@ -27,7 +27,7 @@
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.3.0';
+const VERSION = 'api-1.4.0';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -149,6 +149,13 @@ async function handle(request, env) {
 // ---------- WooCommerce ----------
 
 async function ordersByEmail(env, emails, withNotes) {
+  // Fastest path: the Miss-Woo WordPress add-on (wordpress/miss-woo-fast-lookup.php)
+  // returns orders + notes in ONE request. Used automatically once it is installed.
+  if (withNotes) {
+    const fast = await fastLookup(env, emails);
+    if (fast) return fast;
+  }
+
   const statuses = orderStatuses(env).join(',');
   const emailSet = new Set(emails);
 
@@ -196,6 +203,33 @@ async function ordersByEmail(env, emails, withNotes) {
     customer_ids: customerIds,
     orders,
   };
+}
+
+// Remembers for 10 minutes that the add-on isn't installed, so we don't keep asking.
+let fastUnavailableUntil = 0;
+
+async function fastLookup(env, emails) {
+  if (Date.now() < fastUnavailableUntil) return null;
+  const base = (env.WC_BASE_URL || 'https://quikrstuff.com/wp-json/wc/v3').replace(/\/$/, '');
+  const u = new URL(base.replace(/\/wc\/v3$/, '/wc-quikrstuff/v1') + '/orders-by-email');
+  u.searchParams.set('email', emails.join(','));
+  u.searchParams.set('statuses', orderStatuses(env).join(','));
+  u.searchParams.set('limit', String(MAX_ORDERS));
+  u.searchParams.set('consumer_key', env.WC_CONSUMER_KEY || '');
+  u.searchParams.set('consumer_secret', env.WC_CONSUMER_SECRET || '');
+  try {
+    const data = await upstreamJson(env, u.toString(), { headers: { Accept: 'application/json' } }, 'WooCommerce');
+    const allowed = orderStatuses(env);
+    const orders = (Array.isArray(data?.orders) ? data.orders : []).filter((o) => allowed.includes(o?.status));
+    const customerIds = Array.isArray(data?.customer_ids) ? data.customer_ids : [];
+    return {
+      email: emails[0], emails, source: 'fast', customer_id: customerIds[0] || null, customer_ids: customerIds, orders,
+    };
+  } catch (err) {
+    // 404 = add-on not installed yet. Any other problem: use the normal path this time.
+    if (err.status === 404) fastUnavailableUntil = Date.now() + 10 * 60 * 1000;
+    return null;
+  }
 }
 
 async function woo(env, path, params = {}) {
