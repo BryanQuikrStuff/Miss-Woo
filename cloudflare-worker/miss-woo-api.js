@@ -27,7 +27,7 @@
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.2.0';
+const VERSION = 'api-1.3.0';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -44,7 +44,29 @@ const memo = new Map();
 const MEMO_MAX = 500;
 
 export default {
+  // Times every request and writes one log line per request (no emails or
+  // other customer details are logged: only routes, durations and statuses).
   async fetch(request, env) {
+    const started = Date.now();
+    const trace = { calls: [], cache: 'none' };
+    const response = await handle(request, { ...env, __trace: trace });
+    const totalMs = Date.now() - started;
+    const route = new URL(request.url).pathname.replace(/\/\d+/g, '/:id');
+    if (route.startsWith('/api/')) {
+      console.log(JSON.stringify({
+        timing: true, route, status: response.status, total_ms: totalMs, cache: trace.cache,
+        upstream_ms: trace.calls.reduce((n, c) => n + c.ms, 0), calls: trace.calls,
+      }));
+    }
+    const headers = new Headers(response.headers);
+    headers.set('Server-Timing', `total;dur=${totalMs}, cache;desc="${trace.cache}"`);
+    headers.append('Access-Control-Expose-Headers', 'Server-Timing');
+    return new Response(response.body, { status: response.status, headers });
+  },
+};
+
+async function handle(request, env) {
+  {
     const url = new URL(request.url);
     const cors = corsHeaders(request, env);
 
@@ -78,7 +100,7 @@ export default {
           .split(',').map(normalizeEmail).filter(Boolean))].slice(0, MAX_EMAILS);
         if (!emails.length) return json({ error: 'bad_request', detail: 'A valid email is required.' }, 400, cors);
         const withNotes = url.searchParams.get('notes') !== '0';
-        const data = await cached(`email:${emails.join(',')}:${withNotes}`, TTL.orders, fresh,
+        const data = await cached(env, `email:${emails.join(',')}:${withNotes}`, TTL.orders, fresh,
           () => ordersByEmail(env, emails, withNotes));
         return json(data, 200, cors);
       }
@@ -87,7 +109,7 @@ export default {
         const q = (url.searchParams.get('q') || '').trim();
         if (q.length < 2) return json({ error: 'bad_request', detail: 'Search text is too short.' }, 400, cors);
         const page = clampInt(url.searchParams.get('page'), 1, 10, 1);
-        const data = await cached(`search:${q.toLowerCase()}:${page}`, TTL.search, fresh,
+        const data = await cached(env, `search:${q.toLowerCase()}:${page}`, TTL.search, fresh,
           () => woo(env, '/orders', {
             search: q, status: orderStatuses(env).join(','), per_page: 100, page, orderby: 'date', order: 'desc',
           }));
@@ -97,10 +119,10 @@ export default {
       if (parts[1] === 'orders' && /^\d+$/.test(parts[2] || '')) {
         const id = parts[2];
         if (parts[3] === 'notes') {
-          return json(await cached(`notes:${id}`, TTL.orders, fresh, () => woo(env, `/orders/${id}/notes`)), 200, cors);
+          return json(await cached(env, `notes:${id}`, TTL.orders, fresh, () => woo(env, `/orders/${id}/notes`)), 200, cors);
         }
         if (!parts[3]) {
-          const data = await cached(`order:${id}`, TTL.orders, fresh, async () => {
+          const data = await cached(env, `order:${id}`, TTL.orders, fresh, async () => {
             const order = await woo(env, `/orders/${id}`);
             order.notes = await woo(env, `/orders/${id}/notes`).catch(() => []);
             return order;
@@ -112,7 +134,7 @@ export default {
       if (parts[1] === 'katana' && parts[2] === 'order') {
         const orderNo = (url.searchParams.get('order_no') || '').trim();
         if (!/^[\w-]{1,40}$/.test(orderNo)) return json({ error: 'bad_request', detail: 'order_no is required.' }, 400, cors);
-        const data = await cached(`katana:${orderNo}`, TTL.katana, fresh, () => katanaOrderWithSerials(env, orderNo));
+        const data = await cached(env, `katana:${orderNo}`, TTL.katana, fresh, () => katanaOrderWithSerials(env, orderNo));
         return json(data, 200, cors);
       }
 
@@ -121,8 +143,8 @@ export default {
       const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
       return json({ error: 'upstream_error', detail: String(err.message || err) }, status, cors);
     }
-  },
-};
+  }
+}
 
 // ---------- WooCommerce ----------
 
@@ -183,7 +205,7 @@ async function woo(env, path, params = {}) {
   // Keys go from this server straight to your site over HTTPS; never to the browser.
   u.searchParams.set('consumer_key', env.WC_CONSUMER_KEY || '');
   u.searchParams.set('consumer_secret', env.WC_CONSUMER_SECRET || '');
-  return upstreamJson(u.toString(), { headers: { Accept: 'application/json' } }, 'WooCommerce');
+  return upstreamJson(env, u.toString(), { headers: { Accept: 'application/json' } }, 'WooCommerce');
 }
 
 // ---------- Katana ----------
@@ -216,7 +238,7 @@ async function katanaOrderWithSerials(env, orderNo) {
 async function katana(env, path, params = {}) {
   const u = new URL('https://api.katanamrp.com/v1' + path);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, String(v));
-  return upstreamJson(u.toString(), {
+  return upstreamJson(env, u.toString(), {
     headers: { Authorization: `Bearer ${env.KATANA_API_KEY || ''}`, Accept: 'application/json' },
   }, 'Katana');
 }
@@ -236,15 +258,20 @@ async function ping(env) {
 
 // ---------- helpers ----------
 
-async function upstreamJson(urlString, init, label) {
+async function upstreamJson(env, urlString, init, label) {
+  // Path only (no query string), so no emails or keys end up in the logs.
+  const path = new URL(urlString).pathname.replace(/\/\d+/g, '/:id').replace('/wp-json/wc/v3', '');
   for (let attempt = 0; attempt < 2; attempt++) {
+    const t0 = Date.now();
     const res = await fetch(urlString, { ...init, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) })
       .catch((e) => {
         const err = new Error(`${label} did not answer in time (${e.name})`);
         err.status = 504;
         throw err;
       });
-    if (res.ok) return res.json();
+    const body = res.ok ? await res.json() : null;
+    env.__trace?.calls.push({ api: label, path, ms: Date.now() - t0, status: res.status });
+    if (res.ok) return body;
 
     // One retry if the service says "slow down" or has a hiccup.
     if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
@@ -259,9 +286,13 @@ async function upstreamJson(urlString, init, label) {
 }
 
 // Only successful answers are remembered; failures are never cached.
-async function cached(key, ttl, fresh, loader) {
+async function cached(env, key, ttl, fresh, loader) {
   const hit = memo.get(key);
-  if (!fresh && hit && hit.expires > Date.now()) return hit.value;
+  if (!fresh && hit && hit.expires > Date.now()) {
+    if (env.__trace) env.__trace.cache = 'hit';
+    return hit.value;
+  }
+  if (env.__trace) env.__trace.cache = 'miss';
   const value = await loader();
   if (memo.size >= MEMO_MAX) memo.delete(memo.keys().next().value);
   memo.set(key, { value, expires: Date.now() + ttl });
