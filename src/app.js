@@ -60,9 +60,9 @@ class MissWooApp {
       this.nameCache = new Map();
       this.cacheExpiry = new Map();
       this.visibleEmails = new Set(); // Track visible emails for cleanup
-      this.salesExportData = new Map(); // Historical sales export data (order_no -> records)
-      this.salesExportDataLoaded = false; // Track if data has been loaded
-      this._salesDataLoadingPromise = null; // Track background loading promise
+      // Orders up to this number get serials/keys from the historical export
+      // (via the middleman's /api/legacy/order); newer orders use Katana.
+      this.LEGACY_MAX_ORDER = 19769;
       this.searchCache = new Map(); // Memoize recent search results
       
       // Store bound function references for proper event listener removal
@@ -346,7 +346,7 @@ class MissWooApp {
 
   getVersion() {
     // Default shown until manifest loads; will be replaced by GH-<sha>
-    return 'vJS5.37';
+    return 'vJS5.38';
   }
 
   // Removed loadVersionFromManifest - was empty, version handled in updateHeaderWithVersion()
@@ -390,24 +390,20 @@ class MissWooApp {
       this.setStatus("Ready"); // Set Ready immediately - don't wait for anything
       this.hideLoading(); // Show UI right away
       
-      // OPTIMIZATION: Don't block initialization on sales export data
-      // Start it in background - it will load lazily when needed (orders <= 19769)
-      // This makes cold-start much faster (only wait for Missive API, not large JSON download)
       const initPromises = [];
-      
+
       if (this.isMissiveEnvironment) {
         initPromises.push(this.initializeMissiveAPI());
       }
-      
-      // Start sales export data loading in background (non-blocking)
-      // It will be ready when needed, or we'll wait for it only when searching orders <= 19769
-      initPromises.push(
-        this.loadSalesExportData().catch(err => {
-          console.warn('Background sales data load failed (will retry when needed):', err);
-        })
-      );
-      
-      // Continue with other setup while data loads in background
+
+      // Historical serials/keys are now looked up one order at a time through the
+      // middleman. Remove the full copy that older versions stored on this computer.
+      // Not awaited: it must never hold up startup.
+      this.clearOldSalesExportCopy().catch(err => {
+        console.warn('Could not clear old stored copy:', err);
+      });
+
+      // Continue with other setup
       this.maybeAutoSearchFromUrl();
       this.setupCleanup(); // Setup proper cleanup
       
@@ -1678,211 +1674,53 @@ class MissWooApp {
     localStorage.removeItem(key);
   }
 
-  // Load sales export data from JSON file (with caching and Web Worker parsing)
-  // OPTIMIZATION: This is now lazy-loaded - only loads when needed (orders <= 19769)
-  async loadSalesExportData() {
-    // Prevent duplicate concurrent loads
-    if (this._salesDataLoadingPromise && !this.salesExportDataLoaded) {
-      return this._salesDataLoadingPromise;
-    }
-    
-    console.log('📚 Loading sales export data for historical orders...');
-    console.time('load:sales-data');
-    
-    // Create loading promise
-    this._salesDataLoadingPromise = this._doLoadSalesExportData().finally(() => {
-      this._salesDataLoadingPromise = null;
-    });
-    
-    return this._salesDataLoadingPromise;
-  }
-  
-  async _doLoadSalesExportData() {
+  // Older orders (number <= LEGACY_MAX_ORDER) keep their rack serial numbers and
+  // lock key numbers in a private historical export. The middleman holds it and
+  // returns ONE order at a time, only with the pass (/api/legacy/order).
+  // Returns { serialNumbers: [...], keys: [...] }, or null if the order isn't in the
+  // export. If the lookup itself fails (middleman unreachable/unavailable) it returns
+  // { serialNumbers: [], keys: [], failed: true }: callers fall back to Katana as
+  // before, but don't remember an "N/A" so the next click tries again.
+  async getLegacyOrderData(orderNumber) {
+    const orderNo = String(orderNumber || '').trim();
+    if (!/^\d{1,10}$/.test(orderNo)) return null;
     try {
-      const salesExportUrl = this.isMissiveEnvironment 
-        ? 'sales_export_filtered.json' 
-        : 'sales_export_filtered.json';
-      
-      const cacheKey = 'sales_export_index_v1';
-      const cacheTimestampKey = 'sales_export_timestamp';
-      const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-      
-      // Check persisted cache first (Missive store in integration mode; localStorage fallback in web/dev)
-      try {
-        const cached = await this.getPersistentValue(cacheKey);
-        const cachedTimestamp = await this.getPersistentValue(cacheTimestampKey);
-        
-        if (cached && cachedTimestamp) {
-          const parsedTimestamp = Number(cachedTimestamp);
-          const age = Date.now() - parsedTimestamp;
-          if (age < CACHE_TTL) {
-            const cachedData = typeof cached === 'string' ? JSON.parse(cached) : cached;
-            // Restore the Map from cached data
-            for (const [orderNo, record] of Object.entries(cachedData.idMap || {})) {
-              this.salesExportData.set(orderNo, record);
-            }
-            this.salesExportDataLoaded = true;
-            console.log(`✅ Loaded sales export data from cache (${this.salesExportData.size} orders, age: ${Math.round(age / 1000)}s)`);
-            console.timeEnd('load:sales-data');
-            return;
-          } else {
-            console.log('📦 Cache expired, fetching fresh data...');
-            await this.removePersistentValue(cacheKey);
-            await this.removePersistentValue(cacheTimestampKey);
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ Cache read failed, will fetch fresh:', e);
-        await this.removePersistentValue(cacheKey);
-        await this.removePersistentValue(cacheTimestampKey);
-      }
-      
-      // Use Web Worker to parse JSON in background (doesn't block UI)
-      if (typeof Worker !== 'undefined') {
-        try {
-          const worker = new Worker('worker/parse-sales-worker.js');
-          const parsePromise = new Promise((resolve, reject) => {
-            worker.onmessage = async (msg) => {
-              const data = msg.data;
-              if (data && data.success) {
-                // Restore the Map from worker result
-                for (const [orderNo, record] of Object.entries(data.idMap || {})) {
-                  this.salesExportData.set(orderNo, record);
-                }
-                
-                // Cache the parsed index
-                try {
-                  await this.setPersistentValue(cacheKey, { idMap: data.idMap });
-                  await this.setPersistentValue(cacheTimestampKey, Date.now());
-                } catch (e) {
-                  console.warn('⚠️ Could not cache order index:', e);
-                }
-                
-                this.salesExportDataLoaded = true;
-                console.log(`✅ Loaded sales export data via worker (${this.salesExportData.size} orders)`);
-                console.timeEnd('load:sales-data');
-                resolve();
-              } else {
-                reject(new Error(data.error || 'Worker failed'));
-              }
-              worker.terminate();
-            };
-
-            worker.onerror = (err) => {
-              worker.terminate();
-              reject(err);
-            };
-          });
-
-          worker.postMessage({ action: 'parse', url: salesExportUrl });
-          await parsePromise;
-          return;
-        } catch (workerError) {
-          console.warn('⚠️ Web Worker not available, falling back to main thread parsing:', workerError);
-          // Fall through to main thread parsing
-        }
-      }
-      
-      // Fallback: Parse on main thread if worker unavailable
-      console.log(`📁 Loading from: ${salesExportUrl}`);
-      const response = await fetch(salesExportUrl, {
-        cache: 'default' // Allow browser caching instead of 'no-cache'
-      });
-      
-      console.log(`📡 Response status: ${response.status}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`📦 Received data: ${Array.isArray(data) ? `Array with ${data.length} items` : typeof data}`);
-        
-        if (Array.isArray(data)) {
-          const idMap = {};
-          // Group by SalesOrderNo for fast lookup
-          for (const record of data) {
-            const orderNo = String(record.SalesOrderNo);
-            const orderNoInt = parseInt(orderNo);
-            if (!isNaN(orderNoInt)) {
-              this.salesExportData.set(orderNo, record);
-              idMap[orderNo] = record;
-            }
-          }
-          
-          // Cache the parsed index
-          try {
-            await this.setPersistentValue(cacheKey, { idMap });
-            await this.setPersistentValue(cacheTimestampKey, Date.now());
-          } catch (e) {
-            console.warn('⚠️ Could not cache order index:', e);
-          }
-        } else {
-          console.log('⚠️ Sales export data is not an array:', typeof data);
-        }
-        this.salesExportDataLoaded = true;
-        console.log(`✅ Loaded sales export data for ${this.salesExportData.size} orders`);
-        console.timeEnd('load:sales-data');
-      } else if (response.status === 404) {
-        console.log('ℹ️ Sales export data file not found (this is optional)');
-        this.salesExportDataLoaded = true;
-        console.timeEnd('load:sales-data');
-      } else {
-        console.log(`⚠️ Could not load sales export data: ${response.status}`);
-        this.salesExportDataLoaded = true;
-        console.timeEnd('load:sales-data');
-      }
+      const url = this.apiUrl('/api/legacy/order', { order_no: orderNo });
+      const data = await this.makeRequest(url, {});
+      if (!data || data.found !== true) return null;
+      const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x) : []);
+      return { serialNumbers: list(data.serial_numbers), keys: list(data.keys) };
     } catch (error) {
-      if (error.name === 'AbortError') {
-        throw error;
-      }
-      console.log('ℹ️ Sales export data not available (this is optional):', error.message);
-      this.salesExportDataLoaded = true;
-      console.timeEnd('load:sales-data');
+      if (error && error.name === 'AbortError') throw error;
+      console.warn(`Historical lookup failed for order #${orderNo}; trying Katana instead.`);
+      return { serialNumbers: [], keys: [], failed: true };
     }
   }
 
-  // Get serial numbers and keys from sales export data for older orders
-  getSalesExportData(orderNumber) {
-    // If data not loaded yet, trigger lazy load (non-blocking)
-    if (!this.salesExportDataLoaded) {
-      // Start loading in background if not already started
-      if (!this._salesDataLoadingPromise) {
-        this._salesDataLoadingPromise = this.loadSalesExportData().catch(err => {
-          console.warn('Lazy sales data load failed:', err);
-          this._salesDataLoadingPromise = null;
-        });
+  // Formats historical data the same way the sidebar always has:
+  // "serial1, serial2 (Keys: key1, key2)". Returns null if there are no serials.
+  formatLegacySerials(legacy) {
+    if (!legacy || !legacy.serialNumbers || legacy.serialNumbers.length === 0) return null;
+    let result = legacy.serialNumbers.join(', ');
+    if (legacy.keys && legacy.keys.length > 0) {
+      result += ` (Keys: ${legacy.keys.join(', ')})`;
+    }
+    return result;
+  }
+
+  // Before vJS5.38 the sidebar downloaded the whole historical export (including
+  // every lock key number) and kept a copy in each agent's Missive storage.
+  // Delete that copy. Safe to run every time; it only removes the two keys if they are actually stored.
+  async clearOldSalesExportCopy() {
+    for (const key of ['sales_export_index_v1', 'sales_export_timestamp']) {
+      try {
+        const existing = await this.getPersistentValue(key);
+        if (existing === null || existing === undefined) continue; // nothing stored
+        await this.removePersistentValue(key);
+      } catch (error) {
+        console.warn(`Could not clear old stored copy (${key}):`, error);
       }
-      return null; // Return null immediately, data will be available on next call
     }
-    
-    if (!this.salesExportData || this.salesExportData.size === 0) {
-      console.log(`⚠️ Sales export data not available (loaded: ${this.salesExportDataLoaded}, size: ${this.salesExportData?.size || 0})`);
-      return null;
-    }
-    
-    const orderNoStr = String(orderNumber);
-    console.log(`🔍 Looking up order #${orderNoStr} in sales export data (map size: ${this.salesExportData.size})`);
-    
-    const record = this.salesExportData.get(orderNoStr);
-    
-    if (!record) {
-      console.log(`⚠️ No record found for order #${orderNoStr}`);
-      // Debug: Show first few order numbers in map
-      const firstFew = Array.from(this.salesExportData.keys()).slice(0, 5);
-      console.log(`📋 First 5 order numbers in map:`, firstFew);
-      return null;
-    }
-    
-    console.log(`✅ Found record for order #${orderNoStr}:`, record);
-    
-    // New format: record already has SerialNumbers and Keys arrays (already combined)
-    const serialNumbers = Array.isArray(record.SerialNumbers) ? record.SerialNumbers : [];
-    const keys = Array.isArray(record.Keys) ? record.Keys : [];
-    
-    console.log(`📊 Extracted: ${serialNumbers.length} serial numbers, ${keys.length} keys`);
-    
-    return {
-      serialNumbers: serialNumbers,
-      keys: keys
-    };
   }
 
   async getSerialNumber(order) {
@@ -1896,55 +1734,32 @@ class MissWooApp {
       }
       
       const orderNumber = parseInt(order.number);
-      
-      // For orders <= 19769, check sales export data first
-      if (!isNaN(orderNumber) && orderNumber <= 19769) {
-        console.log(`🔍 Order #${order.number} is <= 19769, checking sales export data...`);
-        
-        // Ensure data is loaded (wait if still loading)
-        if (!this.salesExportDataLoaded) {
-          console.log(`⏳ Sales export data not loaded yet, loading now for order #${order.number}...`);
-          // Wait for background load if in progress, or start new load
-          if (this._salesDataLoadingPromise) {
-            await this._salesDataLoadingPromise;
-          } else {
-          await this.loadSalesExportData();
-          }
+      let legacyLookupFailed = false; // if true, don't remember an "N/A" below
+
+      // Older orders: ask the middleman for this ONE order's historical serials/keys first.
+      if (!isNaN(orderNumber) && orderNumber <= this.LEGACY_MAX_ORDER) {
+        const legacy = await this.getLegacyOrderData(order.number);
+        legacyLookupFailed = !!(legacy && legacy.failed);
+        const result = this.formatLegacySerials(legacy);
+        if (result) {
+          console.log(`✅ Historical serial numbers found for order #${order.number}`);
+          this.serialNumberCache.set(order.number, result);
+          this.setCacheExpiry(order.number, 'serialCache');
+          this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+          return result;
         }
-        
-        const salesData = this.getSalesExportData(order.number);
-        
-        if (salesData) {
-          console.log(`📊 Sales data retrieved for order #${order.number}:`, salesData);
-          if (salesData.serialNumbers && salesData.serialNumbers.length > 0) {
-            console.log(`✅ Found ${salesData.serialNumbers.length} serial numbers from sales export data for order #${order.number}`);
-            
-            // Format: Serial numbers, and Keys if available
-            let result = salesData.serialNumbers.join(', ');
-            if (salesData.keys && salesData.keys.length > 0) {
-              result += ` (Keys: ${salesData.keys.join(', ')})`;
-            }
-            
-            console.log(`📝 Formatted result: "${result}"`);
-            this.serialNumberCache.set(order.number, result);
-            this.setCacheExpiry(order.number, 'serialCache');
-            this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
-            return result;
-          } else {
-            console.log(`⚠️ Sales data found but no serial numbers (array length: ${salesData.serialNumbers?.length || 0})`);
-          }
-        } else {
-          console.log(`⚠️ No sales export data found for order #${order.number}`);
-        }
+        console.log(`ℹ️ No historical serial numbers for order #${order.number}; checking Katana`);
       }
       
       // Get the Katana sales order that matches this WooCommerce order
       const katanaOrder = await this.getKatanaOrder(order.number);
       if (!katanaOrder) {
         console.log(`No Katana order found for WooCommerce order #${order.number}`);
-        this.serialNumberCache.set(order.number, "N/A");
-        this.setCacheExpiry(order.number, 'serialCache');
-        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        if (!legacyLookupFailed) {
+          this.serialNumberCache.set(order.number, "N/A");
+          this.setCacheExpiry(order.number, 'serialCache');
+          this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        }
         return "N/A";
       }
 
@@ -1962,9 +1777,11 @@ class MissWooApp {
         return result;
       } else {
         console.log(`No serial numbers found for order #${order.number}`);
-        this.serialNumberCache.set(order.number, "N/A");
-        this.setCacheExpiry(order.number, 'serialCache');
-        this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        if (!legacyLookupFailed) {
+          this.serialNumberCache.set(order.number, "N/A");
+          this.setCacheExpiry(order.number, 'serialCache');
+          this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
+        }
         return "N/A";
       }
         } catch (error) {
@@ -2155,51 +1972,37 @@ class MissWooApp {
         return cachedResults;
       }
       
-      // Step 0: Check sales export data for orders <= 19769 BEFORE trying Katana API
-      const ordersToCheckSalesExport = [];
+      // Step 0: Older orders: ask the middleman for each one's historical serials/keys
+      // (one small request per order, in parallel) BEFORE trying the Katana API.
+      const ordersToCheckLegacy = [];
       const ordersToCheckKatana = [];
-      
-      // Ensure sales export data is loaded
-      if (!this.salesExportDataLoaded) {
-        // Wait for background load if in progress, or start new load
-        if (this._salesDataLoadingPromise) {
-          await this._salesDataLoadingPromise;
-        } else {
-        await this.loadSalesExportData();
-        }
-      }
-      
+
       for (const order of uncachedOrders) {
         const orderNumber = parseInt(order.number);
-        if (!isNaN(orderNumber) && orderNumber <= 19769) {
-          ordersToCheckSalesExport.push(order);
+        if (!isNaN(orderNumber) && orderNumber <= this.LEGACY_MAX_ORDER) {
+          ordersToCheckLegacy.push(order);
         } else {
           ordersToCheckKatana.push(order);
         }
       }
-      
-      // Check sales export data for eligible orders
-      for (const order of ordersToCheckSalesExport) {
-        const salesData = this.getSalesExportData(order.number);
-        if (salesData && salesData.serialNumbers && salesData.serialNumbers.length > 0) {
-          console.log(`✅ Found ${salesData.serialNumbers.length} serial numbers from sales export data for order #${order.number}`);
-          
-          // Format: Serial numbers, and Keys if available
-          let result = salesData.serialNumbers.join(', ');
-          if (salesData.keys && salesData.keys.length > 0) {
-            result += ` (Keys: ${salesData.keys.join(', ')})`;
-          }
-          
-          // Cache the result
+
+      const legacyResults = await Promise.all(
+        ordersToCheckLegacy.map((order) => this.getLegacyOrderData(order.number))
+      );
+      const legacyFailed = new Set(); // these orders don't get an "N/A" remembered
+      ordersToCheckLegacy.forEach((order, i) => {
+        if (legacyResults[i] && legacyResults[i].failed) legacyFailed.add(order.number);
+        const result = this.formatLegacySerials(legacyResults[i]);
+        if (result) {
           this.serialNumberCache.set(order.number, result);
           this.setCacheExpiry(order.number, 'serialCache');
           this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
           cachedResults.set(order.number, result);
         } else {
-          // No sales export data found, fall through to Katana API
+          // Not in the historical export (or lookup failed): fall through to Katana API
           ordersToCheckKatana.push(order);
         }
-      }
+      });
       
       // If all orders were found in sales export data, return early
       if (ordersToCheckKatana.length === 0) {
@@ -2241,7 +2044,8 @@ class MissWooApp {
           : "N/A";
         
         // Cache the result, unless the Katana lookup failed (then retry next time)
-        if (katanaOrdersMap.get(order.number) !== undefined) {
+        // or this is an "N/A" caused by a failed historical lookup.
+        if (katanaOrdersMap.get(order.number) !== undefined && !(result === "N/A" && legacyFailed.has(order.number))) {
           this.serialNumberCache.set(order.number, result);
           this.setCacheExpiry(order.number, 'serialCache');
           this.enforceCacheSizeLimit(this.serialNumberCache, 'serialCache', this.cacheConfig.maxSerialCacheSize);
@@ -2588,7 +2392,7 @@ class MissWooApp {
     const versionBadge = document.querySelector('.version-badge');
     if (versionBadge) {
       // Use JS API version numbering
-      const version = this.isMissiveEnvironment ? 'vJS5.37' : 'vJS5.37 DEV';
+      const version = this.isMissiveEnvironment ? 'vJS5.38' : 'vJS5.38 DEV';
       versionBadge.textContent = version;
       console.log(`Version updated to: ${version}`);
     }
