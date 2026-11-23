@@ -15,6 +15,11 @@
  *                       default https://quikrstuff.github.io
  *   ORDER_STATUSES      which WooCommerce order statuses customer lookups return
  *                       default processing,completed,pending (hides failed/cancelled/on-hold etc.)
+ * Bindings (Cloudflare → Worker → Settings → Bindings):
+ *   LEGACY_ORDERS       KV namespace with the historical sales export (older orders' rack serial
+ *                       numbers and lock key numbers), stored as one entry "orders-v1":
+ *                       {"v":1,"count":N,"orders":{"<order no>":[[serials...],[keys...]]}}
+ *                       This data is private: it lives only in Cloudflare, never in the repo.
  *
  * Routes:
  *   GET /health                               no pass needed; shows it is running and which secrets are set
@@ -24,10 +29,11 @@
  *   GET /api/orders/:id                       one order, with notes
  *   GET /api/orders/:id/notes                 an order's notes
  *   GET /api/katana/order?order_no=           Katana sales order + serial numbers for one Woo order number
+ *   GET /api/legacy/order?order_no=           historical serial numbers + lock key numbers for ONE older order
  * Pass the pass as header "X-MissWoo-Token" or as ?token= . Add &fresh=1 to skip the cache.
  */
 
-const VERSION = 'api-1.4.0';
+const VERSION = 'api-1.5.0';
 
 const TTL = {
   orders: 5 * 60 * 1000, // order lists and single orders: 5 minutes
@@ -84,6 +90,8 @@ async function handle(request, env) {
             KATANA_API_KEY: !!env.KATANA_API_KEY,
             ACCESS_TOKEN: !!env.ACCESS_TOKEN,
           },
+          // Only a count (never the data itself), so this public page shows the history loaded.
+          legacy_orders: await legacyStatus(env),
         }, 200, cors);
       }
 
@@ -136,6 +144,26 @@ async function handle(request, env) {
         if (!/^[\w-]{1,40}$/.test(orderNo)) return json({ error: 'bad_request', detail: 'order_no is required.' }, 400, cors);
         const data = await cached(env, `katana:${orderNo}`, TTL.katana, fresh, () => katanaOrderWithSerials(env, orderNo));
         return json(data, 200, cors);
+      }
+
+      if (parts[1] === 'legacy' && parts[2] === 'order' && !parts[3]) {
+        const orderNo = (url.searchParams.get('order_no') || '').trim();
+        if (!/^\d{1,10}$/.test(orderNo)) return json({ error: 'bad_request', detail: 'order_no must be a number.' }, 400, cors);
+        let index;
+        try {
+          index = await loadLegacyIndex(env);
+        } catch (err) {
+          return json({ error: 'legacy_unavailable', detail: String(err.message || err) }, 503, cors);
+        }
+        // Compare as plain numbers so "0123" and "123" match the same order.
+        const key = String(Number(orderNo));
+        const record = index.orders.get(key) || null;
+        return json({
+          order_no: key,
+          found: !!record,
+          serial_numbers: record ? record.serials : [],
+          keys: record ? record.keys : [],
+        }, 200, cors);
       }
 
       return json({ error: 'not_found' }, 404, cors);
@@ -288,6 +316,94 @@ async function ping(env) {
       .catch((e) => { result.katana = `error: ${e.message}`; }),
   ]);
   return result;
+}
+
+// ---------- Historical sales export (older orders) ----------
+
+const LEGACY_KEY = 'orders-v1';
+const LEGACY_TTL_MS = 60 * 60 * 1000; // re-read from Cloudflare storage at most once an hour per server
+const LEGACY_RETRY_MS = 60 * 1000; // after a failed read, wait a minute before trying storage again
+let legacyCache = null; // { index, expires }
+let legacyLoading = null; // shared promise while a read is in progress
+let legacyFailure = null; // { error, until } after a failed read
+
+// Reads the whole index, checks it, tidies every record, and keeps it in memory.
+// - A failed read is not kept, but storage is not asked again for a minute
+//   (so the public /health page can't trigger a storage read on every visit).
+// - If an hourly refresh fails, the last good copy keeps being used.
+async function loadLegacyIndex(env) {
+  if (!env.LEGACY_ORDERS || typeof env.LEGACY_ORDERS.get !== 'function') {
+    throw new Error('LEGACY_ORDERS storage is not connected to this worker.');
+  }
+  const now = Date.now();
+  if (legacyCache && legacyCache.expires > now) return legacyCache.index;
+  if (legacyFailure && legacyFailure.until > now) {
+    if (legacyCache) return legacyCache.index; // stale but good
+    throw legacyFailure.error;
+  }
+  if (!legacyLoading) {
+    legacyLoading = readLegacyIndex(env)
+      .then((index) => {
+        legacyCache = { index, expires: Date.now() + LEGACY_TTL_MS };
+        legacyFailure = null;
+        return index;
+      })
+      .catch((error) => {
+        legacyFailure = { error, until: Date.now() + LEGACY_RETRY_MS };
+        // Entry deleted on purpose (e.g. to take the data offline): forget the old copy too.
+        if (error.code === 'missing') legacyCache = null;
+        if (legacyCache) return legacyCache.index; // stale but good (temporary storage problem)
+        throw error;
+      })
+      .finally(() => { legacyLoading = null; });
+  }
+  return legacyLoading;
+}
+
+async function readLegacyIndex(env) {
+  const raw = await env.LEGACY_ORDERS.get(LEGACY_KEY, { type: 'text' });
+  if (raw == null) {
+    const err = new Error(`Entry "${LEGACY_KEY}" was not found in LEGACY_ORDERS.`);
+    err.code = 'missing';
+    throw err;
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`Entry "${LEGACY_KEY}" is not valid JSON.`);
+  }
+  if (!data || data.v !== 1 || !data.orders || typeof data.orders !== 'object' || Array.isArray(data.orders)) {
+    throw new Error(`Entry "${LEGACY_KEY}" is not in the expected format.`);
+  }
+  // Tidy once at load time: order numbers as plain numbers ("0042" -> "42"),
+  // serials and keys as non-empty text. Records that aren't lists are skipped.
+  const text = (v) => (Array.isArray(v)
+    ? v.filter((x) => (typeof x === 'string' || typeof x === 'number') && String(x).trim()).map((x) => String(x).trim())
+    : []);
+  const orders = new Map();
+  for (const [rawKey, rec] of Object.entries(data.orders)) {
+    if (!/^\d{1,10}$/.test(rawKey.trim()) || !Array.isArray(rec)) continue;
+    const k = String(Number(rawKey.trim()));
+    const prev = orders.get(k);
+    if (prev) { // "42" and "042" are the same order: combine, don't overwrite
+      prev.serials.push(...text(rec[0]));
+      prev.keys.push(...text(rec[1]));
+      continue;
+    }
+    orders.set(k, { serials: text(rec[0]), keys: text(rec[1]) });
+  }
+  return { orders, count: orders.size };
+}
+
+// For /health: a number when loaded, otherwise a short reason. Never the data.
+async function legacyStatus(env) {
+  if (!env.LEGACY_ORDERS) return 'not_connected';
+  try {
+    return (await loadLegacyIndex(env)).count;
+  } catch {
+    return 'error';
+  }
 }
 
 // ---------- helpers ----------
