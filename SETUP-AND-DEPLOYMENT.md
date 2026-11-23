@@ -34,6 +34,7 @@ URL: `https://miss-woo-api.bryan-df4.workers.dev`
 | `ACCESS_TOKEN` | Secret | The pass the sidebar sends |
 | `ALLOWED_ORIGINS` | Text | `https://quikrstuff.github.io` (the site allowed to call the middleman) |
 | `ORDER_STATUSES` | Text, optional | Default `processing,completed,pending` |
+| `LEGACY_ORDERS` | Binding (KV namespace `miss-woo-legacy-orders`) | Historical order data (older orders' rack serials and lock key numbers), one entry `orders-v1`. **Private: lives only in Cloudflare, never in this repo.** |
 
 Cloudflare may show a notice about updating a Wrangler configuration. This project doesn't use Wrangler, so you can ignore it.
 
@@ -48,8 +49,15 @@ Cloudflare may show a notice about updating a Wrangler configuration. This proje
 | `GET /api/orders/:id` | One order, with notes. |
 | `GET /api/orders/:id/notes` | An order's notes. |
 | `GET /api/katana/order?order_no=` | Katana sales order and serial numbers for a Woo order number. |
+| `GET /api/legacy/order?order_no=` | Historical serial numbers and lock key numbers for **one** older order (needs the pass). `/health` shows only how many orders are loaded (`legacy_orders`). |
 
 Results are cached for 5 minutes (Katana: 15). The Worker logs timings only (routes, durations, statuses), never customer details.
+
+**Historical order data (`LEGACY_ORDERS`)**
+
+- The Worker reads the `orders-v1` entry at most once an hour per Cloudflare server. If a read fails, it waits a minute before trying again and keeps using the last good copy.
+- **To take the data offline immediately:** remove the `LEGACY_ORDERS` binding (Worker → Settings → Bindings). Deleting the KV entry also works, but can take up to an hour to reach every server.
+- **To replace the data:** edit the `orders-v1` entry in Workers KV. Keep the same format: `{"v":1,"count":N,"orders":{"<order no>":[[serials],[keys]]}}`. Then check `/health` shows the new count.
 
 ## 3. Fast lookup add-on (optional, WordPress)
 
