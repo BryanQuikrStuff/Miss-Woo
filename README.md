@@ -29,7 +29,6 @@ Missive sidebar  ──(pass)──▶  Cloudflare Worker  ──(keys, read-onl
 | `index.html`, `index-web.html` | Sidebar pages |
 | `src/` | Sidebar code (`config.js` holds no keys) |
 | `integrations/missive-js/` | Missive JS API bridge |
-| `worker/parse-sales-worker.js` | Background parser for the historical sales export |
 | `cloudflare-worker/miss-woo-api.js` | Middleman source (deployed by hand in Cloudflare) |
 | `wordpress/miss-woo-fast-lookup.php` | Optional one-request lookup add-on for WordPress |
 | `__tests__/` | Jest tests (`npm test`) |
